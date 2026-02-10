@@ -947,6 +947,7 @@ export const registerTelegramNativeCommands = ({
           to,
           accountId,
           messageThreadId: threadSpec.id,
+          sessionKey: route.sessionKey,
         });
 
         if (
