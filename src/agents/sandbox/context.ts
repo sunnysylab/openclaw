@@ -138,11 +138,16 @@ export async function resolveSandboxContext(params: {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      const msg = `Sandbox initialization timed out after ${SANDBOX_INIT_TIMEOUT_MS / 1000}s (Docker may be unresponsive)`;
-      defaultRuntime.error?.(msg);
+      const err = new Error(
+        `Sandbox initialization timed out after ${SANDBOX_INIT_TIMEOUT_MS / 1000}s (Docker may be unresponsive)`,
+      );
+      defaultRuntime.error?.(err.message);
       // Abort the inner work so pending await points exit early.
-      controller.abort(new Error(msg));
-      reject(new Error(msg));
+      // Reuse the same Error instance for both abort reason and rejection so
+      // the aborted-check path (throw abortSignal.reason) and the race-winning
+      // rejection surface the same Error identity.
+      controller.abort(err);
+      reject(err);
     }, SANDBOX_INIT_TIMEOUT_MS);
     timer.unref?.();
   });
@@ -221,6 +226,9 @@ async function resolveSandboxContextInner(
     configLabelKind: backend.configLabelKind ?? "Image",
   });
 
+  // Abort before the browser setup phase — ensureSandboxBrowser involves
+  // multiple Docker operations (inspect, network create, container start,
+  // CDP wait loop) and is likely the longest remaining step.
   if (abortSignal?.aborted) {
     throw abortSignal.reason instanceof Error
       ? abortSignal.reason
@@ -246,6 +254,12 @@ async function resolveSandboxContextInner(
         return browserAuth;
       })()
     : undefined;
+  if (abortSignal?.aborted) {
+    throw abortSignal.reason instanceof Error
+      ? abortSignal.reason
+      : new Error("Sandbox init aborted");
+  }
+
   if (resolvedCfg.browser.enabled && backend.capabilities?.browser !== true) {
     throw new Error(
       `Sandbox backend "${resolvedCfg.backend}" does not support browser sandboxes yet.`,
