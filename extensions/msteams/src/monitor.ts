@@ -322,7 +322,12 @@ export async function monitorMSTeamsProvider(
     next();
   });
   expressApp.use((err: unknown, _req: Request, res: Response, next: (err?: unknown) => void) => {
-    if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 413) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "status" in err &&
+      (err as { status: number }).status === 413
+    ) {
       res.status(413).json({ error: "Payload too large" });
       return;
     }
