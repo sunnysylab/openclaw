@@ -9,12 +9,14 @@ import {
   resolveTextChunkLimit,
 } from "../../auto-reply/chunk.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
+import { resolveChannelMediaMaxBytes } from "../../channels/plugins/media-limits.js";
 import { loadChannelOutboundAdapter } from "../../channels/plugins/outbound/load.js";
 import type {
   ChannelOutboundAdapter,
   ChannelOutboundContext,
 } from "../../channels/plugins/types.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import { resolveMarkdownTableMode } from "../../config/markdown-tables.js";
 import {
   appendAssistantMessageToSessionTranscript,
   resolveMirroredTranscriptText,
@@ -43,6 +45,11 @@ import { isPlainTextSurface, sanitizeForPlainText } from "./sanitize-text.js";
 import { resolveOutboundSendDep, type OutboundSendDeps } from "./send-deps.js";
 import type { OutboundSessionContext } from "./session-context.js";
 import type { OutboundChannel } from "./targets.js";
+import {
+  markdownToSignalTextChunks,
+  type SignalTextStyleRange,
+} from "../../../extensions/signal/src/format.js";
+import { sendMessageSignal } from "../../../extensions/signal/src/send.js";
 
 export type { NormalizedOutboundPayload } from "./payloads.js";
 export { normalizeOutboundPayloads } from "./payloads.js";
@@ -124,6 +131,7 @@ type ChannelHandlerParams = {
   to: string;
   accountId?: string;
   replyToId?: string | null;
+  quoteAuthor?: string | null;
   threadId?: string | number | null;
   identity?: OutboundIdentity;
   deps?: OutboundSendDeps;
@@ -169,8 +177,9 @@ function createPluginHandler(
     audioAsVoice?: boolean;
   }): Omit<ChannelOutboundContext, "text" | "mediaUrl"> => ({
     ...baseCtx,
-    replyToId: overrides?.replyToId ?? baseCtx.replyToId,
-    threadId: overrides?.threadId ?? baseCtx.threadId,
+    // Preserve explicit null overrides so later payloads can suppress inherited reply/thread metadata.
+    replyToId: overrides && "replyToId" in overrides ? overrides.replyToId : baseCtx.replyToId,
+    threadId: overrides && "threadId" in overrides ? overrides.threadId : baseCtx.threadId,
     audioAsVoice: overrides?.audioAsVoice,
   });
   return {
@@ -232,6 +241,7 @@ function createPluginHandler(
       return sendText({
         ...resolveCtx(overrides),
         text: caption,
+        mediaUrl,
       });
     },
   };
@@ -245,6 +255,7 @@ function createChannelOutboundContextBase(
     to: params.to,
     accountId: params.accountId,
     replyToId: params.replyToId,
+    quoteAuthor: params.quoteAuthor,
     threadId: params.threadId,
     identity: params.identity,
     gifPlayback: params.gifPlayback,
@@ -267,6 +278,7 @@ type DeliverOutboundPayloadsCoreParams = {
   accountId?: string;
   payloads: ReplyPayload[];
   replyToId?: string | null;
+  quoteAuthor?: string | null;
   threadId?: string | number | null;
   identity?: OutboundIdentity;
   deps?: OutboundSendDeps;
@@ -564,6 +576,8 @@ async function deliverOutboundPayloadsCore(
   const accountId = params.accountId;
   const deps = params.deps;
   const abortSignal = params.abortSignal;
+  const sendSignal =
+    resolveOutboundSendDep<typeof sendMessageSignal>(params.deps, "signal") ?? sendMessageSignal;
   const mediaAccess = resolveAgentScopedOutboundMediaAccess({
     cfg,
     agentId: params.session?.agentId ?? params.mirror?.agentId,
@@ -577,6 +591,7 @@ async function deliverOutboundPayloadsCore(
     deps,
     accountId,
     replyToId: params.replyToId,
+    quoteAuthor: params.quoteAuthor,
     threadId: params.threadId,
     identity: params.identity,
     gifPlayback: params.gifPlayback,
@@ -594,6 +609,19 @@ async function deliverOutboundPayloadsCore(
     ? handler.resolveEffectiveTextChunkLimit(configuredTextLimit)
     : configuredTextLimit;
   const chunkMode = handler.chunker ? resolveChunkMode(cfg, channel, accountId) : "length";
+  const isSignalChannel = channel === "signal";
+  const signalTableMode = isSignalChannel
+    ? resolveMarkdownTableMode({ cfg, channel: "signal", accountId })
+    : "code";
+  const signalMaxBytes = isSignalChannel
+    ? resolveChannelMediaMaxBytes({
+        cfg,
+        resolveChannelLimitMb: ({ cfg, accountId }) =>
+          cfg.channels?.signal?.accounts?.[accountId]?.mediaMaxMb ??
+          cfg.channels?.signal?.mediaMaxMb,
+        accountId,
+      })
+    : undefined;
 
   const sendTextChunks = async (
     text: string,
@@ -637,6 +665,81 @@ async function deliverOutboundPayloadsCore(
     }
   };
   const normalizedPayloads = normalizePayloadsForChannelDelivery(payloads, channel, handler);
+  const sendSignalText = async (
+    text: string,
+    styles: SignalTextStyleRange[],
+    replyTo?: string,
+    quoteAuthor?: string,
+  ) => {
+    throwIfAborted(abortSignal);
+    return {
+      channel: "signal" as const,
+      ...(await sendSignal(to, text, {
+        cfg,
+        maxBytes: signalMaxBytes,
+        accountId: accountId ?? undefined,
+        textMode: "plain",
+        textStyles: styles,
+        replyTo,
+        quoteAuthor,
+      })),
+    };
+  };
+
+  const sendSignalTextChunks = async (text: string, replyTo?: string, quoteAuthor?: string) => {
+    throwIfAborted(abortSignal);
+    let signalChunks =
+      textLimit === undefined
+        ? markdownToSignalTextChunks(text, Number.POSITIVE_INFINITY, {
+            tableMode: signalTableMode,
+          })
+        : markdownToSignalTextChunks(text, textLimit, { tableMode: signalTableMode });
+    if (signalChunks.length === 0 && text) {
+      signalChunks = [{ text, styles: [] }];
+    }
+    let first = true;
+    for (const chunk of signalChunks) {
+      throwIfAborted(abortSignal);
+      results.push(
+        await sendSignalText(
+          chunk.text,
+          chunk.styles,
+          first ? replyTo : undefined,
+          first ? quoteAuthor : undefined,
+        ),
+      );
+      first = false;
+    }
+  };
+
+  const sendSignalMedia = async (
+    caption: string,
+    mediaUrl: string,
+    replyTo?: string,
+    quoteAuthor?: string,
+  ) => {
+    throwIfAborted(abortSignal);
+    const formatted = markdownToSignalTextChunks(caption, Number.POSITIVE_INFINITY, {
+      tableMode: signalTableMode,
+    })[0] ?? {
+      text: caption,
+      styles: [],
+    };
+    return {
+      channel: "signal" as const,
+      ...(await sendSignal(to, formatted.text, {
+        cfg,
+        mediaUrl,
+        maxBytes: signalMaxBytes,
+        accountId: accountId ?? undefined,
+        textMode: "plain",
+        textStyles: formatted.styles,
+        mediaLocalRoots: mediaAccess?.localRoots,
+        replyTo,
+        quoteAuthor,
+      })),
+    };
+  };
   const hookRunner = getGlobalHookRunner();
   const sessionKeyForInternalHooks = params.mirror?.sessionKey ?? params.session?.key;
   const mirrorIsGroup = params.mirror?.isGroup;
@@ -661,6 +764,34 @@ async function deliverOutboundPayloadsCore(
       },
     );
   }
+  let replyConsumed = false;
+  const markReplyConsumedIfSendSucceeded = (
+    replyTo: string | undefined,
+    resultCountBeforeSend: number,
+  ) => {
+    if (replyTo && results.length > resultCountBeforeSend) {
+      replyConsumed = true;
+    }
+  };
+  const trackReplyConsumption = async <T>(
+    replyTo: string | undefined,
+    send: () => Promise<T>,
+    sent?: (value: T) => boolean,
+  ): Promise<T> => {
+    const resultCountBeforeSend = results.length;
+    try {
+      const value = await send();
+      if (replyTo && (sent?.(value) ?? results.length > resultCountBeforeSend)) {
+        replyConsumed = true;
+      }
+      return value;
+    } catch (err) {
+      // Best-effort delivery should only consume reply metadata once a quoted send
+      // actually succeeded, even if a later chunk/send in the same payload fails.
+      markReplyConsumedIfSendSucceeded(replyTo, resultCountBeforeSend);
+      throw err;
+    }
+  };
   for (const payload of normalizedPayloads) {
     let payloadSummary = buildPayloadSummary(payload);
     try {
@@ -683,11 +814,38 @@ async function deliverOutboundPayloadsCore(
       payloadSummary = hookResult.payloadSummary;
 
       params.onPayload?.(payloadSummary);
-      const sendOverrides = {
-        replyToId: effectivePayload.replyToId ?? params.replyToId ?? undefined,
+      // Treat null as an explicit "do not reply" override so payload-level suppression
+      // is preserved instead of falling back to inherited reply metadata.
+      // NOTE: Many payload builders emit replyToId: undefined. Treat that as "no opinion"
+      // so the inherited reply metadata can still apply.
+      const explicitPayloadReplyTo =
+        "replyToId" in effectivePayload && effectivePayload.replyToId !== undefined
+          ? effectivePayload.replyToId
+          : undefined;
+      const inheritedReplyTo =
+        explicitPayloadReplyTo === undefined ? (params.replyToId ?? undefined) : undefined;
+      const effectiveReplyTo =
+        explicitPayloadReplyTo != null
+          ? explicitPayloadReplyTo
+          : !replyConsumed
+            ? inheritedReplyTo
+            : undefined;
+      // NOTE: quoteAuthor is derived from the top-level params, not resolved per-payload.
+      // The normal Signal inbound→outbound path (monitor.ts:deliverReplies) resolves
+      // quoteAuthor per-payload via resolveQuoteAuthor(effectiveReplyTo). If a future
+      // caller uses deliverOutboundPayloads directly with per-payload replyToId overrides,
+      // it should supply its own quoteAuthor resolution or extend this logic.
+      const effectiveQuoteAuthor = effectiveReplyTo ? (params.quoteAuthor ?? undefined) : undefined;
+      const effectiveSendOverrides = {
         threadId: params.threadId ?? undefined,
         audioAsVoice: effectivePayload.audioAsVoice === true ? true : undefined,
         forceDocument: params.forceDocument,
+        replyToId:
+          explicitPayloadReplyTo !== undefined // explicit payload override (string or null)
+            ? (explicitPayloadReplyTo ?? undefined) // null → undefined for the wire format
+            : inheritedReplyTo !== undefined
+              ? (effectiveReplyTo ?? null)
+              : undefined,
       };
       if (
         handler.sendPayload &&
@@ -696,7 +854,29 @@ async function deliverOutboundPayloadsCore(
           channelData: effectivePayload.channelData,
         })
       ) {
-        const delivery = await handler.sendPayload(effectivePayload, sendOverrides);
+        // Materialize the resolved replyToId on the payload so downstream handlers see
+        // the correct value:
+        // - string: reply applied
+        // - null: reply metadata was inherited but has been consumed (explicitly no reply)
+        // - undefined: no reply metadata was ever present (no opinion)
+        const resolvedReplyToId =
+          effectiveReplyTo !== undefined
+            ? effectiveReplyTo
+            : inheritedReplyTo !== undefined
+              ? null
+              : undefined;
+        const resolvedPayload = { ...effectivePayload, replyToId: resolvedReplyToId };
+        const delivery = await trackReplyConsumption(
+          effectiveReplyTo,
+          () =>
+            handler.sendPayload!(
+              resolvedPayload as typeof effectivePayload,
+              effectiveSendOverrides,
+            ),
+          // Any non-undefined return counts as "sent" — channels that don't return
+          // messageId (e.g. matrix) should still consume the reply indicator.
+          (value) => value !== undefined,
+        );
         results.push(delivery);
         emitMessageSent({
           success: true,
@@ -705,12 +885,19 @@ async function deliverOutboundPayloadsCore(
         });
         continue;
       }
+
       if (payloadSummary.mediaUrls.length === 0) {
         const beforeCount = results.length;
-        if (handler.sendFormattedText) {
-          results.push(...(await handler.sendFormattedText(payloadSummary.text, sendOverrides)));
+        if (isSignalChannel) {
+          await trackReplyConsumption(effectiveReplyTo, () =>
+            sendSignalTextChunks(payloadSummary.text, effectiveReplyTo, effectiveQuoteAuthor),
+          );
+        } else if (handler.sendFormattedText) {
+          results.push(...(await handler.sendFormattedText(payloadSummary.text, effectiveSendOverrides)));
         } else {
-          await sendTextChunks(payloadSummary.text, sendOverrides);
+          await trackReplyConsumption(effectiveReplyTo, () =>
+            sendTextChunks(payloadSummary.text, effectiveSendOverrides),
+          );
         }
         const messageId = results.at(-1)?.messageId;
         emitMessageSent({
@@ -737,7 +924,9 @@ async function deliverOutboundPayloadsCore(
           );
         }
         const beforeCount = results.length;
-        await sendTextChunks(fallbackText, sendOverrides);
+        await trackReplyConsumption(effectiveReplyTo, () =>
+          sendTextChunks(fallbackText, effectiveSendOverrides),
+        );
         const messageId = results.at(-1)?.messageId;
         emitMessageSent({
           success: results.length > beforeCount,
@@ -747,26 +936,46 @@ async function deliverOutboundPayloadsCore(
         continue;
       }
 
+      let first = true;
       let lastMessageId: string | undefined;
-      await sendMediaWithLeadingCaption({
-        mediaUrls: payloadSummary.mediaUrls,
-        caption: payloadSummary.text,
-        send: async ({ mediaUrl, caption }) => {
-          throwIfAborted(abortSignal);
-          if (handler.sendFormattedMedia) {
-            const delivery = await handler.sendFormattedMedia(
+      await trackReplyConsumption(effectiveReplyTo, async () => {
+        if (isSignalChannel) {
+          for (const url of payloadSummary.mediaUrls) {
+            throwIfAborted(abortSignal);
+            const caption = first ? payloadSummary.text : "";
+            const mediaReplyTo = first ? effectiveReplyTo : undefined;
+            const mediaQuoteAuthor = first ? effectiveQuoteAuthor : undefined;
+            const delivery = await sendSignalMedia(caption, url, mediaReplyTo, mediaQuoteAuthor);
+            results.push(delivery);
+            lastMessageId = delivery.messageId;
+            first = false;
+          }
+          return;
+        }
+        await sendMediaWithLeadingCaption({
+          mediaUrls: payloadSummary.mediaUrls,
+          caption: payloadSummary.text,
+          send: async ({ mediaUrl, caption }) => {
+            throwIfAborted(abortSignal);
+            if (handler.sendFormattedMedia) {
+              const delivery = await handler.sendFormattedMedia(
+                caption ?? "",
+                mediaUrl,
+                effectiveSendOverrides,
+              );
+              results.push(delivery);
+              lastMessageId = delivery.messageId;
+              return;
+            }
+            const delivery = await handler.sendMedia(
               caption ?? "",
               mediaUrl,
-              sendOverrides,
+              effectiveSendOverrides,
             );
             results.push(delivery);
             lastMessageId = delivery.messageId;
-            return;
-          }
-          const delivery = await handler.sendMedia(caption ?? "", mediaUrl, sendOverrides);
-          results.push(delivery);
-          lastMessageId = delivery.messageId;
-        },
+          },
+        });
       });
       emitMessageSent({
         success: true,
