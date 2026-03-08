@@ -2943,6 +2943,7 @@ public struct CronListParams: Codable, Sendable {
 public struct CronStatusParams: Codable, Sendable {}
 
 public struct CronAddParams: Codable, Sendable {
+    public let id: String?
     public let name: String
     public let agentid: AnyCodable?
     public let sessionkey: AnyCodable?
@@ -2957,6 +2958,7 @@ public struct CronAddParams: Codable, Sendable {
     public let failurealert: AnyCodable?
 
     public init(
+        id: String?,
         name: String,
         agentid: AnyCodable?,
         sessionkey: AnyCodable?,
@@ -2970,6 +2972,7 @@ public struct CronAddParams: Codable, Sendable {
         delivery: AnyCodable?,
         failurealert: AnyCodable?)
     {
+        self.id = id
         self.name = name
         self.agentid = agentid
         self.sessionkey = sessionkey
@@ -2985,6 +2988,7 @@ public struct CronAddParams: Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case id
         case name
         case agentid = "agentId"
         case sessionkey = "sessionKey"
