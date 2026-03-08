@@ -123,7 +123,11 @@ export function createTelegramDraftStream(params: {
         ? false
         : params.thread?.scope === "dm";
   const threadParams = buildTelegramThreadParams(params.thread);
-  const replyParams =
+  // Track whether we have applied reply_to_message_id to the first message.
+  // Subsequent messages after forceNewMessage() should not re-apply the reply
+  // to avoid "Deleted message" artifacts when the first preview is archived.
+  let hasAppliedReply = false;
+  const baseReplyParams =
     params.replyToMessageId != null
       ? {
           ...threadParams,
@@ -161,6 +165,10 @@ export function createTelegramDraftStream(params: {
     renderedParseMode: "HTML" | undefined;
     fallbackWarnMessage: string;
   }) => {
+    // Only apply reply_to_message_id on the first message of the stream.
+    // After forceNewMessage(), subsequent messages should not reply to avoid
+    // "Deleted message" artifacts when archived previews are cleaned up (#39718).
+    const replyParams = hasAppliedReply ? threadParams : baseReplyParams;
     const sendParams = sendArgs.renderedParseMode
       ? {
           ...replyParams,
@@ -243,6 +251,7 @@ export function createTelegramDraftStream(params: {
       return true;
     }
     streamMessageId = normalizedMessageId;
+    hasAppliedReply = true;
     return true;
   };
   const sendDraftTransportPreview = async ({
