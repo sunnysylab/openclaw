@@ -5,6 +5,7 @@ import { assertNoWindowsNetworkPath, safeFileURLToPath } from "../infra/local-fi
 import type { SsrFPolicy } from "../infra/net/ssrf.js";
 import { resolveUserPath } from "../utils.js";
 import { maxBytesForKind, type MediaKind } from "./constants.js";
+import { runFfprobe } from "./ffmpeg-exec.js";
 import { fetchRemoteMedia } from "./fetch.js";
 import {
   convertHeicToJpeg,
@@ -19,7 +20,7 @@ import {
   LocalMediaAccessError,
   type LocalMediaAccessErrorCode,
 } from "./local-media-access.js";
-import { detectMime, extensionForMime, kindFromMime } from "./mime.js";
+import { detectMime, extensionForMime, getFileExtension, kindFromMime } from "./mime.js";
 
 export { getDefaultLocalRoots, LocalMediaAccessError };
 export type { LocalMediaAccessErrorCode };
@@ -142,6 +143,40 @@ function assertHostReadMediaAllowed(params: {
     "path-not-allowed",
     `Host-local media sends only allow images, audio, video, PDF, and Office documents (got ${normalizedMime ?? "unknown"}).`,
   );
+}
+
+async function normalizeAudioOnlyWebmMime(
+  filePath: string,
+  contentType?: string,
+): Promise<string | undefined> {
+  if (contentType !== "video/webm" || getFileExtension(filePath) !== ".webm") {
+    return contentType;
+  }
+
+  try {
+    const stdout = await runFfprobe([
+      "-v",
+      "error",
+      "-show_entries",
+      "stream=codec_type",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ]);
+    const streamKinds = new Set(
+      stdout
+        .split(/\r?\n/)
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    if (streamKinds.has("audio") && !streamKinds.has("video")) {
+      return "audio/webm";
+    }
+  } catch {
+    // Keep the original type when ffprobe is unavailable or the file cannot be probed.
+  }
+
+  return contentType;
 }
 
 function toJpegFileName(fileName?: string): string | undefined {
@@ -381,7 +416,8 @@ async function loadWebMediaInternal(
       throw err;
     }
   }
-  const mime = await detectMime({ buffer: data, filePath: mediaUrl });
+  const detectedMime = await detectMime({ buffer: data, filePath: mediaUrl });
+  const mime = await normalizeAudioOnlyWebmMime(mediaUrl, detectedMime);
   const kind = kindFromMime(mime);
   let fileName = path.basename(mediaUrl) || undefined;
   if (fileName && !path.extname(fileName) && mime) {
