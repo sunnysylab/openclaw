@@ -57,6 +57,9 @@ const {
   isValidOpenAIModel,
   OPENAI_TTS_MODELS,
   OPENAI_TTS_VOICES,
+  isValidXaiVoice,
+  XAI_TTS_VOICES,
+  parseXaiOutputFormat,
   parseTtsDirectives,
   resolveOpenAITtsInstructions,
   resolveModelOverridePolicy,
@@ -119,6 +122,22 @@ describe("tts", () => {
       for (const testCase of cases) {
         expect(isValidVoiceId(testCase.value), testCase.value).toBe(testCase.expected);
       }
+    });
+  });
+
+  describe("isValidXaiVoice", () => {
+    it("accepts all valid xAI voices", () => {
+      for (const voice of XAI_TTS_VOICES) {
+        expect(isValidXaiVoice(voice)).toBe(true);
+      }
+    });
+
+    it("rejects invalid voice names", () => {
+      expect(isValidXaiVoice("invalid")).toBe(false);
+      expect(isValidXaiVoice("")).toBe(false);
+      expect(isValidXaiVoice("EVE")).toBe(false);
+      expect(isValidXaiVoice("eve ")).toBe(false);
+      expect(isValidXaiVoice(" eve")).toBe(false);
     });
   });
 
@@ -235,6 +254,32 @@ describe("tts", () => {
     });
   });
 
+  describe("parseXaiOutputFormat", () => {
+    it("parses output format strings into API objects", () => {
+      const cases = [
+        {
+          input: "mp3_44100_128",
+          expected: { codec: "mp3", sample_rate: 44100, bit_rate: 128000 },
+        },
+        {
+          input: "pcm_22050",
+          expected: { codec: "pcm", sample_rate: 22050, bit_rate: null },
+        },
+        {
+          input: "wav",
+          expected: { codec: "wav", sample_rate: null, bit_rate: null },
+        },
+        {
+          input: "mulaw_8000",
+          expected: { codec: "mulaw", sample_rate: 8000, bit_rate: null },
+        },
+      ] as const;
+      for (const testCase of cases) {
+        expect(parseXaiOutputFormat(testCase.input), testCase.input).toEqual(testCase.expected);
+      }
+    });
+  });
+
   describe("resolveEdgeOutputFormat", () => {
     const baseCfg: OpenClawConfig = {
       agents: { defaults: { model: { primary: "openai/gpt-4o-mini" } } },
@@ -331,6 +376,31 @@ describe("tts", () => {
 
       expect(result.overrides.openai?.voice).toBeUndefined();
       expect(result.warnings).toContain('invalid OpenAI voice "kokoro-chinese"');
+    });
+
+    it("parses xai voice and language overrides", () => {
+      const policy = resolveModelOverridePolicy({
+        enabled: true,
+        allowVoice: true,
+        allowNormalization: true,
+      });
+      const input = "Hello [[tts:xai_voiceid=ara language=en]] world";
+
+      const result = parseTtsDirectives(input, policy);
+
+      expect(result.overrides.xai?.voiceId).toBe("ara");
+      expect(result.overrides.xai?.language).toBe("en");
+      expect(result.warnings).toHaveLength(0);
+    });
+
+    it("rejects invalid xai voice overrides", () => {
+      const policy = resolveModelOverridePolicy({ enabled: true, allowVoice: true });
+      const input = "Hello [[tts:xai_voiceid=invalid]] world";
+
+      const result = parseTtsDirectives(input, policy);
+
+      expect(result.overrides.xai?.voiceId).toBeUndefined();
+      expect(result.warnings).toContain('invalid xAI voiceId "invalid"');
     });
   });
 
@@ -487,6 +557,7 @@ describe("tts", () => {
             OPENAI_API_KEY: "test-openai-key",
             ELEVENLABS_API_KEY: undefined,
             XI_API_KEY: undefined,
+            XAI_API_KEY: undefined,
           },
           prefsPath: "/tmp/tts-prefs-openai.json",
           expected: "openai",
@@ -496,6 +567,7 @@ describe("tts", () => {
             OPENAI_API_KEY: undefined,
             ELEVENLABS_API_KEY: "test-elevenlabs-key",
             XI_API_KEY: undefined,
+            XAI_API_KEY: undefined,
           },
           prefsPath: "/tmp/tts-prefs-elevenlabs.json",
           expected: "elevenlabs",
@@ -505,6 +577,17 @@ describe("tts", () => {
             OPENAI_API_KEY: undefined,
             ELEVENLABS_API_KEY: undefined,
             XI_API_KEY: undefined,
+            XAI_API_KEY: "test-xai-key",
+          },
+          prefsPath: "/tmp/tts-prefs-xai.json",
+          expected: "xai",
+        },
+        {
+          env: {
+            OPENAI_API_KEY: undefined,
+            ELEVENLABS_API_KEY: undefined,
+            XI_API_KEY: undefined,
+            XAI_API_KEY: undefined,
           },
           prefsPath: "/tmp/tts-prefs-edge.json",
           expected: "edge",
@@ -518,6 +601,39 @@ describe("tts", () => {
           expect(provider).toBe(testCase.expected);
         });
       }
+    });
+  });
+
+  describe("resolveTtsConfig – xai", () => {
+    const baseCfg: OpenClawConfig = {
+      agents: { defaults: { model: { primary: "openai/gpt-4o-mini" } } },
+      messages: { tts: {} },
+    };
+
+    it("defaults to xAI endpoint and eve voice", () => {
+      const config = resolveTtsConfig(baseCfg);
+      expect(config.xai.baseUrl).toBe("https://api.x.ai/v1");
+      expect(config.xai.voiceId).toBe("eve");
+      expect(config.xai.language).toBeUndefined();
+    });
+
+    it("applies config overrides", () => {
+      const cfg: OpenClawConfig = {
+        ...baseCfg,
+        messages: {
+          tts: {
+            xai: {
+              baseUrl: "https://custom.x.ai/v1",
+              voiceId: "ara",
+              language: "en-US",
+            },
+          },
+        },
+      };
+      const config = resolveTtsConfig(cfg);
+      expect(config.xai.baseUrl).toBe("https://custom.x.ai/v1");
+      expect(config.xai.voiceId).toBe("ara");
+      expect(config.xai.language).toBe("en-US");
     });
   });
 
@@ -647,6 +763,42 @@ describe("tts", () => {
         expect(typeof init.body).toBe("string");
         const body = JSON.parse(init.body as string) as Record<string, unknown>;
         expect(body.instructions).toBe("Speak warmly");
+      });
+    });
+
+    it("calls xAI TTS for telephony with correct body", async () => {
+      const cfg: OpenClawConfig = {
+        messages: {
+          tts: {
+            provider: "xai",
+            xai: {
+              apiKey: "test-xai-key",
+              voiceId: "ara",
+              language: "en",
+            },
+          },
+        },
+      };
+
+      await withMockedTelephonyFetch(async (fetchMock) => {
+        const result = await tts.textToSpeechTelephony({
+          text: "Hello there, friendly caller.",
+          cfg,
+        });
+
+        expect(result.success).toBe(true);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toBe("https://api.x.ai/v1/tts");
+        expect(init.headers).toHaveProperty("Authorization", "Bearer test-xai-key");
+        expect(typeof init.body).toBe("string");
+        const body = JSON.parse(init.body as string) as Record<string, unknown>;
+        expect(body).toEqual({
+          text: "Hello there, friendly caller.",
+          voice_id: "ara",
+          output_format: { codec: "pcm", sample_rate: 22050, bit_rate: null },
+          language: "en",
+        });
       });
     });
   });

@@ -1,6 +1,6 @@
 import type { SecretInput } from "./types.secrets.js";
 
-export type TtsProvider = "elevenlabs" | "openai" | "edge";
+export type TtsProvider = "elevenlabs" | "openai" | "edge" | "xai";
 
 export type TtsMode = "final" | "all";
 
@@ -79,6 +79,13 @@ export type TtsConfig = {
     saveSubtitles?: boolean;
     proxy?: string;
     timeoutMs?: number;
+  };
+  /** xAI configuration. */
+  xai?: {
+    apiKey?: SecretInput;
+    baseUrl?: string;
+    voiceId?: string;
+    language?: string;
   };
   /** Optional path for local TTS user preferences JSON. */
   prefsPath?: string;
