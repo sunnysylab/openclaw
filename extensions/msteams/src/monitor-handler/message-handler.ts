@@ -173,7 +173,8 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
     const channelName = activity.channelData?.channel?.name;
     const channelGate = resolveMSTeamsRouteConfig({
       cfg: msteamsCfg,
-      teamId,
+      teamId: teamRuntimeId ?? graphTeamId,
+      alternateTeamIds: teamRuntimeId && graphTeamId ? [graphTeamId] : [],
       teamName,
       conversationId,
       channelName,
