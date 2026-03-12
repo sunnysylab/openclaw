@@ -14,6 +14,27 @@ import { loadOutboundMediaFromUrl } from "./runtime-api.js";
 
 const outboundLog = createSubsystemLogger("gateway/channels/whatsapp").child("outbound");
 
+function isWhatsAppVoiceCompatibleAudio(opts: {
+  contentType?: string | null;
+  fileName?: string | null;
+}): boolean {
+  const normalizedContentType = opts.contentType?.trim().toLowerCase();
+  if (
+    normalizedContentType === "audio/ogg" ||
+    normalizedContentType === "audio/ogg; codecs=opus" ||
+    normalizedContentType === "audio/opus"
+  ) {
+    return true;
+  }
+  const normalizedFileName = opts.fileName?.trim().toLowerCase();
+  return Boolean(
+    normalizedFileName &&
+      (normalizedFileName.endsWith(".ogg") ||
+        normalizedFileName.endsWith(".oga") ||
+        normalizedFileName.endsWith(".opus")),
+  );
+}
+
 export async function sendMessageWhatsApp(
   to: string,
   body: string,
@@ -77,9 +98,14 @@ export async function sendMessageWhatsApp(
       mediaType = media.contentType;
       if (media.kind === "audio") {
         // Only Opus/Ogg audio should be labeled as a WhatsApp voice note.
-        audioAsVoice = media.contentType === "audio/ogg";
+        audioAsVoice = isWhatsAppVoiceCompatibleAudio({
+          contentType: media.contentType,
+          fileName: media.fileName ?? options.mediaUrl,
+        });
         mediaType = audioAsVoice
-          ? "audio/ogg; codecs=opus"
+          ? media.contentType === "audio/ogg" || media.contentType === "audio/opus"
+            ? "audio/ogg; codecs=opus"
+            : (media.contentType ?? "application/octet-stream")
           : (media.contentType ?? "application/octet-stream");
       } else if (media.kind === "video") {
         text = caption ?? "";
