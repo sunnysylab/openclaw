@@ -242,6 +242,11 @@ async function downloadGraphHostedContent(params: {
         }
         const ct = valResp.headers.get("content-type");
         if (ct) itemContentType = ct;
+        // Guard against large allocations: reject before materializing the buffer.
+        const contentLength = Number(valResp.headers.get("content-length") ?? "0");
+        if (contentLength > 0 && contentLength > params.maxBytes) {
+          continue;
+        }
         buffer = Buffer.from(await valResp.arrayBuffer());
       } catch {
         continue;
@@ -288,6 +293,8 @@ export async function downloadMSTeamsGraphMedia(params: {
   fetchFn?: typeof fetch;
   /** When true, embeds original filename in stored path for later extraction. */
   preserveFilenames?: boolean;
+  /** Tenant ID from the conversation (may differ from the bot configured tenant in cross-tenant scenarios). */
+  conversationTenantId?: string;
 }): Promise<MSTeamsGraphMediaResult> {
   if (!params.messageUrl || !params.tokenProvider) {
     return { media: [] };
@@ -300,7 +307,30 @@ export async function downloadMSTeamsGraphMedia(params: {
   const messageUrl = params.messageUrl;
   let accessToken: string;
   try {
-    accessToken = await params.tokenProvider.getAccessToken("https://graph.microsoft.com");
+    // Cross-tenant: if conversation tenant differs from bot tenant, use conversation tenant token
+    const _provider = params.tokenProvider as unknown as {
+      connectionSettings?: { clientId?: string; clientSecret?: string; tenantId?: string };
+      getAccessToken(authConfig: Record<string, unknown>, scope: string): Promise<string>;
+      getAccessToken(scope: string): Promise<string>;
+    };
+    const _convTenantId = params.conversationTenantId;
+    if (
+      _convTenantId &&
+      _provider.connectionSettings?.clientId &&
+      _provider.connectionSettings?.clientSecret &&
+      _convTenantId !== _provider.connectionSettings.tenantId
+    ) {
+      accessToken = await _provider.getAccessToken(
+        {
+          clientId: _provider.connectionSettings.clientId,
+          clientSecret: _provider.connectionSettings.clientSecret,
+          tenantId: _convTenantId,
+        },
+        "https://graph.microsoft.com",
+      );
+    } else {
+      accessToken = await params.tokenProvider.getAccessToken("https://graph.microsoft.com");
+    }
   } catch {
     return { media: [], messageUrl, tokenError: true };
   }
