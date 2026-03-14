@@ -185,7 +185,7 @@ describe("resolveSessionResetPolicy", () => {
 describe("evaluateSessionFreshness — adaptive mode (AND logic)", () => {
   const atHour = 4;
   const idleMinutes = 120;
-  const idleMs = idleMinutes * 60_000;
+  const _idleMs = idleMinutes * 60_000;
   const adaptivePolicy = { mode: "adaptive" as const, atHour, idleMinutes };
 
   // All timestamps are derived from resolveDailyResetAtMs() itself, so the
