@@ -153,9 +153,7 @@ export function evaluateSessionFreshness(params: {
   const staleIdle = idleExpiresAt != null && params.now > idleExpiresAt;
   // adaptive mode requires BOTH daily boundary passed AND session idle — AND logic
   const stale =
-    params.policy.mode === "adaptive"
-      ? staleDaily && staleIdle
-      : staleDaily || staleIdle;
+    params.policy.mode === "adaptive" ? staleDaily && staleIdle : staleDaily || staleIdle;
   return {
     fresh: !stale,
     dailyResetAt,
