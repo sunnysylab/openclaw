@@ -19,7 +19,7 @@ import { describe, it, expect } from "vitest";
 
 // ── Mirror `repairJsonEscapes` from monitor.ts ─────────────────────────────
 // Alternation: consume valid \\\\ pairs first, then repair lone bare escapes.
-const REPAIR_BARE_ESCAPE_RE = /(\\.)+|\\([^"\\/bfnrtu])/g;
+const REPAIR_BARE_ESCAPE_RE = /(\\\\)+|\\([^"\\/bfnrtu])/g;
 
 function repairJsonEscapes(raw: string): string {
   return raw.replace(

@@ -75,7 +75,7 @@ export function applyMSTeamsWebhookTimeouts(
  *   "\q"   (invalid JSON: bare \q)    → "\\q"
  *   "\\\q" (valid \\ + invalid \q)   → "\\\\q"
  */
-const REPAIR_BARE_ESCAPE_RE = /(\\.)+|\\([^"\\/bfnrtu])/g;
+const REPAIR_BARE_ESCAPE_RE = /(\\\\)+|\\([^"\\/bfnrtu])/g;
 
 function repairJsonEscapes(raw: string): string {
   return raw.replace(
