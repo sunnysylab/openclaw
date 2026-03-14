@@ -63,6 +63,11 @@ describe("cron protocol validators", () => {
     expect(validateCronAddParams(withInvalidId)).toBe(true);
   });
 
+  it("accepts add params with overlength id (service layer applies UUID fallback)", () => {
+    const withOverlengthId = { id: "x".repeat(129), ...minimalAddParams };
+    expect(validateCronAddParams(withOverlengthId)).toBe(true);
+  });
+
   it("accepts update params for id and jobId selectors", () => {
     expect(validateCronUpdateParams({ id: "job-1", patch: { enabled: false } })).toBe(true);
     expect(validateCronUpdateParams({ jobId: "job-2", patch: { enabled: true } })).toBe(true);
