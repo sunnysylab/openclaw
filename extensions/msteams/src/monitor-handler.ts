@@ -1,5 +1,8 @@
-import type { OpenClawConfig, RuntimeEnv } from "openclaw/plugin-sdk/msteams";
-import { getGlobalHookRunner } from "../../../src/plugins/hook-runner-global.js";
+import {
+  getGlobalHookRunner,
+  type OpenClawConfig,
+  type RuntimeEnv,
+} from "openclaw/plugin-sdk/msteams";
 import type { MSTeamsConversationStore } from "./conversation-store.js";
 import { buildFileInfoCard, parseFileConsentInvoke, uploadToConsentUrl } from "./file-consent.js";
 import { normalizeMSTeamsConversationId } from "./inbound.js";
@@ -199,7 +202,7 @@ export function registerMSTeamsHandlers<T extends MSTeamsActivityHandler>(
               readString(ctx.activity.conversation?.tenantId),
             hasChannelDeletedHooks,
           });
-          if (conversationId && hasChannelDeletedHooks) {
+          if (conversationId && hookRunner && hasChannelDeletedHooks) {
             await hookRunner.runChannelDeleted(
               {
                 conversationId,

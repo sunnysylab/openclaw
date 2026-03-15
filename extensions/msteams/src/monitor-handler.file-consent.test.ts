@@ -28,9 +28,15 @@ vi.mock("./file-consent.js", async () => {
   };
 });
 
-vi.mock("../../../src/plugins/hook-runner-global.js", () => ({
-  getGlobalHookRunner: () => fileConsentMockState.hookRunner,
-}));
+vi.mock("openclaw/plugin-sdk/msteams", async () => {
+  const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/msteams")>(
+    "openclaw/plugin-sdk/msteams",
+  );
+  return {
+    ...actual,
+    getGlobalHookRunner: () => fileConsentMockState.hookRunner,
+  };
+});
 
 const runtimeStub: PluginRuntime = {
   logging: {

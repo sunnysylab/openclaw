@@ -23,6 +23,7 @@ export async function resolveMSTeamsInboundMedia(params: {
   conversationType: string;
   conversationId: string;
   conversationMessageId?: string;
+  conversationTenantId?: string;
   activity: Pick<MSTeamsTurnContext["activity"], "id" | "replyToId" | "channelData">;
   log: MSTeamsLogger;
   /** When true, embeds original filename in stored path for later extraction. */
@@ -89,6 +90,7 @@ export async function resolveMSTeamsInboundMedia(params: {
             allowHosts,
             authAllowHosts: params.authAllowHosts,
             preserveFilenames,
+            conversationTenantId: params.conversationTenantId,
           });
           attempts.push({
             url: messageUrl,
