@@ -16,6 +16,7 @@ Docs: https://docs.openclaw.ai
 - Docs/Zalo: clarify the Marketplace-bot support matrix and config guidance so the Zalo channel docs match current Bot Creator behavior more closely. (#47552) Thanks @No898.
 - Install/update: allow package-manager installs from GitHub `main` via `openclaw update --tag main`, installer `--version main`, or direct npm/pnpm git specs.
 - Plugins/providers: move OpenRouter, GitHub Copilot, and OpenAI Codex provider/runtime logic into bundled plugins, including dynamic model fallback, runtime auth exchange, stream wrappers, capability hints, and cache-TTL policy.
+- Telegram/reactions: add configurable `reactionSemantics` mappings with `custom_emoji` support and mapped reaction wake-ups, so reaction-only Telegram control flows can wake the routed agent without downstream local patches.
 
 ### Fixes
 

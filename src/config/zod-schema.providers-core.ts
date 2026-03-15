@@ -53,6 +53,17 @@ const DiscordIdListSchema = z.array(DiscordIdSchema);
 
 const TelegramInlineButtonsScopeSchema = z.enum(["off", "dm", "group", "all", "allowlist"]);
 const TelegramIdListSchema = z.array(z.union([z.string(), z.number()]));
+const TelegramReactionSemanticActionSchema = z.enum(["ignore", "queue", "wake"]);
+const TelegramReactionSemanticRuleSchema = z
+  .object({
+    meaning: z.string().optional(),
+    instruction: z.string().optional(),
+    action: TelegramReactionSemanticActionSchema.optional(),
+  })
+  .strict();
+const TelegramReactionSemanticsSchema = z
+  .record(z.string(), z.union([z.string(), TelegramReactionSemanticRuleSchema]))
+  .optional();
 
 const TelegramCapabilitiesSchema = z.union([
   z.array(z.string()),
@@ -273,6 +284,7 @@ export const TelegramAccountSchemaBase = z
       .optional(),
     reactionNotifications: z.enum(["off", "own", "all"]).optional(),
     reactionLevel: z.enum(["off", "ack", "minimal", "extensive"]).optional(),
+    reactionSemantics: TelegramReactionSemanticsSchema,
     heartbeat: ChannelHeartbeatVisibilitySchema,
     healthMonitor: ChannelHealthMonitorSchema,
     linkPreview: z.boolean().optional(),
