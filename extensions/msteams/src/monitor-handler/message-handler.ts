@@ -450,7 +450,6 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
       conversationType,
       conversationId,
       conversationMessageId: conversationMessageId ?? undefined,
-      conversationTenantId: conversation?.tenantId ?? undefined,
       activity: {
         id: activity.id,
         replyToId: activity.replyToId,
