@@ -13,6 +13,7 @@ import {
   sendPayloadMediaSequenceOrFallback,
 } from "openclaw/plugin-sdk/reply-payload";
 import type { ReplyPayload } from "openclaw/plugin-sdk/reply-runtime";
+import { markReplyApplied } from "../../../src/infra/outbound/reply-applied.js";
 import type { TelegramInlineButtons } from "./button-types.js";
 import { resolveTelegramInlineButtons } from "./button-types.js";
 import { markdownToTelegramHtmlChunks } from "./format.js";
@@ -23,6 +24,13 @@ export const TELEGRAM_TEXT_CHUNK_LIMIT = 4000;
 
 type TelegramSendFn = typeof sendMessageTelegram;
 type TelegramSendOpts = Parameters<TelegramSendFn>[2];
+
+function attachReplyAppliedMarker<T extends object>(
+  result: T,
+  baseOpts: { replyToMessageId?: number },
+) {
+  return markReplyApplied(result, baseOpts.replyToMessageId !== undefined);
+}
 
 function resolveTelegramSendContext(params: {
   cfg: NonNullable<TelegramSendOpts>["cfg"];
@@ -132,9 +140,10 @@ export const telegramOutbound: ChannelOutboundAdapter = {
         threadId,
         gatewayClientScopes,
       });
-      return await send(to, text, {
+      const result = await send(to, text, {
         ...baseOpts,
       });
+      return attachReplyAppliedMarker(result, baseOpts);
     },
     sendMedia: async ({
       cfg,
@@ -165,6 +174,7 @@ export const telegramOutbound: ChannelOutboundAdapter = {
         mediaReadFile,
         forceDocument: forceDocument ?? false,
       });
+      return attachReplyAppliedMarker(result, baseOpts);
     },
   }),
   sendPayload: async ({
@@ -199,6 +209,6 @@ export const telegramOutbound: ChannelOutboundAdapter = {
         forceDocument: forceDocument ?? false,
       },
     });
-    return attachChannelToResult("telegram", result);
+    return attachReplyAppliedMarker(attachChannelToResult("telegram", result), baseOpts);
   },
 };
