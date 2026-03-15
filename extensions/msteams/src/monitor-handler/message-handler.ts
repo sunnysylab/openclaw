@@ -2,15 +2,20 @@ import {
   buildPendingHistoryContextFromMap,
   clearHistoryEntriesIfEnabled,
   dispatchReplyFromConfigWithSettledDispatcher,
-  DEFAULT_GROUP_HISTORY_LIMIT,
-  logInboundDrop,
   evaluateSenderGroupAccessForPolicy,
-  recordPendingHistoryEntryIfEnabled,
-  resolveDualTextControlCommandGate,
-  resolveMentionGating,
-  resolveInboundSessionEnvelopeContext,
   formatAllowlistMatchMeta,
   type HistoryEntry,
+  isDangerousNameMatchingEnabled,
+  logInboundDrop,
+  readStoreAllowFromForDmPolicy,
+  recordPendingHistoryEntryIfEnabled,
+  resolveDefaultGroupPolicy,
+  resolveDmGroupAccessWithLists,
+  resolveDualTextControlCommandGate,
+  resolveEffectiveAllowFromLists,
+  resolveInboundSessionEnvelopeContext,
+  resolveMentionGating,
+  resolveSenderScopedGroupPolicy,
 } from "../../runtime-api.js";
 import {
   buildMSTeamsAttachmentPlaceholder,
@@ -712,7 +717,7 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
     },
   });
 
-  return async function handleTeamsMessage(context: MSTeamsTurnContext) {
+  const handleTeamsMessage = async (context: MSTeamsTurnContext) => {
     const activity = context.activity;
     const rawText = activity.text?.trim() ?? "";
     const text = stripMSTeamsMentionTags(rawText);
@@ -734,5 +739,10 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
       wasMentioned,
       implicitMention,
     });
+  };
+
+  return {
+    handleTeamsMessage,
+    unregisterDebouncer: inboundDebouncer.unregister,
   };
 }
