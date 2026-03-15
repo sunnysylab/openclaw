@@ -51,4 +51,28 @@ describe("telegram reaction semantics schema", () => {
 
     expect(res.success).toBe(false);
   });
+
+  it("rejects shorthand and explicit keys that collide after normalization", () => {
+    const res = OpenClawSchema.safeParse({
+      channels: {
+        telegram: {
+          reactionSemantics: {
+            "👍": "acknowledged",
+            "emoji:👍": {
+              meaning: "duplicate",
+              action: "queue",
+            },
+          },
+        },
+      },
+    });
+
+    expect(res.success).toBe(false);
+    if (res.success) {
+      return;
+    }
+
+    expect(JSON.stringify(res.error.format())).toContain("duplicates");
+    expect(JSON.stringify(res.error.format())).toContain("emoji:👍");
+  });
 });

@@ -1,3 +1,4 @@
+import { normalizeTelegramReactionKey } from "../../../src/config/telegram-reaction-semantics.js";
 import type {
   TelegramReactionSemanticAction,
   TelegramReactionSemanticsConfig,
@@ -29,25 +30,7 @@ function trimString(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() || undefined : undefined;
 }
 
-export function normalizeTelegramReactionKey(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const parts = /^([a-z_]+):(.*)$/i.exec(trimmed);
-  if (!parts) {
-    return `emoji:${trimmed}`;
-  }
-  const prefix = parts[1]?.toLowerCase();
-  const value = parts[2]?.trim();
-  if (!value) {
-    return null;
-  }
-  if (prefix === "emoji" || prefix === "custom_emoji") {
-    return `${prefix}:${value}`;
-  }
-  return null;
-}
+export { normalizeTelegramReactionKey };
 
 export function normalizeTelegramReaction(reaction: unknown): NormalizedTelegramReaction | null {
   if (!reaction || typeof reaction !== "object") {

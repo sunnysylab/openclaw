@@ -12,6 +12,7 @@ import {
   normalizeTelegramCommandName,
   resolveTelegramCustomCommands,
 } from "./telegram-custom-commands.js";
+import { findTelegramReactionSemanticsCollisions } from "./telegram-reaction-semantics.js";
 import { ToolPolicySchema } from "./zod-schema.agent-runtime.js";
 import {
   ChannelHealthMonitorSchema,
@@ -63,6 +64,15 @@ const TelegramReactionSemanticRuleSchema = z
   .strict();
 const TelegramReactionSemanticsSchema = z
   .record(z.string(), z.union([z.string(), TelegramReactionSemanticRuleSchema]))
+  .superRefine((value, ctx) => {
+    for (const collision of findTelegramReactionSemanticsCollisions(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [collision.duplicateRawKey],
+        message: `Telegram reaction semantics key "${collision.duplicateRawKey}" duplicates "${collision.firstRawKey}" after normalization (${collision.normalizedKey}). Use only one form.`,
+      });
+    }
+  })
   .optional();
 
 const TelegramCapabilitiesSchema = z.union([

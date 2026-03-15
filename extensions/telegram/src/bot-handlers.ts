@@ -41,8 +41,10 @@ import {
 } from "../../../src/plugins/conversation-binding.js";
 import { dispatchPluginInteractiveHandler } from "../../../src/plugins/interactive.js";
 import { resolveAgentRoute } from "../../../src/routing/resolve-route.js";
-import { scopedHeartbeatWakeOptions } from "../../../src/routing/session-key.js";
-import { resolveThreadSessionKeys } from "../../../src/routing/session-key.js";
+import {
+  resolveThreadSessionKeys,
+  scopedHeartbeatWakeOptions,
+} from "../../../src/routing/session-key.js";
 import { applyModelOverrideToSessionEntry } from "../../../src/sessions/model-overrides.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import {
