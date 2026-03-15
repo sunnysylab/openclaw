@@ -624,6 +624,7 @@ export async function monitorSlackProvider(opts: MonitorSlackOpts = {}) {
     opts.abortSignal?.removeEventListener("abort", stopOnAbort);
     unregisterHttpHandler?.();
     await execApprovalsHandler?.stop().catch(() => undefined);
+    handleSlackMessage.deactivate();
     await app.stop().catch(() => undefined);
   }
 }

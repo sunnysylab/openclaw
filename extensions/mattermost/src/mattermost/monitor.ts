@@ -1727,6 +1727,7 @@ export async function monitorMattermostProvider(opts: MonitorMattermostOpts = {}
       },
     });
   } finally {
+    debouncer.unregister();
     unregisterInteractions?.();
   }
 
