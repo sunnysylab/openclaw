@@ -9,6 +9,7 @@ import {
   KILOCODE_DEFAULT_MODEL_REF,
 } from "../../src/commands/onboard-auth.js";
 import { createProviderApiKeyAuthMethod } from "../../src/plugins/provider-api-key-auth.js";
+import { resolveKilocodeOrgId } from "../../src/providers/kilocode-shared.js";
 
 const PROVIDER_ID = "kilocode";
 
@@ -48,13 +49,17 @@ const kilocodePlugin = {
       catalog: {
         order: "simple",
         run: async (ctx) => {
-          const apiKey = ctx.resolveProviderApiKey(PROVIDER_ID).apiKey;
+          const { apiKey, discoveryApiKey } = ctx.resolveProviderApiKey(PROVIDER_ID);
           if (!apiKey) {
             return null;
           }
+          // Forward providerConfig so organizationId and headers from user
+          // config are respected during org-scoped model discovery (not just
+          // the env var fallback). See: kiloprovider key override support.
+          const providerConfig = ctx.config?.models?.providers?.kilocode;
           return {
             provider: {
-              ...(await buildKilocodeProviderWithDiscovery()),
+              ...(await buildKilocodeProviderWithDiscovery(discoveryApiKey, providerConfig)),
               apiKey,
             },
           };
@@ -69,7 +74,9 @@ const kilocodePlugin = {
           ctx.modelId === "kilo/auto" || isProxyReasoningUnsupported(ctx.modelId)
             ? undefined
             : ctx.thinkingLevel;
-        return createKilocodeWrapper(ctx.streamFn, thinkingLevel);
+        // Resolve org ID from config (organizationId field or headers) with env var fallback.
+        const kilocodeOrgId = resolveKilocodeOrgId(ctx.config?.models?.providers?.kilocode);
+        return createKilocodeWrapper(ctx.streamFn, thinkingLevel, kilocodeOrgId);
       },
       isCacheTtlEligible: (ctx) => ctx.modelId.startsWith("anthropic/"),
     });
