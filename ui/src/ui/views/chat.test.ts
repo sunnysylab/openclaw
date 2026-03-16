@@ -23,17 +23,20 @@ function createSessions(): SessionsListResult {
 function createChatHeaderState(
   overrides: {
     model?: string | null;
+    modelProvider?: string | null;
     models?: ModelCatalogEntry[];
+    catalog?: ModelCatalogEntry[];
     omitSessionFromList?: boolean;
   } = {},
 ): { state: AppViewState; request: ReturnType<typeof vi.fn> } {
   let currentModel = overrides.model ?? null;
-  let currentModelProvider = currentModel ? "openai" : null;
+  let currentModelProvider = overrides.modelProvider ?? (currentModel ? "openai" : null);
   const omitSessionFromList = overrides.omitSessionFromList ?? false;
-  const catalog = overrides.models ?? [
-    { id: "gpt-5", name: "GPT-5", provider: "openai" },
-    { id: "gpt-5-mini", name: "GPT-5 Mini", provider: "openai" },
-  ];
+  const catalog = overrides.catalog ??
+    overrides.models ?? [
+      { id: "gpt-5", name: "GPT-5", provider: "openai" },
+      { id: "gpt-5-mini", name: "GPT-5 Mini", provider: "openai" },
+    ];
   const request = vi.fn(async (method: string, params: Record<string, unknown>) => {
     if (method === "sessions.patch") {
       const nextModel = (params.model as string | null | undefined) ?? null;
@@ -613,6 +616,41 @@ describe("chat view", () => {
     expect(request).not.toHaveBeenCalledWith("chat.history", expect.anything());
     expect(state.sessionsResult?.sessions[0]?.model).toBe("gpt-5-mini");
     expect(state.sessionsResult?.sessions[0]?.modelProvider).toBe("openai");
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves the selected provider when the session model is already qualified", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+      } satisfies Partial<Response>),
+    );
+    const { state, request } = createChatHeaderState({
+      modelProvider: "llamacpp",
+      model: "qwen3-14b.gguf",
+      catalog: [
+        { id: "hunter-alpha", name: "Hunter Alpha", provider: "openrouter" },
+        { id: "qwen3-14b.gguf", name: "Qwen3 14B", provider: "llamacpp" },
+      ],
+    });
+    const container = document.createElement("div");
+    render(renderChatSessionSelect(state), container);
+
+    const modelSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-chat-model-select="true"]',
+    );
+    expect(modelSelect).not.toBeNull();
+    expect(modelSelect?.value).toBe("llamacpp/qwen3-14b.gguf");
+
+    modelSelect!.value = "openrouter/hunter-alpha";
+    modelSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    await flushTasks();
+
+    expect(request).toHaveBeenCalledWith("sessions.patch", {
+      key: "main",
+      model: "openrouter/hunter-alpha",
+    });
     vi.unstubAllGlobals();
   });
 
