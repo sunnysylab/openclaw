@@ -1,0 +1,50 @@
+# Makefile.sea — OpenClaw SEA (Single Executable Application) build targets
+#
+# Usage:
+#   make -f Makefile.sea sea               # Build for current platform
+#   make -f Makefile.sea sea-linux-arm64   # Cross-compile for linux/arm64 (HEL1 cluster)
+#   make -f Makefile.sea sea-linux-x64     # Cross-compile for linux/x64
+#   make -f Makefile.sea clean-sea         # Remove dist-sea/
+#
+# Prerequisites:
+#   pnpm install && pnpm build             # Build JS dist first
+#
+# Output:
+#   dist-sea/openclaw                      # Self-contained binary
+#   dist-sea/addons/                       # Native .node addons (alongside binary)
+#   dist-sea/manifest.json                 # Build metadata
+
+.PHONY: sea sea-linux-arm64 sea-linux-x64 sea-darwin-arm64 sea-darwin-x64 \
+        fetch-node-linux-arm64 fetch-node-linux-x64 clean-sea
+
+# Build for the current host platform
+sea:
+	node scripts/build-sea.mjs
+
+# Build for linux/arm64 (HEL1 Kubernetes cluster on Hetzner ARM)
+sea-linux-arm64: fetch-node-linux-arm64
+	OPENCLAW_SEA_NODE_PATH=$$(node scripts/fetch-node-for-sea.mjs --target linux-arm64) \
+	  node scripts/build-sea.mjs --target linux-arm64
+
+# Build for linux/x64
+sea-linux-x64: fetch-node-linux-x64
+	OPENCLAW_SEA_NODE_PATH=$$(node scripts/fetch-node-for-sea.mjs --target linux-x64) \
+	  node scripts/build-sea.mjs --target linux-x64
+
+# Build for darwin/arm64 (Mac Mini, local testing)
+sea-darwin-arm64:
+	node scripts/build-sea.mjs --target darwin-arm64
+
+# Build for darwin/x64
+sea-darwin-x64:
+	node scripts/build-sea.mjs --target darwin-x64
+
+# Download the linux-arm64 Node binary (idempotent — cached in dist-sea/)
+fetch-node-linux-arm64:
+	node scripts/fetch-node-for-sea.mjs --target linux-arm64 >/dev/null
+
+fetch-node-linux-x64:
+	node scripts/fetch-node-for-sea.mjs --target linux-x64 >/dev/null
+
+clean-sea:
+	rm -rf dist-sea/

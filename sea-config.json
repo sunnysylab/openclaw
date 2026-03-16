@@ -1,0 +1,8 @@
+{
+  "main": "/Users/jakobroarbentzon/Projects/openclaw-src/dist-sea/openclaw-sea.cjs",
+  "output": "/Users/jakobroarbentzon/Projects/openclaw-src/dist-sea/openclaw",
+  "executable": "/Users/jakobroarbentzon/.nvm/versions/node/v25.6.1/bin/node",
+  "disableExperimentalSEAWarning": true,
+  "useSnapshot": false,
+  "useCodeCache": false
+}
