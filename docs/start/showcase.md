@@ -1,105 +1,126 @@
 ---
 title: "Showcase"
-description: "Real-world Clawdbot projects from the community"
-summary: "Community-built projects and integrations powered by Clawdbot"
+description: "Real-world OpenClaw projects from the community"
+summary: "Community-built projects and integrations powered by OpenClaw"
 ---
 
 # Showcase
 
-Real projects from the community. See what people are building with Clawdbot.
+<div className="showcase-hero">
+  <p className="showcase-kicker">Built in chats, terminals, browsers, and living rooms</p>
+  <p className="showcase-lead">
+    OpenClaw projects are not toy demos. People are shipping PR review loops, mobile apps, home automation,
+    voice systems, devtools, and memory-heavy workflows from the channels they already use.
+  </p>
+  <div className="showcase-actions">
+    <a href="#videos">Watch demos</a>
+    <a href="#fresh-from-discord">Browse projects</a>
+    <a href="https://discord.gg/openclaw">Share yours</a>
+  </div>
+  <div className="showcase-highlights">
+    <div className="showcase-highlight">
+      <strong>Chat-native builds</strong>
+      <span>Telegram, WhatsApp, Discord, Beeper, web chat, and terminal-first workflows.</span>
+    </div>
+    <div className="showcase-highlight">
+      <strong>Real automation</strong>
+      <span>Booking, shopping, support, reporting, and browser control without waiting for an API.</span>
+    </div>
+    <div className="showcase-highlight">
+      <strong>Local + physical world</strong>
+      <span>Printers, vacuums, cameras, health data, home systems, and personal knowledge bases.</span>
+    </div>
+  </div>
+</div>
 
 <Info>
-**Want to be featured?** Share your project in [#showcase on Discord](https://discord.gg/clawd) or [tag @clawdbot on X](https://x.com/clawdbot).
+**Want to be featured?** Share your project in [#showcase on Discord](https://discord.gg/openclaw) or [tag @openclaw on X](https://x.com/openclaw).
 </Info>
 
-## 🎥 Clawdbot in Action
-
-Full setup walkthrough (28m) by VelvetShark.
-
-<div
-  style={{
-    position: "relative",
-    paddingBottom: "56.25%",
-    height: 0,
-    overflow: "hidden",
-    borderRadius: 16,
-  }}
->
-  <iframe
-    src="https://www.youtube-nocookie.com/embed/SaWSPZoPX34"
-    title="Clawdbot: The self-hosted AI that Siri should have been (Full setup)"
-    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
-    frameBorder="0"
-    loading="lazy"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-    allowFullScreen
-  />
+<div className="showcase-jump-links">
+  <a href="#videos">Videos</a>
+  <a href="#fresh-from-discord">Fresh from Discord</a>
+  <a href="#automation-workflows">Automation</a>
+  <a href="#knowledge-memory">Memory</a>
+  <a href="#home-hardware">Home &amp; Hardware</a>
+  <a href="#submit-your-project">Submit a project</a>
 </div>
 
-[Watch on YouTube](https://www.youtube.com/watch?v=SaWSPZoPX34)
+<h2 id="videos">Videos</h2>
 
-<div
-  style={{
-    position: "relative",
-    paddingBottom: "56.25%",
-    height: 0,
-    overflow: "hidden",
-    borderRadius: 16,
-  }}
->
-  <iframe
-    src="https://www.youtube-nocookie.com/embed/mMSKQvlmFuQ"
-    title="Clawdbot showcase video"
-    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
-    frameBorder="0"
-    loading="lazy"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-    allowFullScreen
-  />
+<p className="showcase-section-intro">
+  Start here if you want the shortest path from “what is this?” to “okay, I get it.”
+</p>
+
+<div className="showcase-video-grid">
+  <div className="showcase-video-card">
+    <div className="showcase-video-shell">
+      <iframe
+        src="https://www.youtube-nocookie.com/embed/SaWSPZoPX34"
+        title="OpenClaw: The self-hosted AI that Siri should have been (Full setup)"
+        loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+      />
+    </div>
+    <h3>Full setup walkthrough</h3>
+    <p>VelvetShark, 28 minutes. Install, onboard, and get to a first working assistant end to end.</p>
+    <a href="https://www.youtube.com/watch?v=SaWSPZoPX34">Watch on YouTube</a>
+  </div>
+
+  <div className="showcase-video-card">
+    <div className="showcase-video-shell">
+      <iframe
+        src="https://www.youtube-nocookie.com/embed/mMSKQvlmFuQ"
+        title="OpenClaw showcase video"
+        loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+      />
+    </div>
+    <h3>Community showcase reel</h3>
+    <p>A faster pass across real projects, surfaces, and workflows built around OpenClaw.</p>
+    <a href="https://www.youtube.com/watch?v=mMSKQvlmFuQ">Watch on YouTube</a>
+  </div>
+
+  <div className="showcase-video-card">
+    <div className="showcase-video-shell">
+      <iframe
+        src="https://www.youtube-nocookie.com/embed/5kkIJNUGFho"
+        title="OpenClaw community showcase"
+        loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+      />
+    </div>
+    <h3>Projects in the wild</h3>
+    <p>Examples from the community, from chat-native coding loops to hardware and personal automation.</p>
+    <a href="https://www.youtube.com/watch?v=5kkIJNUGFho">Watch on YouTube</a>
+  </div>
 </div>
 
-[Watch on YouTube](https://www.youtube.com/watch?v=mMSKQvlmFuQ)
+<h2 id="fresh-from-discord">Fresh from Discord</h2>
 
-<div
-  style={{
-    position: "relative",
-    paddingBottom: "56.25%",
-    height: 0,
-    overflow: "hidden",
-    borderRadius: 16,
-  }}
->
-  <iframe
-    src="https://www.youtube-nocookie.com/embed/5kkIJNUGFho"
-    title="Clawdbot community showcase"
-    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}
-    frameBorder="0"
-    loading="lazy"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-    allowFullScreen
-  />
-</div>
-
-[Watch on YouTube](https://www.youtube.com/watch?v=5kkIJNUGFho)
-
-## 🆕 Fresh from Discord
+<p className="showcase-section-intro">
+  Recent standouts across coding, devtools, mobile, and chat-native product building.
+</p>
 
 <CardGroup cols={2}>
 
 <Card title="PR Review → Telegram Feedback" icon="code-pull-request" href="https://x.com/i/status/2010878524543131691">
   **@bangnokia** • `review` `github` `telegram`
 
-  OpenCode finishes the change → opens a PR → Clawdbot reviews the diff and replies in Telegram with “minor suggestions” plus a clear merge verdict (including critical fixes to apply first).
+  OpenCode finishes the change → opens a PR → OpenClaw reviews the diff and replies in Telegram with “minor suggestions” plus a clear merge verdict (including critical fixes to apply first).
 
-  <img src="/assets/showcase/pr-review-telegram.jpg" alt="Clawdbot PR review feedback delivered in Telegram" />
+  <img src="/assets/showcase/pr-review-telegram.jpg" alt="OpenClaw PR review feedback delivered in Telegram" />
 </Card>
 
 <Card title="Wine Cellar Skill in Minutes" icon="wine-glass" href="https://x.com/i/status/2010916352454791216">
   **@prades_maxime** • `skills` `local` `csv`
 
-  Asked “Robby” (@clawdbot) for a local wine cellar skill. It requests a sample CSV export + where to store it, then builds/tests the skill fast (962 bottles in the example).
+  Asked “Robby” (@openclaw) for a local wine cellar skill. It requests a sample CSV export + where to store it, then builds/tests the skill fast (962 bottles in the example).
 
-  <img src="/assets/showcase/wine-cellar-skill.jpg" alt="Clawdbot building a local wine cellar skill from CSV" />
+  <img src="/assets/showcase/wine-cellar-skill.jpg" alt="OpenClaw building a local wine cellar skill from CSV" />
 </Card>
 
 <Card title="Tesco Shop Autopilot" icon="cart-shopping" href="https://x.com/i/status/2009724862470689131">
@@ -121,7 +142,7 @@ Full setup walkthrough (28m) by VelvetShark.
 <Card title="Agents UI" icon="window-maximize" href="https://releaseflow.net/kitze/agents-ui">
   **@kitze** • `ui` `skills` `sync`
 
-  Desktop app to manage skills/commands across Agents, Claude, Codex, and Clawdbot.
+  Desktop app to manage skills/commands across Agents, Claude, Codex, and OpenClaw.
 
   <img src="/assets/showcase/agents-ui.jpg" alt="Agents UI app" />
 </Card>
@@ -134,43 +155,43 @@ Full setup walkthrough (28m) by VelvetShark.
   <img src="/assets/showcase/papla-tts.jpg" alt="Telegram voice note output from TTS" />
 </Card>
 
-<Card title="CodexMonitor" icon="eye" href="https://clawdhub.com/odrobnik/codexmonitor">
+<Card title="CodexMonitor" icon="eye" href="https://clawhub.ai/odrobnik/codexmonitor">
   **@odrobnik** • `devtools` `codex` `brew`
 
   Homebrew-installed helper to list/inspect/watch local OpenAI Codex sessions (CLI + VS Code).
 
-  <img src="/assets/showcase/codexmonitor.png" alt="CodexMonitor on ClawdHub" />
+  <img src="/assets/showcase/codexmonitor.png" alt="CodexMonitor on ClawHub" />
 </Card>
 
-<Card title="Bambu 3D Printer Control" icon="print" href="https://clawdhub.com/tobiasbischoff/bambu-cli">
+<Card title="Bambu 3D Printer Control" icon="print" href="https://clawhub.ai/tobiasbischoff/bambu-cli">
   **@tobiasbischoff** • `hardware` `3d-printing` `skill`
 
   Control and troubleshoot BambuLab printers: status, jobs, camera, AMS, calibration, and more.
 
-  <img src="/assets/showcase/bambu-cli.png" alt="Bambu CLI skill on ClawdHub" />
+  <img src="/assets/showcase/bambu-cli.png" alt="Bambu CLI skill on ClawHub" />
 </Card>
 
-<Card title="Vienna Transport (Wiener Linien)" icon="train" href="https://clawdhub.com/hjanuschka/wienerlinien">
+<Card title="Vienna Transport (Wiener Linien)" icon="train" href="https://clawhub.ai/hjanuschka/wienerlinien">
   **@hjanuschka** • `travel` `transport` `skill`
 
   Real-time departures, disruptions, elevator status, and routing for Vienna's public transport.
 
-  <img src="/assets/showcase/wienerlinien.png" alt="Wiener Linien skill on ClawdHub" />
+  <img src="/assets/showcase/wienerlinien.png" alt="Wiener Linien skill on ClawHub" />
 </Card>
 
-<Card title="ParentPay School Meals" icon="utensils" href="#">
+<Card title="ParentPay School Meals" icon="utensils">
   **@George5562** • `automation` `browser` `parenting`
 
   Automated UK school meal booking via ParentPay. Uses mouse coordinates for reliable table cell clicking.
 </Card>
 
-<Card title="R2 Upload (Send Me My Files)" icon="cloud-arrow-up" href="https://clawdhub.com/skills/r2-upload">
+<Card title="R2 Upload (Send Me My Files)" icon="cloud-arrow-up" href="https://clawhub.ai/skills/r2-upload">
   **@julianengel** • `files` `r2` `presigned-urls`
 
-  Upload to Cloudflare R2/S3 and generate secure presigned download links. Perfect for remote Clawdbot instances.
+  Upload to Cloudflare R2/S3 and generate secure presigned download links. Perfect for remote OpenClaw instances.
 </Card>
 
-<Card title="iOS App via Telegram" icon="mobile" href="#">
+<Card title="iOS App via Telegram" icon="mobile">
   **@coard** • `ios` `xcode` `testflight`
 
   Built a complete iOS app with maps and voice recording, deployed to TestFlight entirely via Telegram chat.
@@ -178,7 +199,7 @@ Full setup walkthrough (28m) by VelvetShark.
   <img src="/assets/showcase/ios-testflight.jpg" alt="iOS app on TestFlight" />
 </Card>
 
-<Card title="Oura Ring Health Assistant" icon="heart-pulse" href="#">
+<Card title="Oura Ring Health Assistant" icon="heart-pulse">
   **@AS** • `health` `oura` `calendar`
 
   Personal AI health assistant integrating Oura ring data with calendar, appointments, and gym schedule.
@@ -194,7 +215,7 @@ Full setup walkthrough (28m) by VelvetShark.
 <Card title="Linear CLI" icon="terminal" href="https://github.com/Finesssee/linear-cli">
   **@NessZerra** • `devtools` `linear` `cli` `issues`
 
-  CLI for Linear that integrates with agentic workflows (Claude Code, Clawdbot). Manage issues, projects, and workflows from the terminal. First external PR merged!
+  CLI for Linear that integrates with agentic workflows (Claude Code, OpenClaw). Manage issues, projects, and workflows from the terminal. First external PR merged!
 </Card>
 
 <Card title="Beeper CLI" icon="message" href="https://github.com/blqke/beepcli">
@@ -205,30 +226,34 @@ Full setup walkthrough (28m) by VelvetShark.
 
 </CardGroup>
 
-## 🤖 Automation & Workflows
+<h2 id="automation-workflows">Automation &amp; Workflows</h2>
+
+<p className="showcase-section-intro">
+  Scheduling, browser control, support loops, and the “just do the task for me” side of the product.
+</p>
 
 <CardGroup cols={2}>
 
 <Card title="Winix Air Purifier Control" icon="wind" href="https://x.com/antonplex/status/2010518442471006253">
   **@antonplex** • `automation` `hardware` `air-quality`
 
-  Claude Code discovered and confirmed the purifier controls, then Clawdbot takes over to manage room air quality.
+  Claude Code discovered and confirmed the purifier controls, then OpenClaw takes over to manage room air quality.
 
-  <img src="/assets/showcase/winix-air-purifier.jpg" alt="Winix air purifier control via Clawdbot" />
+  <img src="/assets/showcase/winix-air-purifier.jpg" alt="Winix air purifier control via OpenClaw" />
 </Card>
 
 <Card title="Pretty Sky Camera Shots" icon="camera" href="https://x.com/signalgaining/status/2010523120604746151">
   **@signalgaining** • `automation` `camera` `skill` `images`
 
-  Triggered by a roof camera: ask Clawdbot to snap a sky photo whenever it looks pretty — it designed a skill and took the shot.
+  Triggered by a roof camera: ask OpenClaw to snap a sky photo whenever it looks pretty — it designed a skill and took the shot.
 
-  <img src="/assets/showcase/roof-camera-sky.jpg" alt="Roof camera sky snapshot captured by Clawdbot" />
+  <img src="/assets/showcase/roof-camera-sky.jpg" alt="Roof camera sky snapshot captured by OpenClaw" />
 </Card>
 
 <Card title="Visual Morning Briefing Scene" icon="robot" href="https://x.com/buddyhadry/status/2010005331925954739">
   **@buddyhadry** • `automation` `briefing` `images` `telegram`
 
-  A scheduled prompt generates a single "scene" image each morning (weather, tasks, date, favorite post/quote) via a Clawdbot persona.
+  A scheduled prompt generates a single "scene" image each morning (weather, tasks, date, favorite post/quote) via an OpenClaw persona.
 </Card>
 
 <Card title="Padel Court Booking" icon="calendar-check" href="https://github.com/joshp123/padel-cli">
@@ -260,13 +285,13 @@ Full setup walkthrough (28m) by VelvetShark.
 <Card title="Jira Skill Builder" icon="diagram-project" href="https://x.com/jdrhyne/status/2008336434827002232">
   **@jdrhyne** • `automation` `jira` `skill` `devtools`
 
-  Clawdbot connected to Jira, then generated a new skill on the fly (before it existed on ClawdHub).
+  OpenClaw connected to Jira, then generated a new skill on the fly (before it existed on ClawHub).
 </Card>
 
 <Card title="Todoist Skill via Telegram" icon="list-check" href="https://x.com/iamsubhrajyoti/status/2009949389884920153">
   **@iamsubhrajyoti** • `automation` `todoist` `skill` `telegram`
 
-  Automated Todoist tasks and had Clawdbot generate the skill directly in Telegram chat.
+  Automated Todoist tasks and had OpenClaw generate the skill directly in Telegram chat.
 </Card>
 
 <Card title="TradingView Analysis" icon="chart-line">
@@ -283,14 +308,18 @@ Full setup walkthrough (28m) by VelvetShark.
 
 </CardGroup>
 
-## 🧠 Knowledge & Memory
+<h2 id="knowledge-memory">Knowledge &amp; Memory</h2>
+
+<p className="showcase-section-intro">
+  Systems that index, search, remember, and reason over personal or team knowledge.
+</p>
 
 <CardGroup cols={2}>
 
 <Card title="xuezh Chinese Learning" icon="language" href="https://github.com/joshp123/xuezh">
   **@joshp123** • `learning` `voice` `skill`
   
-  Chinese learning engine with pronunciation feedback and study flows via Clawdbot.
+  Chinese learning engine with pronunciation feedback and study flows via OpenClaw.
   
   <img src="/assets/showcase/xuezh-pronunciation.jpeg" alt="xuezh pronunciation feedback" />
 </Card>
@@ -315,62 +344,74 @@ Full setup walkthrough (28m) by VelvetShark.
 
 </CardGroup>
 
-## 🎙️ Voice & Phone
+<h2 id="voice-phone">Voice &amp; Phone</h2>
+
+<p className="showcase-section-intro">
+  Speech-first entry points, phone bridges, and transcription-heavy workflows.
+</p>
 
 <CardGroup cols={2}>
 
 <Card title="Clawdia Phone Bridge" icon="phone" href="https://github.com/alejandroOPI/clawdia-bridge">
   **@alejandroOPI** • `voice` `vapi` `bridge`
   
-  Vapi voice assistant ↔ Clawdbot HTTP bridge. Near real-time phone calls with your agent.
+  Vapi voice assistant ↔ OpenClaw HTTP bridge. Near real-time phone calls with your agent.
 </Card>
 
-<Card title="OpenRouter Transcription" icon="microphone" href="https://clawdhub.com/obviyus/openrouter-transcribe">
+<Card title="OpenRouter Transcription" icon="microphone" href="https://clawhub.ai/obviyus/openrouter-transcribe">
   **@obviyus** • `transcription` `multilingual` `skill`
 
-  Multi-lingual audio transcription via OpenRouter (Gemini, etc). Available on ClawdHub.
+  Multi-lingual audio transcription via OpenRouter (Gemini, etc). Available on ClawHub.
 </Card>
 
 </CardGroup>
 
-## 🏗️ Infrastructure & Deployment
+<h2 id="infrastructure-deployment">Infrastructure &amp; Deployment</h2>
+
+<p className="showcase-section-intro">
+  Packaging, deployment, and integrations that make OpenClaw easier to run and extend.
+</p>
 
 <CardGroup cols={2}>
 
 <Card title="Home Assistant Add-on" icon="home" href="https://github.com/ngutman/clawdbot-ha-addon">
   **@ngutman** • `homeassistant` `docker` `raspberry-pi`
   
-  Clawdbot gateway running on Home Assistant OS with SSH tunnel support and persistent state.
+  OpenClaw gateway running on Home Assistant OS with SSH tunnel support and persistent state.
 </Card>
 
-<Card title="Home Assistant Skill" icon="toggle-on" href="https://clawdhub.com/skills/homeassistant">
-  **ClawdHub** • `homeassistant` `skill` `automation`
+<Card title="Home Assistant Skill" icon="toggle-on" href="https://clawhub.ai/skills/homeassistant">
+  **ClawHub** • `homeassistant` `skill` `automation`
   
   Control and automate Home Assistant devices via natural language.
 </Card>
 
 <Card title="Nix Packaging" icon="snowflake" href="https://github.com/clawdbot/nix-clawdbot">
-  **@clawdbot** • `nix` `packaging` `deployment`
+  **@openclaw** • `nix` `packaging` `deployment`
   
-  Batteries-included nixified Clawdbot configuration for reproducible deployments.
+  Batteries-included nixified OpenClaw configuration for reproducible deployments.
 </Card>
 
-<Card title="CalDAV Calendar" icon="calendar" href="https://clawdhub.com/skills/caldav-calendar">
-  **ClawdHub** • `calendar` `caldav` `skill`
+<Card title="CalDAV Calendar" icon="calendar" href="https://clawhub.ai/skills/caldav-calendar">
+  **ClawHub** • `calendar` `caldav` `skill`
   
   Calendar skill using khal/vdirsyncer. Self-hosted calendar integration.
 </Card>
 
 </CardGroup>
 
-## 🏠 Home & Hardware
+<h2 id="home-hardware">Home &amp; Hardware</h2>
+
+<p className="showcase-section-intro">
+  The physical-world side of OpenClaw: homes, sensors, cameras, vacuums, and other devices.
+</p>
 
 <CardGroup cols={2}>
 
 <Card title="GoHome Automation" icon="house-signal" href="https://github.com/joshp123/gohome">
   **@joshp123** • `home` `nix` `grafana`
   
-  Nix-native home automation with Clawdbot as the interface, plus beautiful Grafana dashboards.
+  Nix-native home automation with OpenClaw as the interface, plus beautiful Grafana dashboards.
   
   <img src="/assets/showcase/gohome-grafana.png" alt="GoHome Grafana dashboard" />
 </Card>
@@ -385,27 +426,35 @@ Full setup walkthrough (28m) by VelvetShark.
 
 </CardGroup>
 
-## 🌟 Community Projects
+<h2 id="community-projects">Community Projects</h2>
+
+<p className="showcase-section-intro">
+  Things that grew beyond a single workflow into broader products or ecosystems.
+</p>
 
 <CardGroup cols={2}>
 
 <Card title="StarSwap Marketplace" icon="star" href="https://star-swap.com/">
   **Community** • `marketplace` `astronomy` `webapp`
   
-  Full astronomy gear marketplace. Built with/around the Clawdbot ecosystem.
+  Full astronomy gear marketplace. Built with/around the OpenClaw ecosystem.
 </Card>
 
 </CardGroup>
 
 ---
 
-## Submit Your Project
+<h2 id="submit-your-project">Submit Your Project</h2>
+
+<p className="showcase-section-intro">
+  If you are building something interesting with OpenClaw, send it over. Strong screenshots and concrete outcomes help.
+</p>
 
 Have something to share? We'd love to feature it!
 
 <Steps>
   <Step title="Share It">
-    Post in [#showcase on Discord](https://discord.gg/clawd) or [tweet @clawdbot](https://x.com/clawdbot)
+    Post in [#showcase on Discord](https://discord.gg/openclaw) or [tweet @openclaw](https://x.com/openclaw)
   </Step>
   <Step title="Include Details">
     Tell us what it does, link to the repo/demo, share a screenshot if you have one
