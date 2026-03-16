@@ -5,6 +5,9 @@ import {
   type ProviderAuthContext,
   type ProviderCatalogContext,
 } from "openclaw/plugin-sdk/qwen-portal-auth";
+import { ensureAuthProfileStore, listProfilesForProvider } from "../../src/agents/auth-profiles.js";
+import { QWEN_OAUTH_MARKER } from "../../src/agents/model-auth-markers.js";
+import { refreshQwenPortalCredentials } from "../../src/providers/qwen-portal-oauth.js";
 import { loginQwenPortalOAuth } from "./oauth.js";
 
 const PROVIDER_ID = "qwen-portal";
@@ -58,9 +61,14 @@ function buildProviderCatalog(params: { baseUrl: string; apiKey: string }) {
 
 function resolveCatalog(ctx: ProviderCatalogContext) {
   const explicitProvider = ctx.config.models?.providers?.[PROVIDER_ID];
-  const apiKey =
-    ctx.resolveProviderApiKey(PROVIDER_ID).apiKey ??
-    (typeof explicitProvider?.apiKey === "string" ? explicitProvider.apiKey.trim() : undefined);
+  const envApiKey = ctx.resolveProviderApiKey(PROVIDER_ID).apiKey;
+  const authStore = ensureAuthProfileStore(ctx.agentDir, {
+    allowKeychainPrompt: false,
+  });
+  const hasProfiles = listProfilesForProvider(authStore, PROVIDER_ID).length > 0;
+  const explicitApiKey =
+    typeof explicitProvider?.apiKey === "string" ? explicitProvider.apiKey.trim() : undefined;
+  const apiKey = envApiKey ?? explicitApiKey ?? (hasProfiles ? QWEN_OAUTH_MARKER : undefined);
   if (!apiKey) {
     return null;
   }
@@ -87,6 +95,7 @@ const qwenPortalPlugin = {
       label: PROVIDER_LABEL,
       docsPath: "/providers/qwen",
       aliases: ["qwen"],
+      envVars: ["QWEN_OAUTH_TOKEN", "QWEN_PORTAL_API_KEY"],
       catalog: {
         run: async (ctx: ProviderCatalogContext) => resolveCatalog(ctx),
       },
@@ -149,6 +158,21 @@ const qwenPortalPlugin = {
           },
         },
       ],
+      wizard: {
+        setup: {
+          choiceId: "qwen-portal",
+          choiceLabel: "Qwen OAuth",
+          choiceHint: "Device code login",
+          methodId: "device",
+        },
+      },
+      refreshOAuth: async (cred) => ({
+        ...cred,
+        ...(await refreshQwenPortalCredentials(cred)),
+        type: "oauth",
+        provider: PROVIDER_ID,
+        email: cred.email,
+      }),
     });
   },
 };
