@@ -18,6 +18,8 @@ import type {
   PluginHookBeforeModelResolveResult,
   PluginHookBeforePromptBuildEvent,
   PluginHookBeforePromptBuildResult,
+  PluginHookBeforeToolsResolveEvent,
+  PluginHookBeforeToolsResolveResult,
   PluginHookBeforeCompactionEvent,
   PluginHookInboundClaimContext,
   PluginHookInboundClaimEvent,
@@ -64,6 +66,8 @@ export type {
   PluginHookBeforeModelResolveResult,
   PluginHookBeforePromptBuildEvent,
   PluginHookBeforePromptBuildResult,
+  PluginHookBeforeToolsResolveEvent,
+  PluginHookBeforeToolsResolveResult,
   PluginHookLlmInputEvent,
   PluginHookLlmOutputEvent,
   PluginHookAgentEndEvent,
@@ -186,6 +190,15 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
       left: acc?.appendSystemContext,
       right: next.appendSystemContext,
     }),
+  });
+
+  const mergeBeforeToolsResolve = (
+    acc: PluginHookBeforeToolsResolveResult | undefined,
+    next: PluginHookBeforeToolsResolveResult,
+  ): PluginHookBeforeToolsResolveResult => ({
+    // Chain: each plugin filters the previous result's tools.
+    // If a plugin returns tools, use them; otherwise keep the accumulator.
+    tools: next.tools ?? acc?.tools,
   });
 
   const mergeSubagentSpawningResult = (
@@ -452,6 +465,22 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
       event,
       ctx,
       mergeBeforePromptBuild,
+    );
+  }
+
+  /**
+   * Run before_tools_resolve hook.
+   * Allows plugins to filter, reorder, or annotate tools before they are sent to the LLM.
+   */
+  async function runBeforeToolsResolve(
+    event: PluginHookBeforeToolsResolveEvent,
+    ctx: PluginHookAgentContext,
+  ): Promise<PluginHookBeforeToolsResolveResult | undefined> {
+    return runModifyingHook<"before_tools_resolve", PluginHookBeforeToolsResolveResult>(
+      "before_tools_resolve",
+      event,
+      ctx,
+      mergeBeforeToolsResolve,
     );
   }
 
@@ -923,6 +952,7 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
     // Agent hooks
     runBeforeModelResolve,
     runBeforePromptBuild,
+    runBeforeToolsResolve,
     runBeforeAgentStart,
     runLlmInput,
     runLlmOutput,
