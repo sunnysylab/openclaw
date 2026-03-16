@@ -63,6 +63,8 @@ export function resolvePluginTools(params: {
     workspaceDir: params.context.workspaceDir,
     env,
     logger: createPluginLoaderLogger(log),
+    activate: false,
+    cache: false,
   });
 
   const tools: AnyAgentTool[] = [];

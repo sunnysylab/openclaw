@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { listChannelPlugins } from "../../channels/plugins/index.js";
+import { sortChannelPlugins } from "../../channels/plugins/index.js";
 import {
   createConfigIO,
   loadConfig,
@@ -247,7 +247,7 @@ function loadSchemaWithPlugins(): ConfigSchemaResponse {
   const workspaceDir = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
   const pluginRegistry = loadOpenClawPlugins({
     config: cfg,
-    cache: true,
+    cache: false,
     workspaceDir,
     logger: {
       info: () => {},
@@ -255,6 +255,7 @@ function loadSchemaWithPlugins(): ConfigSchemaResponse {
       error: () => {},
       debug: () => {},
     },
+    activate: false,
   });
   // Note: We can't easily cache this, as there are no callback that can invalidate
   // our cache. However, both loadConfig() and loadOpenClawPlugins() already cache
@@ -267,13 +268,15 @@ function loadSchemaWithPlugins(): ConfigSchemaResponse {
       configUiHints: plugin.configUiHints,
       configSchema: plugin.configJsonSchema,
     })),
-    channels: listChannelPlugins().map((entry) => ({
-      id: entry.id,
-      label: entry.meta.label,
-      description: entry.meta.blurb,
-      configSchema: entry.configSchema?.schema,
-      configUiHints: entry.configSchema?.uiHints,
-    })),
+    channels: sortChannelPlugins(pluginRegistry.channels.map((entry) => entry.plugin)).map(
+      (entry) => ({
+        id: entry.id,
+        label: entry.meta.label,
+        description: entry.meta.blurb,
+        configSchema: entry.configSchema?.schema,
+        configUiHints: entry.configSchema?.uiHints,
+      }),
+    ),
   });
 }
 

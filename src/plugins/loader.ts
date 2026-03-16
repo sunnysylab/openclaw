@@ -12,7 +12,7 @@ import { openBoundaryFileSync } from "../infra/boundary-file-read.js";
 import { resolveOpenClawPackageRootSync } from "../infra/openclaw-root.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveUserPath } from "../utils.js";
-import { clearPluginCommands } from "./commands.js";
+import { replacePluginCommands } from "./commands.js";
 import {
   applyTestPluginDefaults,
   normalizePluginsConfig,
@@ -52,10 +52,14 @@ export type PluginLoadOptions = {
   coreGatewayHandlers?: Record<string, GatewayRequestHandler>;
   runtimeOptions?: CreatePluginRuntimeOptions;
   cache?: boolean;
+  /**
+   * When false, return the loaded registry without replacing the process-global
+   * active runtime registry.
+   */
+  activate?: boolean;
   mode?: "full" | "validate";
   onlyPluginIds?: string[];
   includeSetupOnlyChannelPlugins?: boolean;
-  activate?: boolean;
 };
 
 const MAX_PLUGIN_REGISTRY_CACHE_ENTRIES = 128;
@@ -698,6 +702,13 @@ function activatePluginRegistry(registry: PluginRegistry, cacheKey: string): voi
   initializeGlobalHookRunner(registry);
 }
 
+function syncPluginCommandsFromRegistry(registry: PluginRegistry): void {
+  const result = replacePluginCommands(registry.commands);
+  if (!result.ok) {
+    throw new Error(`cached plugin command registration failed: ${result.error}`);
+  }
+}
+
 export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegistry {
   // Snapshot (non-activating) loads must disable the cache to avoid storing a registry
   // whose commands were never globally registered.
@@ -734,19 +745,18 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     const cached = getCachedPluginRegistry(cacheKey);
     if (cached) {
       if (shouldActivate) {
+        syncPluginCommandsFromRegistry(cached);
         activatePluginRegistry(cached, cacheKey);
       }
       return cached;
     }
   }
 
-  // Clear previously registered plugin commands before reloading.
-  // Skip for non-activating (snapshot) loads to avoid wiping commands from other plugins.
+  // Interactive handlers still register directly into the live dispatcher today, so
+  // clear them before activating a freshly loaded runtime registry.
   if (shouldActivate) {
-    clearPluginCommands();
     clearPluginInteractiveHandlers();
   }
-
   // Lazily initialize the runtime so startup paths that discover/skip plugins do
   // not eagerly load every channel runtime dependency.
   let resolvedRuntime: PluginRuntime | null = null;
@@ -784,7 +794,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     logger,
     runtime,
     coreGatewayHandlers: options.coreGatewayHandlers as Record<string, GatewayRequestHandler>,
-    suppressGlobalCommands: !shouldActivate,
+    suppressGlobalSideEffects: !shouldActivate,
   });
 
   const discovery = discoverOpenClawPlugins({
@@ -1211,6 +1221,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     setCachedPluginRegistry(cacheKey, registry);
   }
   if (shouldActivate) {
+    syncPluginCommandsFromRegistry(registry);
     activatePluginRegistry(registry, cacheKey);
   }
   return registry;

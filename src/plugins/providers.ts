@@ -113,6 +113,8 @@ export function resolvePluginProviders(params: {
     env: params.env,
     onlyPluginIds: params.onlyPluginIds,
     logger: createPluginLoaderLogger(log),
+    activate: false,
+    cache: false,
   });
 
   return registry.providers.map((entry) => ({

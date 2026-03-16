@@ -1,10 +1,14 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import type { IncomingMessage } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { createGatewayPluginRequestHandler } from "../gateway/server/plugins-http.js";
+import { makeMockHttpResponse } from "../gateway/test-http-response.js";
 import { withEnv } from "../test-utils/env.js";
+import { registerPluginHttpRoute } from "./http-registry.js";
 async function importFreshPluginTestModules() {
   vi.resetModules();
   vi.unmock("node:fs");
@@ -13,37 +17,107 @@ async function importFreshPluginTestModules() {
   vi.unmock("./hook-runner-global.js");
   vi.unmock("./hooks.js");
   vi.unmock("./loader.js");
+  vi.unmock("./commands.js");
+  vi.unmock("./interactive.js");
+  vi.unmock("../hooks/internal-hooks.js");
+  vi.unmock("../context-engine/registry.js");
+  vi.unmock("./runtime.js");
+  vi.unmock("./registry.js");
   vi.unmock("jiti");
-  const [loader, hookRunnerGlobal, hooks, runtime, registry] = await Promise.all([
+  const [
+    loader,
+    hookRunnerGlobal,
+    hooks,
+    commands,
+    interactive,
+    internalHooks,
+    contextEngineRegistry,
+    runtime,
+    registry,
+  ] = await Promise.all([
     import("./loader.js"),
     import("./hook-runner-global.js"),
     import("./hooks.js"),
+    import("./commands.js"),
+    import("./interactive.js"),
+    import("../hooks/internal-hooks.js"),
+    import("../context-engine/registry.js"),
     import("./runtime.js"),
     import("./registry.js"),
   ]);
   return {
-    ...loader,
+    loaderTesting: loader.__testing,
+    interactiveModule: interactive,
     ...hookRunnerGlobal,
     ...hooks,
+    ...commands,
+    ...interactive,
+    ...internalHooks,
+    ...contextEngineRegistry,
     ...runtime,
     ...registry,
+    ...loader,
   };
 }
 
 const {
-  __testing,
+  loaderTesting,
+  clearInternalHooks,
+  clearPluginInteractiveHandlers,
   clearPluginLoaderCache,
-  createHookRunner,
+  clearPluginCommands,
   createEmptyPluginRegistry,
+  createInternalHookEvent,
+  createHookRunner,
+  executePluginCommand,
   getActivePluginRegistry,
   getActivePluginRegistryKey,
+  getContextEngineFactory,
   getGlobalHookRunner,
+  interactiveModule,
   loadOpenClawPlugins,
+  matchPluginCommand,
   resetGlobalHookRunner,
   setActivePluginRegistry,
+  triggerInternalHook,
 } = await importFreshPluginTestModules();
 
 type TempPlugin = { dir: string; file: string; id: string };
+
+type TelegramInteractiveDispatch = (params: {
+  channel: "telegram";
+  data: string;
+  callbackId: string;
+  ctx: {
+    accountId: string;
+    conversationId: string;
+    senderId?: string;
+    isGroup: boolean;
+    isForum: boolean;
+    auth: {
+      isAuthorizedSender: boolean;
+    };
+    callbackMessage: {
+      messageId: number;
+      chatId: string;
+      messageText?: string;
+    };
+  };
+  respond: {
+    reply: (params: { text: string; buttons?: unknown }) => Promise<void>;
+    editMessage: (params: { text: string; buttons?: unknown }) => Promise<void>;
+    editButtons: (params: { buttons: unknown }) => Promise<void>;
+    clearButtons: () => Promise<void>;
+    deleteMessage: () => Promise<void>;
+  };
+}) => Promise<
+  | { matched: false; handled: false; duplicate: false }
+  | {
+      matched: true;
+      handled: boolean;
+      duplicate: boolean;
+    }
+>;
 
 function chmodSafeDir(dir: string) {
   if (process.platform === "win32") {
@@ -310,6 +384,10 @@ function createExtensionApiAliasFixture(params?: { srcBody?: string; distBody?: 
 
 afterEach(() => {
   clearPluginLoaderCache();
+  clearPluginCommands();
+  clearPluginInteractiveHandlers();
+  clearInternalHooks();
+  setActivePluginRegistry(createEmptyPluginRegistry());
   if (prevBundledDir === undefined) {
     delete process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
   } else {
@@ -725,6 +803,349 @@ module.exports = { id: "skipped", register() { throw new Error("skipped plugin s
     resetGlobalHookRunner();
   });
 
+  it("does not let read-only plugin loads steal the active registry used by dynamic http routes", async () => {
+    useNoBundledPlugins();
+    const gatewayPlugin = writePlugin({
+      id: "gateway-runtime",
+      filename: "gateway-runtime.cjs",
+      body: `module.exports = { id: "gateway-runtime", register() {} };`,
+    });
+    const inspectorPlugin = writePlugin({
+      id: "inspector-runtime",
+      filename: "inspector-runtime.cjs",
+      body: `module.exports = { id: "inspector-runtime", register() {} };`,
+    });
+
+    const gatewayRegistry = loadOpenClawPlugins({
+      cache: false,
+      workspaceDir: gatewayPlugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [gatewayPlugin.file] },
+          allow: ["gateway-runtime"],
+        },
+      },
+    });
+    const handler = createGatewayPluginRequestHandler({
+      registry: gatewayRegistry,
+      log: {
+        warn: vi.fn(),
+      } as unknown as Parameters<typeof createGatewayPluginRequestHandler>[0]["log"],
+    });
+
+    const inspectionOptions = {
+      workspaceDir: inspectorPlugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [inspectorPlugin.file] },
+          allow: ["inspector-runtime"],
+        },
+      },
+      activate: false,
+    };
+    const inspectionRegistry = loadOpenClawPlugins(inspectionOptions);
+    const cachedInspectionRegistry = loadOpenClawPlugins(inspectionOptions);
+
+    expect(inspectionRegistry).toBe(cachedInspectionRegistry);
+    expect(getActivePluginRegistry()).toBe(gatewayRegistry);
+
+    const routeHandler = vi.fn(async () => true);
+    registerPluginHttpRoute({
+      path: "/hook",
+      auth: "plugin",
+      handler: routeHandler,
+    });
+
+    expect(gatewayRegistry.httpRoutes).toHaveLength(1);
+    expect(inspectionRegistry.httpRoutes).toHaveLength(0);
+
+    const { res } = makeMockHttpResponse();
+    const handled = await handler({ url: "/hook" } as IncomingMessage, res);
+    expect(handled).toBe(true);
+    expect(routeHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps read-only loads out of the global plugin command registry", () => {
+    useNoBundledPlugins();
+    const gatewayPlugin = writePlugin({
+      id: "gateway-command",
+      filename: "gateway-command.cjs",
+      body: `module.exports = {
+        id: "gateway-command",
+        register(api) {
+          api.registerCommand({
+            name: "gatewaycmd",
+            description: "Gateway command",
+            handler: async () => ({ text: "ok" }),
+          });
+        },
+      };`,
+    });
+    const inspectionPlugin = writePlugin({
+      id: "inspection-command",
+      filename: "inspection-command.cjs",
+      body: `module.exports = {
+        id: "inspection-command",
+        register(api) {
+          api.registerCommand({
+            name: "inspectcmd",
+            description: "Inspection command",
+            handler: async () => ({ text: "ok" }),
+          });
+        },
+      };`,
+    });
+
+    loadOpenClawPlugins({
+      cache: false,
+      workspaceDir: gatewayPlugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [gatewayPlugin.file] },
+          allow: ["gateway-command"],
+        },
+      },
+    });
+    expect(matchPluginCommand("/gatewaycmd")).not.toBeNull();
+
+    const inspectionRegistry = loadOpenClawPlugins({
+      workspaceDir: inspectionPlugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [inspectionPlugin.file] },
+          allow: ["inspection-command"],
+        },
+      },
+      activate: false,
+      cache: false,
+    });
+
+    expect(inspectionRegistry.commands).toHaveLength(1);
+    expect(inspectionRegistry.diagnostics).toEqual([]);
+    expect(matchPluginCommand("/gatewaycmd")).not.toBeNull();
+    expect(matchPluginCommand("/inspectcmd")).toBeNull();
+  });
+
+  it("keeps malformed read-only commands as diagnostics", () => {
+    const plugin = writePlugin({
+      id: "broken-command",
+      filename: "broken-command.cjs",
+      body: `module.exports = {
+        id: "broken-command",
+        register(api) {
+          api.registerCommand({
+            name: "broken",
+            handler: async () => ({ text: "ok" }),
+          });
+        },
+      };`,
+    });
+
+    const options = {
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["broken-command"],
+        },
+      },
+    };
+
+    const inactiveRegistry = loadOpenClawPlugins({
+      ...options,
+      activate: false,
+      cache: false,
+    });
+    expect(inactiveRegistry.commands).toHaveLength(0);
+    expect(
+      inactiveRegistry.diagnostics.some((entry) =>
+        entry.message.includes("Command description must be a string"),
+      ),
+    ).toBe(true);
+    expect(matchPluginCommand("/broken")).toBeNull();
+  });
+
+  it("does not register interactive handlers during read-only loads", async () => {
+    const dispatchTelegramInteractiveHandler =
+      interactiveModule.dispatchPluginInteractiveHandler as unknown as TelegramInteractiveDispatch;
+    const plugin = writePlugin({
+      id: "snapshot-interactive",
+      filename: "snapshot-interactive.cjs",
+      body: `module.exports = {
+        id: "snapshot-interactive",
+        register(api) {
+          api.registerInteractiveHandler({
+            channel: "telegram",
+            namespace: "snapshot-only",
+            handler: async () => ({ text: "handled" }),
+          });
+        },
+      };`,
+    });
+
+    loadOpenClawPlugins({
+      cache: false,
+      activate: false,
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["snapshot-interactive"],
+        },
+      },
+    });
+
+    await expect(
+      dispatchTelegramInteractiveHandler({
+        channel: "telegram",
+        data: "snapshot-only:anything",
+        callbackId: "cb-1",
+        ctx: {
+          accountId: "default",
+          conversationId: "chat-1",
+          senderId: "user-1",
+          isGroup: false,
+          isForum: false,
+          auth: {
+            isAuthorizedSender: true,
+          },
+          callbackMessage: {
+            messageId: 1,
+            chatId: "chat-1",
+          },
+        },
+        respond: {
+          reply: async () => {},
+          editMessage: async () => {},
+          editButtons: async () => {},
+          clearButtons: async () => {},
+          deleteMessage: async () => {},
+        },
+      }),
+    ).resolves.toEqual({ matched: false, handled: false, duplicate: false });
+  });
+
+  it("does not register context engines during read-only loads", () => {
+    const engineId = `snapshot-context-${Date.now()}`;
+    const plugin = writePlugin({
+      id: "snapshot-context-engine",
+      filename: "snapshot-context-engine.cjs",
+      body: `module.exports = {
+        id: "snapshot-context-engine",
+        register(api) {
+          api.registerContextEngine(${JSON.stringify(engineId)}, () => ({}));
+        },
+      };`,
+    });
+
+    loadOpenClawPlugins({
+      cache: false,
+      activate: false,
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["snapshot-context-engine"],
+        },
+      },
+    });
+
+    expect(getContextEngineFactory(engineId)).toBeUndefined();
+  });
+
+  it("does not register internal hooks during read-only loads", async () => {
+    const hookMarker = path.join(makeTempDir(), "snapshot-hook-fired.txt");
+    const plugin = writePlugin({
+      id: "snapshot-hook",
+      filename: "snapshot-hook.cjs",
+      body: `module.exports = {
+        id: "snapshot-hook",
+        register(api) {
+          api.registerHook("command:new", async () => {
+            require("node:fs").writeFileSync(${JSON.stringify(hookMarker)}, "fired", "utf-8");
+          }, { name: "snapshot-hook-handler" });
+        },
+      };`,
+    });
+
+    loadOpenClawPlugins({
+      cache: false,
+      activate: false,
+      workspaceDir: plugin.dir,
+      config: {
+        hooks: {
+          internal: { enabled: true },
+        },
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["snapshot-hook"],
+        },
+      },
+    });
+
+    await triggerInternalHook(createInternalHookEvent("command", "new", "snapshot-session"));
+    expect(fs.existsSync(hookMarker)).toBe(false);
+  });
+
+  it("preserves the current command registry when cached activation collides with command execution", async () => {
+    let releaseHeldCommand: ((value: { text: string }) => void) | undefined;
+    (
+      globalThis as typeof globalThis & { __openclawHeldCommandPromise?: Promise<{ text: string }> }
+    ).__openclawHeldCommandPromise = new Promise((resolve) => {
+      releaseHeldCommand = resolve;
+    });
+
+    const plugin = writePlugin({
+      id: "held-command",
+      filename: "held-command.cjs",
+      body: `module.exports = {
+        id: "held-command",
+        register(api) {
+          api.registerCommand({
+            name: "heldcmd",
+            description: "Held command",
+            handler: async () => globalThis.__openclawHeldCommandPromise,
+          });
+        },
+      };`,
+    });
+
+    const options = {
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["held-command"],
+        },
+      },
+    };
+
+    loadOpenClawPlugins(options);
+    const matched = matchPluginCommand("/heldcmd");
+    expect(matched).not.toBeNull();
+
+    const execution = executePluginCommand({
+      command: matched!.command,
+      channel: "test",
+      isAuthorizedSender: true,
+      commandBody: "/heldcmd",
+      config: {},
+    });
+
+    expect(() => loadOpenClawPlugins(options)).toThrow(
+      "cached plugin command registration failed: Cannot register commands while processing is in progress",
+    );
+    expect(matchPluginCommand("/heldcmd")).not.toBeNull();
+
+    releaseHeldCommand?.({ text: "ok" });
+    await expect(execution).resolves.toEqual({ text: "ok" });
+    delete (
+      globalThis as typeof globalThis & {
+        __openclawHeldCommandPromise?: Promise<{ text: string }>;
+      }
+    ).__openclawHeldCommandPromise;
+  });
+
   it("does not reuse cached bundled plugin registries across env changes", () => {
     const bundledA = makeTempDir();
     const bundledB = makeTempDir();
@@ -905,7 +1326,7 @@ module.exports = { id: "skipped", register() { throw new Error("skipped plugin s
       filename: "cache-eviction.cjs",
       body: `module.exports = { id: "cache-eviction", register() {} };`,
     });
-    const stateDirs = Array.from({ length: __testing.maxPluginRegistryCacheEntries + 1 }, () =>
+    const stateDirs = Array.from({ length: loaderTesting.maxPluginRegistryCacheEntries + 1 }, () =>
       makeTempDir(),
     );
 
@@ -2834,7 +3255,7 @@ module.exports = {
   it("prefers dist plugin-sdk alias when loader runs from dist", () => {
     const { root, distFile } = createPluginSdkAliasFixture();
 
-    const resolved = __testing.resolvePluginSdkAliasFile({
+    const resolved = loaderTesting.resolvePluginSdkAliasFile({
       srcFile: "index.ts",
       distFile: "index.js",
       modulePath: path.join(root, "dist", "plugins", "loader.js"),
@@ -2846,7 +3267,7 @@ module.exports = {
     const { root, srcFile, distFile } = createPluginSdkAliasFixture();
 
     const candidates = withEnv({ NODE_ENV: "production", VITEST: undefined }, () =>
-      __testing.listPluginSdkAliasCandidates({
+      loaderTesting.listPluginSdkAliasCandidates({
         srcFile: "index.ts",
         distFile: "index.js",
         modulePath: path.join(root, "src", "plugins", "loader.ts"),
@@ -2860,7 +3281,7 @@ module.exports = {
     const { root, srcFile } = createPluginSdkAliasFixture();
 
     const resolved = withEnv({ NODE_ENV: undefined }, () =>
-      __testing.resolvePluginSdkAliasFile({
+      loaderTesting.resolvePluginSdkAliasFile({
         srcFile: "index.ts",
         distFile: "index.js",
         modulePath: path.join(root, "src", "plugins", "loader.ts"),
@@ -2873,7 +3294,7 @@ module.exports = {
     const { root, srcFile, distFile } = createPluginSdkAliasFixture();
 
     const candidates = withEnv({ NODE_ENV: undefined }, () =>
-      __testing.listPluginSdkAliasCandidates({
+      loaderTesting.listPluginSdkAliasCandidates({
         srcFile: "index.ts",
         distFile: "index.js",
         modulePath: path.join(root, "src", "plugins", "loader.ts"),
@@ -2884,7 +3305,7 @@ module.exports = {
   });
 
   it("derives plugin-sdk subpaths from package exports", () => {
-    const subpaths = __testing.listPluginSdkExportedSubpaths();
+    const subpaths = loaderTesting.listPluginSdkExportedSubpaths();
     expect(subpaths).toContain("compat");
     expect(subpaths).toContain("telegram");
     expect(subpaths).not.toContain("root-alias");
@@ -2895,7 +3316,7 @@ module.exports = {
     fs.rmSync(distFile);
 
     const resolved = withEnv({ NODE_ENV: "production", VITEST: undefined }, () =>
-      __testing.resolvePluginSdkAliasFile({
+      loaderTesting.resolvePluginSdkAliasFile({
         srcFile: "index.ts",
         distFile: "index.js",
         modulePath: path.join(root, "src", "plugins", "loader.ts"),
@@ -2912,7 +3333,7 @@ module.exports = {
       distBody: "module.exports = {};\n",
     });
 
-    const resolved = __testing.resolvePluginSdkAliasFile({
+    const resolved = loaderTesting.resolvePluginSdkAliasFile({
       srcFile: "root-alias.cjs",
       distFile: "root-alias.cjs",
       modulePath: path.join(root, "dist", "plugins", "loader.js"),
@@ -2929,7 +3350,7 @@ module.exports = {
     });
 
     const resolved = withEnv({ NODE_ENV: undefined }, () =>
-      __testing.resolvePluginSdkAliasFile({
+      loaderTesting.resolvePluginSdkAliasFile({
         srcFile: "root-alias.cjs",
         distFile: "root-alias.cjs",
         modulePath: path.join(root, "src", "plugins", "loader.ts"),
@@ -2941,7 +3362,7 @@ module.exports = {
   it("prefers dist extension-api alias when loader runs from dist", () => {
     const { root, distFile } = createExtensionApiAliasFixture();
 
-    const resolved = __testing.resolveExtensionApiAlias({
+    const resolved = loaderTesting.resolveExtensionApiAlias({
       modulePath: path.join(root, "dist", "plugins", "loader.js"),
     });
     expect(resolved).toBe(distFile);
@@ -2951,7 +3372,7 @@ module.exports = {
     const { root, srcFile } = createExtensionApiAliasFixture();
 
     const resolved = withEnv({ NODE_ENV: undefined }, () =>
-      __testing.resolveExtensionApiAlias({
+      loaderTesting.resolveExtensionApiAlias({
         modulePath: path.join(root, "src", "plugins", "loader.ts"),
       }),
     );

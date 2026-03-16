@@ -10,7 +10,7 @@ import type {
 import { registerInternalHook } from "../hooks/internal-hooks.js";
 import type { HookEntry } from "../hooks/types.js";
 import { resolveUserPath } from "../utils.js";
-import { registerPluginCommand, validatePluginCommandDefinition } from "./commands.js";
+import { validatePluginCommandDefinition } from "./commands.js";
 import { normalizePluginHttpPath } from "./http-path.js";
 import { findOverlappingPluginHttpRoute } from "./http-route-overlap.js";
 import { registerPluginInteractiveHandler } from "./interactive.js";
@@ -189,9 +189,9 @@ export type PluginRegistryParams = {
   logger: PluginLogger;
   coreGatewayHandlers?: GatewayRequestHandlers;
   runtime: PluginRuntime;
-  // When true, skip writing to the global plugin command registry during register().
-  // Used by non-activating snapshot loads to avoid leaking commands into the running gateway.
-  suppressGlobalCommands?: boolean;
+  // When true, keep plugin registration local to the returned registry and skip
+  // writes into process-global registries used by the live runtime.
+  suppressGlobalSideEffects?: boolean;
 };
 
 type PluginTypedHookPolicy = {
@@ -339,7 +339,11 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
     });
 
     const hookSystemEnabled = config?.hooks?.internal?.enabled === true;
-    if (!hookSystemEnabled || opts?.register === false) {
+    if (
+      !hookSystemEnabled ||
+      opts?.register === false ||
+      registryParams.suppressGlobalSideEffects
+    ) {
       return;
     }
 
@@ -649,55 +653,42 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
   };
 
   const registerCommand = (record: PluginRecord, command: OpenClawPluginCommandDefinition) => {
-    const name = command.name.trim();
-    if (!name) {
+    const validationError = validatePluginCommandDefinition(command);
+    if (validationError) {
       pushDiagnostic({
         level: "error",
         pluginId: record.id,
         source: record.source,
-        message: "command registration missing name",
+        message: `command registration failed: ${validationError}`,
       });
       return;
     }
 
-    // For snapshot (non-activating) loads, record the command locally without touching the
-    // global plugin command registry so running gateway commands stay intact.
-    // We still validate the command definition so diagnostics match the real activation path.
-    // NOTE: cross-plugin duplicate command detection is intentionally skipped here because
-    // snapshot registries are isolated and never write to the global command table. Conflicts
-    // will surface when the plugin is loaded via the normal activation path at gateway startup.
-    if (registryParams.suppressGlobalCommands) {
-      const validationError = validatePluginCommandDefinition(command);
-      if (validationError) {
-        pushDiagnostic({
-          level: "error",
-          pluginId: record.id,
-          source: record.source,
-          message: `command registration failed: ${validationError}`,
-        });
-        return;
-      }
-    } else {
-      const result = registerPluginCommand(record.id, command, {
-        pluginName: record.name,
-        pluginRoot: record.rootDir,
+    const name = command.name.trim();
+    const description = command.description.trim();
+    const normalizedName = name.toLowerCase();
+    const duplicate = registry.commands.find(
+      (entry) => entry.command.name.trim().toLowerCase() === normalizedName,
+    );
+    if (duplicate) {
+      pushDiagnostic({
+        level: "error",
+        pluginId: record.id,
+        source: record.source,
+        message: `command registration failed: Command "${name}" already registered by plugin "${duplicate.pluginId}"`,
       });
-      if (!result.ok) {
-        pushDiagnostic({
-          level: "error",
-          pluginId: record.id,
-          source: record.source,
-          message: `command registration failed: ${result.error}`,
-        });
-        return;
-      }
+      return;
     }
 
     record.commands.push(name);
     registry.commands.push({
       pluginId: record.id,
       pluginName: record.name,
-      command,
+      command: {
+        ...command,
+        name,
+        description,
+      },
       source: record.source,
       rootDir: record.rootDir,
     });
@@ -807,7 +798,7 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
       registerService:
         registrationMode === "full" ? (service) => registerService(record, service) : () => {},
       registerInteractiveHandler:
-        registrationMode === "full"
+        registrationMode === "full" && !registryParams.suppressGlobalSideEffects
           ? (registration) => {
               const result = registerPluginInteractiveHandler(record.id, registration, {
                 pluginName: record.name,
@@ -826,7 +817,7 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
       registerCommand:
         registrationMode === "full" ? (command) => registerCommand(record, command) : () => {},
       registerContextEngine: (id, factory) => {
-        if (registrationMode !== "full") {
+        if (registrationMode !== "full" || registryParams.suppressGlobalSideEffects) {
           return;
         }
         if (id === defaultSlotIdForKey("contextEngine")) {
