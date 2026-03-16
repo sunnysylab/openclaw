@@ -22,6 +22,11 @@ import { listDiscordAccountIds, resolveDiscordAccount } from "./accounts.js";
 
 const channel = "discord" as const;
 
+type DiscordGuildChannelAllowlistEntry = {
+  guildKey: string;
+  channelKey?: string;
+};
+
 export const DISCORD_TOKEN_HELP_LINES = [
   "1) Discord Developer Portal -> Applications -> New Application",
   "2) Bot -> Add Bot -> Reset Token -> copy token",
@@ -33,10 +38,7 @@ export const DISCORD_TOKEN_HELP_LINES = [
 export function setDiscordGuildChannelAllowlist(
   cfg: OpenClawConfig,
   accountId: string,
-  entries: Array<{
-    guildKey: string;
-    channelKey?: string;
-  }>,
+  entries: DiscordGuildChannelAllowlistEntry[],
 ): OpenClawConfig {
   const baseGuilds =
     accountId === DEFAULT_ACCOUNT_ID
@@ -285,7 +287,12 @@ export function createDiscordSetupWizardProxy(
         cfg: OpenClawConfig;
         accountId: string;
         resolved: unknown;
-      }) => setDiscordGuildChannelAllowlist(cfg, accountId, resolved as never),
+      }) =>
+        setDiscordGuildChannelAllowlist(
+          cfg,
+          accountId,
+          resolved as DiscordGuildChannelAllowlistEntry[],
+        ),
     },
     allowFrom: {
       credentialInputKey: "token",
