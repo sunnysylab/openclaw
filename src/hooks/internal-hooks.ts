@@ -195,25 +195,19 @@ export type InternalEnrichHookHandler = (
 ) => Promise<MessageEnrichResult | void> | MessageEnrichResult | void;
 
 export type MessageEnrichHookContext = {
-  /** Sender identifier (e.g., phone number, user ID) */
-  from: string;
-  /** Message content */
+  /** Canonical inbound content before media understanding enrichment */
   content: string;
-  /** Unix timestamp when the message was received */
-  timestamp?: number;
-  /** Channel identifier (e.g., "telegram", "whatsapp") */
-  channelId: string;
   /** Provider account ID for multi-account setups */
   accountId?: string;
-  /** Conversation/chat ID */
-  conversationId?: string;
-  /** Message ID from the provider */
-  messageId?: string;
-  /** Session key for this message */
-  sessionKey: string;
+  /** Transcribed audio text, if the message contained audio */
+  transcript?: string;
+  /** Whether this message was sent in a group/channel context */
+  isGroup?: boolean;
+  /** Group or channel identifier, if applicable */
+  groupId?: string;
   /** Additional provider-specific metadata */
   metadata?: Record<string, unknown>;
-};
+} & MessageEnrichedBodyHookContext;
 
 export type MessageEnrichHookEvent = InternalHookEvent & {
   type: "message";
@@ -409,10 +403,8 @@ export async function triggerEnrichHook(
         Object.assign(merged, result.metadata);
       }
     } catch (err) {
-      console.error(
-        `Enrich hook error [${event.type}:${event.action}]:`,
-        err instanceof Error ? err.message : String(err),
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(`Enrich hook error [${event.type}:${event.action}]: ${message}`);
     }
   }
 
@@ -440,7 +432,7 @@ export function isMessageEnrichEvent(
   if (!context || typeof context !== "object") {
     return false;
   }
-  return typeof context.from === "string" && typeof context.channelId === "string";
+  return hasStringContextField(context, "content") && hasStringContextField(context, "channelId");
 }
 
 /**
