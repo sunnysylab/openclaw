@@ -252,7 +252,7 @@ Then run:
 - `xai.apiKey`: xAI API key (falls back to `XAI_API_KEY`).
 - `xai.baseUrl`: override the xAI TTS endpoint (default `https://api.x.ai/v1`).
 - `xai.voiceId`: xAI voice ID (`eve`, `ara`, `rex`, `sal`, `leo`; default `eve`).
-- `xai.language`: BCP-47 language code (optional).
+- `xai.language`: BCP-47 language code (default `en`).
 - `elevenlabs.voiceSettings`:
   - `stability`, `similarityBoost`, `style`: `0..1`
   - `useSpeakerBoost`: `true|false`
