@@ -400,6 +400,76 @@ describe("handleDiscordMessageAction", () => {
       },
     },
     {
+      name: "thread-reply honors filePath when media is not set",
+      input: {
+        action: "thread-reply" as const,
+        params: { channelId: "123", message: "see attachment", filePath: "/tmp/report.md" },
+        accountId: "ops",
+      },
+      expected: {
+        action: "threadReply",
+        accountId: "ops",
+        channelId: "123",
+        content: "see attachment",
+        mediaUrl: "/tmp/report.md",
+      },
+    },
+    {
+      name: "thread-reply honors path when media is not set",
+      input: {
+        action: "thread-reply" as const,
+        params: { channelId: "123", message: "see attachment", path: "/tmp/report.md" },
+        accountId: "ops",
+      },
+      expected: {
+        action: "threadReply",
+        accountId: "ops",
+        channelId: "123",
+        content: "see attachment",
+        mediaUrl: "/tmp/report.md",
+      },
+    },
+    {
+      name: "thread-reply prefers media over filePath",
+      input: {
+        action: "thread-reply" as const,
+        params: {
+          channelId: "123",
+          message: "see attachment",
+          media: "/tmp/a.md",
+          filePath: "/tmp/b.md",
+        },
+        accountId: "ops",
+      },
+      expected: {
+        action: "threadReply",
+        accountId: "ops",
+        channelId: "123",
+        content: "see attachment",
+        mediaUrl: "/tmp/a.md",
+      },
+    },
+    {
+      name: "thread-reply prefers path over filePath",
+      input: {
+        action: "thread-reply" as const,
+        params: {
+          channelId: "123",
+          message: "see attachment",
+          path: "/tmp/a.md",
+          filePath: "/tmp/b.md",
+        },
+        accountId: "ops",
+      },
+      expected: {
+        action: "threadReply",
+        accountId: "ops",
+        channelId: "123",
+        content: "see attachment",
+        mediaUrl: "/tmp/a.md",
+      },
+    },
+    {
       name: "forwards thread-create message as content",
       input: {
         action: "thread-create" as const,
@@ -492,6 +562,24 @@ describe("handleDiscordMessageAction", () => {
       }),
       expect.any(Object),
       expect.objectContaining({ mediaLocalRoots: ["/tmp/agent-root"] }),
+    );
+  });
+
+  it("forwards trusted mediaLocalRoots for thread-reply with filePath", async () => {
+    await handleDiscordMessageAction({
+      action: "thread-reply",
+      params: { channelId: "123", message: "see attachment", filePath: "/workspace/report.md" },
+      cfg: {} as OpenClawConfig,
+      mediaLocalRoots: ["/workspace"],
+    });
+
+    expect(handleDiscordAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "threadReply",
+        mediaUrl: "/workspace/report.md",
+      }),
+      expect.any(Object),
+      expect.objectContaining({ mediaLocalRoots: ["/workspace"] }),
     );
   });
 

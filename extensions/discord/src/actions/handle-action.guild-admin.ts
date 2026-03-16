@@ -14,7 +14,7 @@ import type { ChannelMessageActionContext } from "../../../../src/channels/plugi
 
 type Ctx = Pick<
   ChannelMessageActionContext,
-  "action" | "params" | "cfg" | "accountId" | "requesterSenderId"
+  "action" | "params" | "cfg" | "accountId" | "requesterSenderId" | "mediaLocalRoots"
 >;
 
 export async function tryHandleDiscordMessageActionGuildAdmin(params: {
@@ -405,7 +405,11 @@ export async function tryHandleDiscordMessageActionGuildAdmin(params: {
     const content = readStringParam(actionParams, "message", {
       required: true,
     });
-    const mediaUrl = readStringParam(actionParams, "media", { trim: false });
+    // Support media, path, and filePath — aligned with `send` in handle-action.ts
+    const mediaUrl =
+      readStringParam(actionParams, "media", { trim: false }) ??
+      readStringParam(actionParams, "path", { trim: false }) ??
+      readStringParam(actionParams, "filePath", { trim: false });
     const replyTo = readStringParam(actionParams, "replyTo");
 
     // `message.thread-reply` (tool) uses `threadId`, while the CLI historically used `to`/`channelId`.
@@ -423,6 +427,7 @@ export async function tryHandleDiscordMessageActionGuildAdmin(params: {
         replyTo: replyTo ?? undefined,
       },
       cfg,
+      { mediaLocalRoots: ctx.mediaLocalRoots },
     );
   }
 
