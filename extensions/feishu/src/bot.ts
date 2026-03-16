@@ -462,7 +462,7 @@ function formatSubMessageContent(content: string, contentType: string): string {
       case "image":
         return "[Image]";
       case "file":
-        return `[File: ${parsed.file_name || "unknown"}]`;
+        return `[File: ${decodeFeishuFilename(parsed.file_name) || "unknown"}]`;
       case "audio":
         return "[Audio]";
       case "video":
@@ -535,6 +535,34 @@ function normalizeFeishuCommandProbeBody(text: string): string {
 }
 
 /**
+ * Decode filename from Feishu JSON payload.
+ * Handles both RFC 5987 format and plain URL-encoded names.
+ */
+export function decodeFeishuFilename(filename: string | undefined): string {
+  if (!filename) return "";
+  // Handle RFC 5987 format: filename*=UTF-8'language'encoded
+  const rfcMatch = /^filename\*=utf-8'[^']*'/i.exec(filename);
+  if (rfcMatch) {
+    // RFC 5987 - always decode
+    try {
+      return decodeURIComponent(filename.substring(rfcMatch[0].length));
+    } catch {
+      return filename;
+    }
+  }
+  // Plain filename - only decode if result has non-ASCII
+  try {
+    const decoded = decodeURIComponent(filename);
+    if (decoded && /[^\x00-\x7F]/.test(decoded)) {
+      return decoded;
+    }
+  } catch {
+    // Fall through
+  }
+  return filename;
+}
+
+/**
  * Parse media keys from message content based on message type.
  */
 function parseMediaKeys(
@@ -551,17 +579,17 @@ function parseMediaKeys(
     const fileKey = normalizeFeishuExternalKey(parsed.file_key);
     switch (messageType) {
       case "image":
-        return { imageKey, fileName: parsed.file_name };
+        return { imageKey, fileName: decodeFeishuFilename(parsed.file_name) };
       case "file":
-        return { fileKey, fileName: parsed.file_name };
+        return { fileKey, fileName: decodeFeishuFilename(parsed.file_name) };
       case "audio":
-        return { fileKey, fileName: parsed.file_name };
+        return { fileKey, fileName: decodeFeishuFilename(parsed.file_name) };
       case "video":
       case "media":
         // Video/media has both file_key (video) and image_key (thumbnail)
-        return { fileKey, imageKey, fileName: parsed.file_name };
+        return { fileKey, imageKey, fileName: decodeFeishuFilename(parsed.file_name) };
       case "sticker":
-        return { fileKey, fileName: parsed.file_name };
+        return { fileKey, fileName: decodeFeishuFilename(parsed.file_name) };
       default:
         return {};
     }
