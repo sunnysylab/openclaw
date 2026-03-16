@@ -315,6 +315,14 @@ function resolveZaiGlm5ForwardCompatModel(
     return undefined;
   }
 
+  // If the exact model ID is already registered (e.g. user-configured
+  // glm-5-turbo), use it as-is instead of overwriting with the compat
+  // template.  Only apply forward-compat for genuinely unknown model IDs.
+  const existing = modelRegistry.find("zai", trimmed) as Model<Api> | null;
+  if (existing) {
+    return undefined;
+  }
+
   for (const templateId of ZAI_GLM5_TEMPLATE_MODEL_IDS) {
     const template = modelRegistry.find("zai", templateId) as Model<Api> | null;
     if (!template) {
