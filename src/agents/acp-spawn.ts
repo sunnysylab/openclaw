@@ -980,7 +980,8 @@ export async function spawnAcpDirect(
   }
 
   if (effectiveStreamToParent && parentSessionKey) {
-    if (parentRelay && childRunId !== childIdem) {
+    const relayReachedTerminalState = parentRelay?.isTerminalStateReached() === true;
+    if (parentRelay && childRunId !== childIdem && !relayReachedTerminalState) {
       parentRelay.dispose();
       // Defensive fallback if gateway returns a runId that differs from idempotency key.
       parentRelay = startAcpSpawnParentStreamRelay({
@@ -992,7 +993,9 @@ export async function spawnAcpDirect(
         emitStartNotice: false,
       });
     }
-    parentRelay?.notifyStarted();
+    if (!relayReachedTerminalState) {
+      parentRelay?.notifyStarted();
+    }
     try {
       createRunningTaskRun({
         runtime: "acp",
