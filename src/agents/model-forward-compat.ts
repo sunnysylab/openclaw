@@ -317,11 +317,13 @@ function resolveZaiGlm5ForwardCompatModel(
   }
 
   // If the exact model ID is already registered (e.g. user-configured
-  // glm-5-turbo), use it as-is instead of overwriting with the compat
-  // template.  Only apply forward-compat for genuinely unknown model IDs.
+  // glm-5-turbo), return it directly instead of overwriting with the
+  // compat template.  This also covers provider-alias lookups (e.g.
+  // z.ai → zai) where the initial registry.find with the raw provider
+  // string missed but the normalized provider hits.
   const existing = modelRegistry.find(normalizedProvider, trimmed) as Model<Api> | null;
   if (existing) {
-    return undefined;
+    return normalizeModelCompat(existing);
   }
 
   for (const templateId of ZAI_GLM5_TEMPLATE_MODEL_IDS) {
