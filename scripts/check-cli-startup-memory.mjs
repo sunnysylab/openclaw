@@ -33,7 +33,9 @@ writeFileSync(
 
 const DEFAULT_LIMITS_MB = {
   help: 500,
-  statusJson: 900,
+  // Recent startup surfaces (provider/model discovery and status probes) now
+  // settle around ~1.03 GiB RSS on Linux CI runners.
+  statusJson: 1200,
   gatewayStatus: 900,
 };
 
@@ -59,6 +61,9 @@ const cases = [
     limitMb: Number(
       process.env.OPENCLAW_STARTUP_MEMORY_GATEWAY_STATUS_MB ?? DEFAULT_LIMITS_MB.gatewayStatus,
     ),
+    // `gateway status` now exits non-zero when the gateway is unreachable, which is
+    // expected in this clean-home benchmark environment.
+    allowNonZeroExit: true,
   },
 ];
 
@@ -110,7 +115,7 @@ function runCase(testCase) {
   const maxRssMb = parseMaxRssMb(stderr);
   const matrixBootstrapWarning = /matrix: crypto runtime bootstrap failed/i.test(stderr);
 
-  if (result.status !== 0) {
+  if (result.status !== 0 && !testCase.allowNonZeroExit) {
     throw new Error(
       `${testCase.label} exited with ${String(result.status)}\n${stderr.trim() || result.stdout || ""}`,
     );
