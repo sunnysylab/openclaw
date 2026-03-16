@@ -327,18 +327,7 @@ export function toInternalMessageReceivedContext(
     accountId: canonical.accountId,
     conversationId: canonical.conversationId,
     messageId: canonical.messageId,
-    metadata: {
-      to: canonical.to,
-      provider: canonical.provider,
-      surface: canonical.surface,
-      threadId: canonical.threadId,
-      senderId: canonical.senderId,
-      senderName: canonical.senderName,
-      senderUsername: canonical.senderUsername,
-      senderE164: canonical.senderE164,
-      guildId: canonical.guildId,
-      channelName: canonical.channelName,
-    },
+    metadata: toInternalMessageHookMetadata(canonical),
   };
 }
 
@@ -379,18 +368,7 @@ export function toInternalMessageEnrichContext(
     transcript: canonical.transcript,
     isGroup: canonical.isGroup,
     groupId: canonical.groupId,
-    metadata: {
-      to: canonical.to,
-      provider: canonical.provider,
-      surface: canonical.surface,
-      threadId: canonical.threadId,
-      senderId: canonical.senderId,
-      senderName: canonical.senderName,
-      senderUsername: canonical.senderUsername,
-      senderE164: canonical.senderE164,
-      guildId: canonical.guildId,
-      channelName: canonical.channelName,
-    },
+    metadata: toInternalMessageHookMetadata(canonical),
   };
 }
 
@@ -411,6 +389,21 @@ function toInternalInboundMessageHookContextBase(canonical: CanonicalInboundMess
     surface: canonical.surface,
     mediaPath: canonical.mediaPath,
     mediaType: canonical.mediaType,
+  };
+}
+
+function toInternalMessageHookMetadata(canonical: CanonicalInboundMessageHookContext) {
+  return {
+    to: canonical.to,
+    provider: canonical.provider,
+    surface: canonical.surface,
+    threadId: canonical.threadId,
+    senderId: canonical.senderId,
+    senderName: canonical.senderName,
+    senderUsername: canonical.senderUsername,
+    senderE164: canonical.senderE164,
+    guildId: canonical.guildId,
+    channelName: canonical.channelName,
   };
 }
 

@@ -68,7 +68,8 @@ export async function emitPreAgentMessageHooks(params: {
         toInternalMessageEnrichContext(canonical),
       ),
     );
-    if (Object.keys(enrichedMetadata).length === 0) {
+    const metadataKeys = Object.keys(enrichedMetadata);
+    if (metadataKeys.length === 0) {
       return;
     }
 
@@ -78,13 +79,9 @@ export async function emitPreAgentMessageHooks(params: {
       JSON.stringify(enrichedMetadata, null, 2),
       "```",
     ].join("\n");
-    if (!Array.isArray(params.ctx.UntrustedContext)) {
-      params.ctx.UntrustedContext = [];
-    }
-    params.ctx.UntrustedContext.push(enrichBlock);
-    logVerbose(
-      `get-reply: message:enrich injected ${Object.keys(enrichedMetadata).length} metadata key(s)`,
-    );
+    const untrustedContext = (params.ctx.UntrustedContext ??= []);
+    untrustedContext.push(enrichBlock);
+    logVerbose(`get-reply: message:enrich injected ${metadataKeys.length} metadata key(s)`);
   } catch (err) {
     logVerbose(`get-reply: message:enrich internal hook failed: ${String(err)}`);
   }
