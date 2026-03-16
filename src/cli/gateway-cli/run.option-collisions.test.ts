@@ -21,7 +21,7 @@ const runGatewayLoop = vi.fn(async ({ start }: { start: () => Promise<unknown> }
 });
 const configState = vi.hoisted(() => ({
   cfg: {} as Record<string, unknown>,
-  snapshot: { valid: true, exists: false } as Record<string, unknown>,
+  snapshot: { valid: true, exists: false, issues: [] } as Record<string, unknown>,
 }));
 
 const { runtimeErrors, defaultRuntime, resetRuntimeCapture } = createCliRuntimeCapture();
