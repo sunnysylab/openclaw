@@ -903,6 +903,7 @@ export const OpenClawSchema = z
           })
           .strict()
           .optional(),
+        allowResultModification: z.boolean().optional(),
         entries: z.record(z.string(), PluginEntrySchema).optional(),
         installs: z
           .record(
