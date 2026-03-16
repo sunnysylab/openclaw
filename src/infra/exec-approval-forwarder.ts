@@ -51,6 +51,8 @@ export type ExecApprovalForwarderDeps = {
     cfg: OpenClawConfig;
     request: ExecApprovalRequest;
   }) => ExecApprovalForwardTarget | null;
+  /** Which `approvals.*` config section to read. Default: "exec". */
+  configKey?: "exec" | "http";
 };
 
 const DEFAULT_MODE = "session" as const;
@@ -210,15 +212,21 @@ function formatApprovalCommand(command: string): { inline: boolean; text: string
   return { inline: false, text: `${fence}\n${command}\n${fence}` };
 }
 
-function buildRequestMessage(request: ExecApprovalRequest, nowMs: number) {
-  const lines: string[] = ["🔒 Exec approval required", `ID: ${request.id}`];
+function buildRequestMessage(
+  request: ExecApprovalRequest,
+  nowMs: number,
+  kind: "exec" | "http" = "exec",
+) {
+  const label = kind === "http" ? "HTTP fetch" : "Exec";
+  const lines: string[] = [`🔒 ${label} approval required`, `ID: ${request.id}`];
   const command = formatApprovalCommand(
     resolveExecApprovalCommandDisplay(request.request).commandText,
   );
+  const fieldLabel = kind === "http" ? "URL" : "Command";
   if (command.inline) {
-    lines.push(`Command: ${command.text}`);
+    lines.push(`${fieldLabel}: ${command.text}`);
   } else {
-    lines.push("Command:");
+    lines.push(`${fieldLabel}:`);
     lines.push(command.text);
   }
   if (request.request.cwd) {
@@ -262,14 +270,16 @@ function decisionLabel(decision: ExecApprovalDecision): string {
   return "denied";
 }
 
-function buildResolvedMessage(resolved: ExecApprovalResolved) {
-  const base = `✅ Exec approval ${decisionLabel(resolved.decision)}.`;
+function buildResolvedMessage(resolved: ExecApprovalResolved, kind: "exec" | "http" = "exec") {
+  const label = kind === "http" ? "HTTP fetch" : "Exec";
+  const base = `✅ ${label} approval ${decisionLabel(resolved.decision)}.`;
   const by = resolved.resolvedBy ? ` Resolved by ${resolved.resolvedBy}.` : "";
   return `${base}${by} ID: ${resolved.id}`;
 }
 
-function buildExpiredMessage(request: ExecApprovalRequest) {
-  return `⏱️ Exec approval expired. ID: ${request.id}`;
+function buildExpiredMessage(request: ExecApprovalRequest, kind: "exec" | "http" = "exec") {
+  const label = kind === "http" ? "HTTP fetch" : "Exec";
+  return `⏱️ ${label} approval expired. ID: ${request.id}`;
 }
 
 function normalizeTurnSourceChannel(value?: string | null): DeliverableMessageChannel | undefined {
@@ -360,6 +370,7 @@ function buildRequestPayloadForTarget(
   request: ExecApprovalRequest,
   nowMsValue: number,
   target: ForwardTarget,
+  kind: "exec" | "http" = "exec",
 ): ReplyPayload {
   const channel = normalizeMessageChannel(target.channel) ?? target.channel;
   if (channel === "telegram") {
@@ -388,7 +399,7 @@ function buildRequestPayloadForTarget(
       },
     };
   }
-  return { text: buildRequestMessage(request, nowMsValue) };
+  return { text: buildRequestMessage(request, nowMsValue, kind) };
 }
 
 function resolveForwardTargets(params: {
@@ -440,11 +451,16 @@ export function createExecApprovalForwarder(
   const deliver = deps.deliver ?? deliverOutboundPayloads;
   const nowMs = deps.nowMs ?? Date.now;
   const resolveSessionTarget = deps.resolveSessionTarget ?? defaultResolveSessionTarget;
+  const configKey = deps.configKey ?? "exec";
+  // Discord/Telegram component-based exec approval handlers only consume
+  // exec.approval.* events. HTTP approvals have no dedicated component handler,
+  // so the exec-only suppression logic must be skipped for HTTP forwarding.
+  const skipExecOnlySuppression = configKey === "http";
   const pending = new Map<string, PendingApproval>();
 
   const handleRequested = async (request: ExecApprovalRequest): Promise<boolean> => {
     const cfg = getConfig();
-    const config = cfg.approvals?.exec;
+    const config = cfg.approvals?.[configKey];
     const filteredTargets = [
       ...(shouldForward({ config, request })
         ? resolveForwardTargets({
@@ -456,8 +472,8 @@ export function createExecApprovalForwarder(
         : []),
     ].filter(
       (target) =>
-        !shouldSkipDiscordForwarding(target, cfg) &&
-        !shouldSkipTelegramForwarding({ target, cfg, request }),
+        (skipExecOnlySuppression || !shouldSkipDiscordForwarding(target, cfg)) &&
+        (skipExecOnlySuppression || !shouldSkipTelegramForwarding({ target, cfg, request })),
     );
 
     if (filteredTargets.length === 0) {
@@ -472,7 +488,7 @@ export function createExecApprovalForwarder(
           return;
         }
         pending.delete(request.id);
-        const expiredText = buildExpiredMessage(request);
+        const expiredText = buildExpiredMessage(request, configKey);
         await deliverToTargets({
           cfg,
           targets: entry.targets,
@@ -492,7 +508,8 @@ export function createExecApprovalForwarder(
     void deliverToTargets({
       cfg,
       targets: filteredTargets,
-      buildPayload: (target) => buildRequestPayloadForTarget(cfg, request, nowMs(), target),
+      buildPayload: (target) =>
+        buildRequestPayloadForTarget(cfg, request, nowMs(), target, configKey),
       deliver,
       shouldSend: () => pending.get(request.id) === pendingEntry,
     }).catch((err) => {
@@ -519,7 +536,7 @@ export function createExecApprovalForwarder(
         createdAtMs: resolved.ts,
         expiresAtMs: resolved.ts,
       };
-      const config = cfg.approvals?.exec;
+      const config = cfg.approvals?.[configKey];
       targets = [
         ...(shouldForward({ config, request })
           ? resolveForwardTargets({
@@ -531,14 +548,14 @@ export function createExecApprovalForwarder(
           : []),
       ].filter(
         (target) =>
-          !shouldSkipDiscordForwarding(target, cfg) &&
-          !shouldSkipTelegramForwarding({ target, cfg, request }),
+          (skipExecOnlySuppression || !shouldSkipDiscordForwarding(target, cfg)) &&
+          (skipExecOnlySuppression || !shouldSkipTelegramForwarding({ target, cfg, request })),
       );
     }
     if (!targets || targets.length === 0) {
       return;
     }
-    const text = buildResolvedMessage(resolved);
+    const text = buildResolvedMessage(resolved, configKey);
     await deliverToTargets({ cfg, targets, buildPayload: () => ({ text }), deliver });
   };
 
