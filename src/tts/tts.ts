@@ -64,6 +64,7 @@ const DEFAULT_EDGE_LANG = "en-US";
 const DEFAULT_EDGE_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 const DEFAULT_XAI_BASE_URL = "https://api.x.ai/v1";
 const DEFAULT_XAI_VOICE_ID = "eve";
+const DEFAULT_XAI_LANGUAGE = "en";
 
 const DEFAULT_ELEVENLABS_VOICE_SETTINGS = {
   stability: 0.5,
@@ -350,7 +351,7 @@ export function resolveTtsConfig(cfg: OpenClawConfig): ResolvedTtsConfig {
       }),
       baseUrl: raw.xai?.baseUrl?.trim() || DEFAULT_XAI_BASE_URL,
       voiceId: raw.xai?.voiceId ?? DEFAULT_XAI_VOICE_ID,
-      language: raw.xai?.language?.trim() || undefined,
+      language: raw.xai?.language?.trim() || DEFAULT_XAI_LANGUAGE,
     },
     prefsPath: raw.prefsPath,
     maxTextLength: raw.maxTextLength ?? DEFAULT_MAX_TEXT_LENGTH,

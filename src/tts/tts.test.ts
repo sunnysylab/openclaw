@@ -632,7 +632,7 @@ describe("tts", () => {
       const config = resolveTtsConfig(baseCfg);
       expect(config.xai.baseUrl).toBe("https://api.x.ai/v1");
       expect(config.xai.voiceId).toBe("eve");
-      expect(config.xai.language).toBeUndefined();
+      expect(config.xai.language).toBe("en");
     });
 
     it("applies config overrides", () => {
