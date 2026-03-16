@@ -75,4 +75,27 @@ describe("telegram reaction semantics schema", () => {
     expect(JSON.stringify(res.error.format())).toContain("duplicates");
     expect(JSON.stringify(res.error.format())).toContain("emoji:👍");
   });
+
+  it.each(["customemoji:123", "emoji:", "custom_emoji:   "])(
+    "rejects invalid reaction semantics key %s",
+    (invalidKey) => {
+      const res = OpenClawSchema.safeParse({
+        channels: {
+          telegram: {
+            reactionSemantics: {
+              [invalidKey]: "acknowledged",
+            },
+          },
+        },
+      });
+
+      expect(res.success).toBe(false);
+      if (res.success) {
+        return;
+      }
+
+      expect(JSON.stringify(res.error.format())).toContain("invalid");
+      expect(JSON.stringify(res.error.format())).toContain(invalidKey.trim());
+    },
+  );
 });

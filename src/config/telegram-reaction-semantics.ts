@@ -4,6 +4,10 @@ export type TelegramReactionSemanticsCollision = {
   duplicateRawKey: string;
 };
 
+export type TelegramReactionSemanticsInvalidKey = {
+  rawKey: string;
+};
+
 export function normalizeTelegramReactionKey(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -52,4 +56,20 @@ export function findTelegramReactionSemanticsCollisions(
     });
   }
   return collisions;
+}
+
+export function findInvalidTelegramReactionSemanticsKeys(
+  semantics?: Record<string, unknown> | null,
+): TelegramReactionSemanticsInvalidKey[] {
+  if (!semantics) {
+    return [];
+  }
+  const invalidKeys: TelegramReactionSemanticsInvalidKey[] = [];
+  for (const rawKey of Object.keys(semantics)) {
+    if (normalizeTelegramReactionKey(rawKey)) {
+      continue;
+    }
+    invalidKeys.push({ rawKey });
+  }
+  return invalidKeys;
 }

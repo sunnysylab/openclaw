@@ -12,7 +12,10 @@ import {
   normalizeTelegramCommandName,
   resolveTelegramCustomCommands,
 } from "./telegram-custom-commands.js";
-import { findTelegramReactionSemanticsCollisions } from "./telegram-reaction-semantics.js";
+import {
+  findInvalidTelegramReactionSemanticsKeys,
+  findTelegramReactionSemanticsCollisions,
+} from "./telegram-reaction-semantics.js";
 import { ToolPolicySchema } from "./zod-schema.agent-runtime.js";
 import {
   ChannelHealthMonitorSchema,
@@ -65,6 +68,13 @@ const TelegramReactionSemanticRuleSchema = z
 const TelegramReactionSemanticsSchema = z
   .record(z.string(), z.union([z.string(), TelegramReactionSemanticRuleSchema]))
   .superRefine((value, ctx) => {
+    for (const invalid of findInvalidTelegramReactionSemanticsKeys(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [invalid.rawKey],
+        message: `Telegram reaction semantics key "${invalid.rawKey}" is invalid. Use a bare emoji, "emoji:<emoji>", or "custom_emoji:<id>".`,
+      });
+    }
     for (const collision of findTelegramReactionSemanticsCollisions(value)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
