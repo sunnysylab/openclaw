@@ -319,6 +319,7 @@ export async function handleInlineActions(params: {
   if (handleInlineStatus) {
     const inlineStatusReply = await buildStatusReply({
       cfg,
+      ctx,
       command,
       sessionEntry,
       sessionKey,
