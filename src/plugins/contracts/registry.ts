@@ -14,6 +14,7 @@ import groqPlugin from "../../../extensions/groq/index.js";
 import huggingFacePlugin from "../../../extensions/huggingface/index.js";
 import kilocodePlugin from "../../../extensions/kilocode/index.js";
 import kimiCodingPlugin from "../../../extensions/kimi-coding/index.js";
+import lmstudioPlugin from "../../../extensions/lmstudio/index.js";
 import microsoftPlugin from "../../../extensions/microsoft/index.js";
 import minimaxPlugin from "../../../extensions/minimax/index.js";
 import mistralPlugin from "../../../extensions/mistral/index.js";
@@ -364,6 +365,7 @@ const bundledProviderPlugins = dedupePlugins([
   googlePlugin,
   huggingFacePlugin,
   kilocodePlugin,
+  lmstudioPlugin,
   kimiCodingPlugin,
   minimaxPlugin,
   mistralPlugin,

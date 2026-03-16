@@ -1,6 +1,7 @@
 import type { OpenClawConfig } from "../config/config.js";
 import type { ModelDefinitionConfig } from "../config/types.models.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { discoverLmstudioModels, resolveLmstudioInferenceBase } from "./lmstudio-models.js";
 import {
   enrichOllamaModelsWithContext,
   OLLAMA_DEFAULT_CONTEXT_WINDOW,
@@ -121,7 +122,9 @@ async function discoverOpenAICompatibleLocalModels(params: {
     }
 
     return models
-      .map((model) => ({ id: typeof model.id === "string" ? model.id.trim() : "" }))
+      .map((model) => ({
+        id: typeof model.id === "string" ? model.id.trim() : "",
+      }))
       .filter((model) => Boolean(model.id))
       .map((model) => {
         const modelId = model.id;
@@ -167,6 +170,29 @@ export async function buildVllmProvider(params?: {
     baseUrl,
     api: "openai-completions",
     models,
+  };
+}
+
+export async function buildLmstudioProvider(params?: {
+  baseUrl?: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+  quiet?: boolean;
+}): Promise<ProviderConfig> {
+  const baseUrl = resolveLmstudioInferenceBase(params?.baseUrl);
+  // Skip real network I/O in test environments to keep provider-discovery tests fast and deterministic.
+  if (process.env.VITEST || process.env.NODE_ENV === "test") {
+    return { baseUrl, api: "openai-completions", models: [] };
+  }
+  return {
+    baseUrl,
+    api: "openai-completions",
+    models: await discoverLmstudioModels({
+      baseUrl,
+      apiKey: params?.apiKey ?? "",
+      headers: params?.headers,
+      quiet: params?.quiet ?? false,
+    }),
   };
 }
 
