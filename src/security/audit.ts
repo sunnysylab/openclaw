@@ -1275,14 +1275,27 @@ export async function runSecurityAudit(opts: SecurityAuditOptions): Promise<Secu
     : undefined;
   const deep = deepProbeResult?.deep;
 
+  const gatewayProbeScopeLimited =
+    typeof deep?.gateway?.error === "string" &&
+    deep.gateway.error.includes("missing scope: operator.read");
   if (deep?.gateway?.attempted && !deep.gateway.ok) {
-    findings.push({
-      checkId: "gateway.probe_failed",
-      severity: "warn",
-      title: "Gateway probe failed (deep)",
-      detail: deep.gateway.error ?? "gateway unreachable",
-      remediation: `Run "${formatCliCommand("openclaw status --all")}" to debug connectivity/auth, then re-run "${formatCliCommand("openclaw security audit --deep")}".`,
-    });
+    if (gatewayProbeScopeLimited) {
+      findings.push({
+        checkId: "gateway.probe_scope_limited",
+        severity: "info",
+        title: "Gateway deep probe ran with reduced scope (operator.read unavailable)",
+        detail: deep.gateway.error ?? "missing scope: operator.read",
+        remediation: `Pair this device with the gateway operator account to enable full deep-audit coverage, then re-run "${formatCliCommand("openclaw security audit --deep")}".`,
+      });
+    } else {
+      findings.push({
+        checkId: "gateway.probe_failed",
+        severity: "warn",
+        title: "Gateway probe failed (deep)",
+        detail: deep.gateway.error ?? "gateway unreachable",
+        remediation: `Run "${formatCliCommand("openclaw status --all")}" to debug connectivity/auth, then re-run "${formatCliCommand("openclaw security audit --deep")}".`,
+      });
+    }
   }
   if (deepProbeResult?.authWarning) {
     findings.push({
