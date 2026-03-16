@@ -166,4 +166,42 @@ describe("pi embedded model e2e smoke", () => {
     expect(result.model).toBeUndefined();
     expect(result.error).toBe("Unknown model: google-gemini-cli/gemini-4-unknown");
   });
+
+  // GLM-5 forward-compat guard (#48166)
+  it("skips GLM-5 forward-compat when the model is already registered (e.g. glm-5-turbo)", () => {
+    mockDiscoveredModel({
+      provider: "zai",
+      modelId: "glm-5-turbo",
+      templateModel: {
+        ...makeModel("glm-5-turbo"),
+        provider: "zai",
+        api: "openai-completions",
+      },
+    });
+
+    const result = resolveModel("zai", "glm-5-turbo", "/tmp/agent");
+    expect(result.error).toBeUndefined();
+    expect(result.model?.id).toBe("glm-5-turbo");
+    // Must NOT be a clone of glm-4.7
+    expect(result.model?.name).toBe("glm-5-turbo");
+  });
+
+  it("applies GLM-5 forward-compat for unregistered glm-5 variants", () => {
+    // Mock the glm-4.7 template that forward-compat clones from
+    mockDiscoveredModel({
+      provider: "zai",
+      modelId: "glm-4.7",
+      templateModel: {
+        ...makeModel("glm-4.7"),
+        provider: "zai",
+        api: "openai-completions",
+        reasoning: true,
+      },
+    });
+
+    const result = resolveModel("zai", "glm-5", "/tmp/agent");
+    expect(result.error).toBeUndefined();
+    expect(result.model?.id).toBe("glm-5");
+    expect(result.model?.reasoning).toBe(true);
+  });
 });

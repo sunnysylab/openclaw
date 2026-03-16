@@ -306,7 +306,8 @@ function resolveZaiGlm5ForwardCompatModel(
   modelId: string,
   modelRegistry: ModelRegistry,
 ): Model<Api> | undefined {
-  if (normalizeProviderId(provider) !== "zai") {
+  const normalizedProvider = normalizeProviderId(provider);
+  if (normalizedProvider !== "zai") {
     return undefined;
   }
   const trimmed = modelId.trim();
@@ -318,13 +319,13 @@ function resolveZaiGlm5ForwardCompatModel(
   // If the exact model ID is already registered (e.g. user-configured
   // glm-5-turbo), use it as-is instead of overwriting with the compat
   // template.  Only apply forward-compat for genuinely unknown model IDs.
-  const existing = modelRegistry.find("zai", trimmed) as Model<Api> | null;
+  const existing = modelRegistry.find(normalizedProvider, trimmed) as Model<Api> | null;
   if (existing) {
     return undefined;
   }
 
   for (const templateId of ZAI_GLM5_TEMPLATE_MODEL_IDS) {
-    const template = modelRegistry.find("zai", templateId) as Model<Api> | null;
+    const template = modelRegistry.find(normalizedProvider, templateId) as Model<Api> | null;
     if (!template) {
       continue;
     }
@@ -340,7 +341,7 @@ function resolveZaiGlm5ForwardCompatModel(
     id: trimmed,
     name: trimmed,
     api: "openai-completions",
-    provider: "zai",
+    provider: normalizedProvider,
     reasoning: true,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
