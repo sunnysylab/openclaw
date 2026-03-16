@@ -105,16 +105,20 @@ export type {
   PluginHookInboundClaimResult,
   PluginInteractiveDiscordHandlerContext,
   PluginInteractiveHandlerRegistration,
+  PluginInteractiveSlackHandlerContext,
   PluginInteractiveTelegramHandlerContext,
   PluginLogger,
   ProviderAuthContext,
+  ProviderAuthDoctorHintContext,
   ProviderAuthResult,
   ProviderAugmentModelCatalogContext,
   ProviderBuiltInModelSuppressionContext,
   ProviderBuiltInModelSuppressionResult,
   ProviderBuildMissingAuthMessageContext,
   ProviderCacheTtlEligibilityContext,
+  ProviderDefaultThinkingPolicyContext,
   ProviderFetchUsageSnapshotContext,
+  ProviderModernModelPolicyContext,
   ProviderPreparedRuntimeAuth,
   ProviderResolvedUsageAuth,
   ProviderPrepareExtraParamsContext,
@@ -124,6 +128,7 @@ export type {
   ProviderResolveDynamicModelContext,
   ProviderNormalizeResolvedModelContext,
   ProviderRuntimeModel,
+  ProviderThinkingPolicyContext,
   ProviderWrapStreamFnContext,
 } from "../plugins/types.js";
 export type {
@@ -229,7 +234,7 @@ export {
 export {
   promptSingleChannelSecretInput,
   type SingleChannelSecretInputPromptResult,
-} from "../channels/plugins/onboarding/helpers.js";
+} from "../channels/plugins/setup-wizard-helpers.js";
 export { buildOauthProviderAuthResult } from "./provider-auth-result.js";
 export { formatResolvedUnresolvedNote } from "./resolution-notes.js";
 export { buildChannelSendResult } from "./channel-send-result.js";

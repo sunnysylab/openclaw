@@ -30,6 +30,11 @@ vi.mock("./status-all/channels.js", () => ({
   buildChannelsTable: mocks.buildChannelsTable,
 }));
 
+vi.mock("./status.scan.runtime.js", () => ({
+  buildChannelsTable: mocks.buildChannelsTable,
+  collectChannelStatusIssues: vi.fn(() => []),
+}));
+
 vi.mock("./status.update.js", () => ({
   getUpdateCheckResult: mocks.getUpdateCheckResult,
 }));
@@ -194,7 +199,7 @@ describe("scanStatus", () => {
     expect(mocks.ensurePluginRegistryLoaded).not.toHaveBeenCalled();
   });
 
-  it("preloads channel plugins for status --json when channel config exists", async () => {
+  it("preloads configured channel plugins for status --json when channel config exists", async () => {
     mocks.readBestEffortConfig.mockResolvedValue({
       session: {},
       plugins: { enabled: false },
@@ -245,13 +250,18 @@ describe("scanStatus", () => {
 
     await scanStatus({ json: true }, {} as never);
 
-    expect(mocks.ensurePluginRegistryLoaded).toHaveBeenCalledWith({ scope: "channels" });
+    expect(mocks.ensurePluginRegistryLoaded).toHaveBeenCalledWith({
+      scope: "configured-channels",
+    });
+    expect(mocks.probeGateway).toHaveBeenCalledWith(
+      expect.objectContaining({ detailLevel: "presence" }),
+    );
     expect(mocks.callGateway).not.toHaveBeenCalledWith(
       expect.objectContaining({ method: "channels.status" }),
     );
   });
 
-  it("preloads channel plugins for status --json when channel auth is env-only", async () => {
+  it("preloads configured channel plugins for status --json when channel auth is env-only", async () => {
     const prevMatrixToken = process.env.MATRIX_ACCESS_TOKEN;
     process.env.MATRIX_ACCESS_TOKEN = "token";
     mocks.readBestEffortConfig.mockResolvedValue({
@@ -310,6 +320,8 @@ describe("scanStatus", () => {
       }
     }
 
-    expect(mocks.ensurePluginRegistryLoaded).toHaveBeenCalledWith({ scope: "channels" });
+    expect(mocks.ensurePluginRegistryLoaded).toHaveBeenCalledWith({
+      scope: "configured-channels",
+    });
   });
 });
