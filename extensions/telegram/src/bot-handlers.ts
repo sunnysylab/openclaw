@@ -896,10 +896,16 @@ export const registerTelegramHandlers = ({
           messageId,
           semantic,
         });
-        enqueueSystemEvent(text, {
+        const enqueued = enqueueSystemEvent(text, {
           sessionKey,
           contextKey: `telegram:reaction:add:${chatId}:${messageId}:${user?.id ?? "anon"}:${reactionEntry.key}`,
         });
+        if (!enqueued) {
+          logVerbose(
+            `telegram: reaction ignored chat=${chatId} msg=${messageId} key=${reactionEntry.key} reason=duplicate-system-event`,
+          );
+          continue;
+        }
         enqueuedCount += 1;
         if (action === "wake") {
           requestedWake = true;

@@ -344,6 +344,7 @@ beforeEach(() => {
   sendMessageDraftSpy.mockReset();
   sendMessageDraftSpy.mockResolvedValue(true);
   enqueueSystemEventSpy.mockReset();
+  enqueueSystemEventSpy.mockReturnValue(true);
   requestHeartbeatNowSpy.mockReset();
   wasSentByBot.mockReset();
   wasSentByBot.mockReturnValue(false);

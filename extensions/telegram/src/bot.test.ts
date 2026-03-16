@@ -1640,6 +1640,54 @@ describe("createTelegramBot", () => {
     });
   });
 
+  it("does not wake for mapped semantic reactions dropped by system-event dedupe", async () => {
+    onSpy.mockClear();
+    enqueueSystemEventSpy.mockClear();
+    enqueueSystemEventSpy.mockReturnValue(false);
+    requestHeartbeatNowSpy.mockClear();
+
+    loadConfig.mockReturnValue({
+      channels: {
+        telegram: {
+          dmPolicy: "open",
+          reactionNotifications: "all",
+          reactionSemantics: {
+            "👍": {
+              meaning: "execute-approved-plan",
+              instruction:
+                "Treat this as operator approval to execute the previously proposed action set if policy allows.",
+            },
+          },
+        },
+      },
+    });
+
+    createTelegramBot({ token: "tok" });
+    const handler = getOnHandler("message_reaction") as (
+      ctx: Record<string, unknown>,
+    ) => Promise<void>;
+
+    await handler({
+      update: { update_id: 501 },
+      messageReaction: {
+        chat: { id: 1234, type: "private" },
+        message_id: 42,
+        user: { id: 9, first_name: "Ada", username: "ada_bot" },
+        date: 1736380800,
+        old_reaction: [],
+        new_reaction: [{ type: "emoji", emoji: "👍" }],
+      },
+    });
+
+    expect(enqueueSystemEventSpy).toHaveBeenCalledWith(
+      "Telegram reaction trigger: execute-approved-plan by Ada (@ada_bot) on msg 42 (reaction_key=emoji:👍). Treat this as operator approval to execute the previously proposed action set if policy allows.",
+      expect.objectContaining({
+        contextKey: expect.stringContaining("telegram:reaction:add:1234:42:9:emoji:👍"),
+      }),
+    );
+    expect(requestHeartbeatNowSpy).not.toHaveBeenCalled();
+  });
+
   it("queues mapped semantic reactions without waking when action is queue", async () => {
     onSpy.mockClear();
     enqueueSystemEventSpy.mockClear();
