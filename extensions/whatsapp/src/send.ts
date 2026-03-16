@@ -1,7 +1,11 @@
 import { loadConfig, type OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { resolveMarkdownTableMode } from "openclaw/plugin-sdk/config-runtime";
 import { generateSecureUuid } from "openclaw/plugin-sdk/core";
-import { normalizePollInput, type PollInput } from "openclaw/plugin-sdk/media-runtime";
+import {
+  isWhatsAppVoiceCompatibleAudio,
+  normalizePollInput,
+  type PollInput,
+} from "openclaw/plugin-sdk/media-runtime";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/runtime-env";
 import { getChildLogger } from "openclaw/plugin-sdk/text-runtime";
 import { redactIdentifier } from "openclaw/plugin-sdk/text-runtime";
@@ -13,27 +17,6 @@ import { type ActiveWebSendOptions, requireActiveWebListener } from "./active-li
 import { loadOutboundMediaFromUrl } from "./runtime-api.js";
 
 const outboundLog = createSubsystemLogger("gateway/channels/whatsapp").child("outbound");
-
-function isWhatsAppVoiceCompatibleAudio(opts: {
-  contentType?: string | null;
-  fileName?: string | null;
-}): boolean {
-  const normalizedContentType = opts.contentType?.trim().toLowerCase();
-  if (
-    normalizedContentType === "audio/ogg" ||
-    normalizedContentType === "audio/ogg; codecs=opus" ||
-    normalizedContentType === "audio/opus"
-  ) {
-    return true;
-  }
-  const normalizedFileName = opts.fileName?.trim().toLowerCase();
-  return Boolean(
-    normalizedFileName &&
-      (normalizedFileName.endsWith(".ogg") ||
-        normalizedFileName.endsWith(".oga") ||
-        normalizedFileName.endsWith(".opus")),
-  );
-}
 
 export async function sendMessageWhatsApp(
   to: string,
