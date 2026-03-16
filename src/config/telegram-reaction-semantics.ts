@@ -8,6 +8,9 @@ export type TelegramReactionSemanticsInvalidKey = {
   rawKey: string;
 };
 
+const TELEGRAM_REACTION_EMOJI_SHORTHAND_PATTERN =
+  /^(?:\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3|\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?)*)$/u;
+
 export function normalizeTelegramReactionKey(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -15,7 +18,7 @@ export function normalizeTelegramReactionKey(raw: string): string | null {
   }
   const parts = /^([a-z_]+):(.*)$/i.exec(trimmed);
   if (!parts) {
-    return `emoji:${trimmed}`;
+    return TELEGRAM_REACTION_EMOJI_SHORTHAND_PATTERN.test(trimmed) ? `emoji:${trimmed}` : null;
   }
   const prefix = parts[1]?.toLowerCase();
   const value = parts[2]?.trim();

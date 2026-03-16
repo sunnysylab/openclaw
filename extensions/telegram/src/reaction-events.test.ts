@@ -9,11 +9,13 @@ import {
 describe("telegram reaction events", () => {
   it("normalizes shorthand emoji keys and explicit custom emoji keys", () => {
     expect(normalizeTelegramReactionKey("👍")).toBe("emoji:👍");
+    expect(normalizeTelegramReactionKey("👨‍💻")).toBe("emoji:👨‍💻");
     expect(normalizeTelegramReactionKey(" emoji:✅ ")).toBe("emoji:✅");
     expect(normalizeTelegramReactionKey("custom_emoji:1234567890123456789")).toBe(
       "custom_emoji:1234567890123456789",
     );
     expect(normalizeTelegramReactionKey("badprefix:value")).toBeNull();
+    expect(normalizeTelegramReactionKey("thumbsup")).toBeNull();
   });
 
   it("collects newly added emoji and custom emoji reactions", () => {
