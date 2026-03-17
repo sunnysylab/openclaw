@@ -19,7 +19,7 @@ import {
   toPluginMessageContext,
   toPluginMessageReceivedEvent,
 } from "../../hooks/message-hook-mappers.js";
-import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { getSessionBindingService } from "../../infra/outbound/session-binding-service.js";
 import {
   logMessageProcessed,
@@ -738,6 +738,23 @@ export async function dispatchReplyFromConfig(params: {
 
     const counts = dispatcher.getQueuedCounts();
     counts.final += routedFinalCount;
+    if (diagnosticsEnabled) {
+      emitDiagnosticEvent({
+        type: "dispatch.path",
+        runId: params.replyOptions?.runId,
+        sessionKey,
+        sessionId: sessionStoreEntry.entry?.sessionId,
+        stage: "dispatch.return",
+        queuedFinal,
+        counts: {
+          final: counts.final,
+          block: counts.block,
+          tool: counts.tool,
+        },
+        summary: "dispatchReplyFromConfig returning queued counts",
+        sourceFile: "src/auto-reply/reply/dispatch-from-config.ts",
+      });
+    }
     recordProcessed(
       "completed",
       pluginFallbackReason ? { reason: pluginFallbackReason } : undefined,

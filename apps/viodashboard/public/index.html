@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vio Dashboard</title>
+  <link rel="stylesheet" href="/styles.css?v=9" />
+  <link rel="stylesheet" href="/vendor/xterm.css" />
+  <script src="/vendor/xterm.js"></script>
+  <script src="/vendor/xterm-addon-fit.js"></script>
+</head>
+<body>
+  <div class="dashboard ide-layout">
+    <header class="topbar card cyan">
+      <div id="setupBanner" class="setup-banner" hidden></div>
+      <div class="topbar-main">
+        <div class="brand">
+          <div class="brand-mark">V</div>
+          <div class="brand-text">
+            <h1>Vio Dashboard</h1>
+            <p>Personal wrapper UI · gateway chat · mood-driven body routing</p>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <button id="runModeChip" type="button" class="chip mode-chip state-idle">mode: source</button>
+          <div id="status" class="chip live">connecting…</div>
+          <div id="mood" class="chip">mood: n/a</div>
+          <div id="routing" class="chip">routing: n/a</div>
+          <div id="cameraTopbar" class="chip">camera: off · none</div>
+        </div>
+      </div>
+    </header>
+
+    <aside class="sidebar panel-shell">
+      <section class="card section explorer-shell">
+        <div class="section-header">
+          <h2 class="section-title">Explorer</h2>
+          <button id="openDirBtn" type="button" class="chip state-idle">files</button>
+        </div>
+        <section class="file-browser-panel explorer-pane">
+          <div class="explorer-toolbar">
+            <button id="fileBackBtn" type="button" class="chip state-idle">↑</button>
+            <button id="fileForwardBtn" type="button" class="chip state-idle">↩</button>
+            <button id="fileRefreshBtn" type="button" class="chip state-idle">⟳</button>
+            <div class="event-sub"><span class="semantic-label">dir</span> <span id="fileBrowserRoot" class="semantic-value">.</span></div>
+          </div>
+          <div id="fileTree" class="file-tree"></div>
+        </section>
+      </section>
+    </aside>
+
+    <div class="resizer vertical" data-resize="sidebar" title="拖动调整左侧宽度"></div>
+
+    <main class="main panel-shell">
+      <section class="card section workspace-panel">
+        <div class="section-header">
+          <h2 class="section-title">INTERACTION</h2>
+          <div id="streamState" class="chip state-idle">idle</div>
+        </div>
+        <div class="workspace-split" id="workspaceSplit">
+          <section class="editor-stack" id="editorStack">
+            <section class="file-editor-pane">
+              <div class="pane-header">
+                <div id="activeFilePath" class="event-sub"><span class="semantic-value">Select a file from Explorer</span></div>
+                <div class="pane-actions">
+                  <button id="fileUndoBtn" type="button" class="chip state-idle">undo</button>
+                  <button id="fileSaveBtn" type="button" class="chip state-idle">save</button>
+                  <div id="fileModeBadge" class="chip state-idle">preview</div>
+                </div>
+              </div>
+              <div class="editor-shell">
+                <pre id="fileHighlight" class="file-highlight" aria-hidden="true"></pre>
+                <textarea id="fileEditor" class="file-editor" spellcheck="false" placeholder="Project file preview / edit area"></textarea>
+              </div>
+            </section>
+
+            <div class="resizer horizontal" data-resize="editor-terminal" title="拖动调整代码区/终端高度"></div>
+
+            <section class="terminal-panel terminal-panel-embedded console-tabs-panel">
+              <div class="console-tabs-header">
+                <div class="console-tabs">
+                  <button id="consoleTabTerminal" type="button" class="console-tab is-active">Terminal</button>
+                  <button id="consoleTabClaude" type="button" class="console-tab">Claude</button>
+                </div>
+              </div>
+
+              <div class="console-pane-stack">
+                <div id="consolePaneTerminal" class="console-pane is-active">
+                  <div id="terminalOutput" class="terminal-output">Last login: just now on ttys000
+Terminal ready.</div>
+                  <form id="terminalForm" class="terminal-form">
+                    <div id="terminalCwd" class="terminal-cwd-inline">.</div>
+                    <label class="terminal-prompt" for="terminalInput">vio@local %</label>
+                    <input id="terminalInput" class="terminal-input" type="text" placeholder="输入命令，例如: ls -la" autocomplete="off" />
+                    <button id="terminalDetachBtn" type="button" class="chip state-idle">Detach</button>
+                    <button id="terminalTerminateBtn" type="button" class="chip state-idle">Terminate</button>
+                    <button type="submit" class="send-btn terminal-send">Run</button>
+                  </form>
+                </div>
+
+                <div id="consolePaneClaude" class="console-pane claude-pane">
+                  <div class="claude-toolbar">
+                    <div id="claudeStatusBadge" class="chip state-idle">idle</div>
+                    <input id="claudeCwdInput" class="claude-cwd-input" type="text" />
+                    <button id="claudeStartBtn" type="button" class="chip state-idle">Start</button>
+                    <button id="claudeStopBtn" type="button" class="chip state-idle">Stop</button>
+                    <button id="claudeRestartBtn" type="button" class="chip state-idle">Restart</button>
+                  </div>
+
+                  <div class="claude-subtoolbar">
+                    <div id="claudeMeta" class="claude-meta event-sub">
+                      <span class="semantic-label">session</span>
+                      <span class="semantic-value">claude-default</span>
+                    </div>
+                    <label class="claude-autoscroll-toggle">
+                      <input id="claudeAutoScroll" type="checkbox" checked />
+                      <span>Auto-scroll</span>
+                    </label>
+                  </div>
+
+                  <div id="claudeTerminalHost" class="claude-terminal-host"></div>
+                  <pre id="claudeOutput" class="claude-output" hidden>Claude panel ready.</pre>
+
+                  <form id="claudeComposer" class="claude-composer" autocomplete="off">
+                    <div class="claude-composer-main">
+                      <textarea id="claudeComposerInput" class="claude-composer-input" rows="2" placeholder="Send a message to Claude…"></textarea>
+                      <div class="claude-composer-meta">
+                        <div id="claudeComposerStatus" class="claude-composer-status">Enter 发送 · Shift+Enter 换行</div>
+                        <button id="claudeComposerSendBtn" type="submit" class="send-btn claude-composer-send">Send</button>
+                      </div>
+                    </div>
+                  </form>
+
+                  <div id="claudeError" class="claude-error"></div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <div class="resizer split-resizer" data-resize="workspace" title="拖动调整编辑器/聊天比例"></div>
+
+          <section class="chat-pane">
+            <div class="chat-stack">
+              <div class="chat-shell">
+                <div id="chat" class="chat"></div>
+              </div>
+              <div class="chat-continue-slot">
+                <button id="stopBtn" type="button" class="chat-stop-btn" hidden>Stop</button>
+                <div id="stopStatusBadge" class="chip state-idle stop-status-badge" hidden>Stopped</div>
+                <button id="continueBtn" type="button" class="chat-continue-fab">继续</button>
+              </div>
+              <form id="composer" class="composer-panel composer-inline">
+                <div class="section-header compact composer-header">
+                  <h2 class="section-title">Input</h2>
+                </div>
+                <div class="composer-shell">
+                  <textarea id="input" placeholder="输入消息…" rows="4"></textarea>
+                  <button type="submit" class="send-btn">Send</button>
+                </div>
+              </form>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <div class="resizer vertical" data-resize="right" title="拖动调整右侧宽度"></div>
+
+    <section class="right panel-shell compact-rail">
+      <section class="card section compact-rail-card system-core-card">
+        <div class="section-header compact compact-rail-header">
+          <h2 class="section-title">System</h2>
+          <a class="chip telemetry-link" href="/setup.html" target="_blank" rel="noreferrer">setup</a>
+          <a class="chip telemetry-link" href="/telemetry.html" target="_blank" rel="noreferrer">telemetry</a>
+        </div>
+        <div class="status-list compact-event-list">
+          <div class="agent-row"><div class="agent-left"><span id="wrapperDot" class="dot status-runtime"></span><div class="agent-meta"><div class="agent-name semantic-label">Wrapper</div><div class="agent-sub semantic-value">Local dashboard runtime</div></div></div><div class="event-actions-inline"><button id="wrapperRestartBtn" type="button" class="chip state-idle token-saver-toggle">Restart</button></div></div>
+          <div class="agent-row"><div class="agent-left"><span id="gatewayDot" class="dot status-link"></span><div class="agent-meta"><div class="agent-name semantic-label">Gateway</div><div id="sessionKey" class="agent-sub semantic-value">session: unknown</div></div></div><div class="event-actions-inline"><button id="gatewayRestartBtn" type="button" class="chip state-idle token-saver-toggle">Restart</button></div></div>
+          <div class="agent-row"><div class="agent-left"><span id="distDot" class="dot status-link"></span><div class="agent-meta"><div class="agent-name semantic-label">Dist</div><div id="distDetail" class="agent-sub semantic-value">loading…</div></div></div><div class="event-actions-inline"><button id="distRebuildBtn" type="button" class="chip state-idle token-saver-toggle">Rebuild</button></div></div>
+          <div class="event-row token-saver-row"><div class="agent-left"><span id="tokenSaverDot" class="dot window-mid"></span><div class="event-meta"><div class="event-name semantic-label">Token Saver</div><div id="tokenSaverDetail" class="event-sub semantic-value">loading…</div></div></div><div class="event-actions-inline token-saver-actions"><button id="tokenSaverToggleBtn" type="button" class="chip state-idle token-saver-toggle">...</button><div class="token-saver-levels"><button id="tokenSaverPhase1Btn" type="button" class="chip state-idle token-saver-toggle">L1</button><button id="tokenSaverPhase2Btn" type="button" class="chip state-idle token-saver-toggle">L2</button></div></div></div>
+          <div class="event-row"><div class="agent-left"><span id="contextDot" class="dot window-mid"></span><div class="event-meta"><div class="event-name semantic-label">Context</div><div id="contextDetail" class="event-sub semantic-value">sessions.list: n/a · diag: n/a</div></div></div><div class="event-actions-inline"><button id="contextCompactBtn" type="button" class="chip state-idle token-saver-toggle">Compact</button></div></div>
+        </div>
+      </section>
+
+      <section class="card section compact-rail-card system-context-card">
+        <div class="section-header compact compact-rail-header">
+          <h2 class="section-title">DEBUG</h2>
+        </div>
+        <div class="event-list compact-event-list">
+          <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Safe Edit</div><div id="safeEditSummary" class="event-sub semantic-value">loading…</div></div><span id="safeEditDot" class="dot window-mid"></span></div>
+          <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Transaction</div><div id="safeEditTxnDetail" class="event-sub semantic-value">n/a</div></div></div>
+          <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Smoke</div><div id="safeEditSmokeDetail" class="event-sub semantic-value">n/a</div></div></div>
+        </div>
+        <div id="debugLog" class="stream-body compact-debug"></div>
+      </section>
+<div id="chatFlowValue" style="display:none"></div><div id="chatFlowDetail" style="display:none"></div><div id="bodyLinkValue" style="display:none"></div><div id="bodyLinkDetail" style="display:none"></div><div id="lastTokensDetail" style="display:none"></div><div id="totalTokensDetail" style="display:none"></div><div id="modelWindowDetail" style="display:none"></div><span id="modelWindowDot" style="display:none"></span><div id="devInfo" style="display:none"></div><div id="cssHash" style="display:none"></div><div id="appHash" style="display:none"></div><select id="settingAnimations" style="display:none"></select><select id="settingCompact" style="display:none"></select><select id="settingTelemetry" style="display:none"></select>
+    </section>
+  </div>
+  <script type="module" src="/app.js"></script>
+  <script>
+    (function () {
+      function installFallbackUi() {
+        const termTab = document.getElementById('consoleTabTerminal');
+        const claudeTab = document.getElementById('consoleTabClaude');
+        const termPane = document.getElementById('consolePaneTerminal');
+        const claudePane = document.getElementById('consolePaneClaude');
+        const form = document.getElementById('composer');
+        const input = document.getElementById('input');
+        const chat = document.getElementById('chat');
+        const status = document.getElementById('status');
+        if (window.__VIO_FALLBACK_UI_INSTALLED__) {return;}
+        window.__VIO_FALLBACK_UI_INSTALLED__ = true;
+
+        function setTab(tab) {
+          const isClaude = tab === 'claude';
+          termTab?.classList.toggle('is-active', !isClaude);
+          claudeTab?.classList.toggle('is-active', isClaude);
+          termPane?.classList.toggle('is-active', !isClaude);
+          claudePane?.classList.toggle('is-active', isClaude);
+        }
+
+        termTab?.addEventListener('click', () => setTab('terminal'));
+        claudeTab?.addEventListener('click', () => setTab('claude'));
+
+        let ws;
+        function connectWs() {
+          try {
+            ws = new WebSocket(`ws://${location.host}/ws`);
+          } catch {
+            return;
+          }
+          ws.addEventListener('open', () => {
+            if (status) {status.textContent = 'wrapper connected';}
+          });
+          ws.addEventListener('message', ev => {
+            try {
+              const msg = JSON.parse(ev.data);
+              if (msg.type === 'chat') {
+                const text = msg?.event?.message?.text || msg?.event?.text || '';
+                const role = msg?.event?.message?.role || msg?.event?.role || 'assistant';
+                if (chat && text) {
+                  const row = document.createElement('div');
+                  row.className = `msg-row ${role}`;
+                  row.innerHTML = `<div class="avatar">${role === 'user' ? 'X' : 'V'}</div><div class="msg-bubble-wrap"><div class="msg-meta ${role}">${role === 'user' ? 'Xin' : 'Vio'}</div><div class="msg ${role}"></div></div>`;
+                  row.querySelector('.msg').textContent = text;
+                  chat.appendChild(row);
+                  chat.scrollTop = chat.scrollHeight;
+                }
+              }
+            } catch {}
+          });
+          ws.addEventListener('close', () => setTimeout(connectWs, 1000));
+        }
+        connectWs();
+
+        form?.addEventListener('submit', ev => {
+          ev.preventDefault();
+          const text = String(input?.value || '').trim();
+          if (!text || !ws || ws.readyState !== 1) {return;}
+          const row = document.createElement('div');
+          row.className = 'msg-row user';
+          row.innerHTML = `<div class="avatar">X</div><div class="msg-bubble-wrap"><div class="msg-meta user">Xin</div><div class="msg user"></div></div>`;
+          row.querySelector('.msg').textContent = text;
+          chat?.appendChild(row);
+          chat.scrollTop = chat.scrollHeight;
+          ws.send(JSON.stringify({ type: 'send', text }));
+          input.value = '';
+        });
+      }
+
+      setTimeout(() => {
+        if (!window.__VIO_APP_LOADED__) {
+          installFallbackUi();
+        }
+      }, 1200);
+    })();
+  </script>
+</body>
+</html>

@@ -39,6 +39,12 @@ title: "OpenClaw"
   <Card title="Open the Control UI" href="/web/control-ui" icon="layout-dashboard">
     Launch the browser dashboard for chat, config, and sessions.
   </Card>
+  <Card title="Source Architecture Quick Map" href="/concepts/source-architecture-quick-map" icon="map">
+    Fast-entry source map for tracing Gateway, auto-reply, agent execution, and observability seams.
+  </Card>
+  <Card title="Execution Flow Observability Schema" href="/concepts/execution-flow-observability-schema" icon="radar">
+    Canonical stage and event model for tracing user input through preprocess, prompt assembly, tool loops, finalization, and outbound delivery.
+  </Card>
 </Columns>
 
 ## What is OpenClaw?

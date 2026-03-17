@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dry Diff Viewer</title>
+  <link rel="stylesheet" href="/styles.css?v=6" />
+  <style>
+    body { overflow: auto; }
+    .drydiff-page { width: min(1800px, calc(100vw - 24px)); margin: 12px auto; display: grid; gap: 12px; }
+    .drydiff-grid { display: grid; grid-template-columns: 320px 1fr; gap: 12px; min-height: calc(100vh - 120px); }
+    .drydiff-list { min-height: 0; overflow: auto; display: grid; gap: 8px; }
+    .drydiff-item { width: 100%; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0,255,198,.14); background: rgba(255,255,255,.02); color: var(--text); }
+    .drydiff-item.active { border-color: rgba(255,46,136,.32); box-shadow: 0 0 14px rgba(255,46,136,.10); }
+    .drydiff-panels { display: grid; grid-template-rows: auto 1fr; gap: 12px; min-width: 0; min-height: 0; }
+    .drydiff-panel-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; min-height: 0; }
+    .drydiff-json { min-height: 520px; max-height: calc(100vh - 220px); overflow: auto; background: rgba(8,12,24,.92); border: 1px solid rgba(0,255,198,.10); border-radius: 12px; padding: 12px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; text-shadow: none; white-space: pre-wrap; word-break: break-word; }
+    @media (max-width: 1200px) { .drydiff-grid { grid-template-columns: 1fr; } .drydiff-panel-grid { grid-template-columns: 1fr; } .drydiff-json { max-height: none; min-height: 280px; } }
+  </style>
+</head>
+<body>
+  <div class="drydiff-page">
+    <section class="card section">
+      <div class="section-header"><h1 class="section-title">Dry Diff Viewer</h1><a class="chip telemetry-link" href="/">wrapper</a></div>
+      <div class="event-sub"><span class="semantic-value">独立查看 before / after / diff-summary</span></div>
+      <div class="event-row" style="margin-top:10px;"><div class="event-meta"><div class="event-name semantic-label">Note</div><div class="event-sub semantic-value">当前是 observe-only 阶段。after 代表模拟结构视图，不是正式节流后的真实发送内容，所以它可能比 before 更长；请优先关注 role、messageCount、tool 信息和 system message 改写情况，而不是先看长度是否变短。</div></div></div>
+    </section>
+    <div class="drydiff-grid">
+      <section class="card section">
+        <div class="section-header"><h2 class="section-title">Runs</h2><button id="refreshRunsBtn" class="chip state-idle" type="button">refresh</button></div>
+        <div id="runsList" class="drydiff-list"></div>
+      </section>
+      <section class="drydiff-panels">
+        <section class="card section">
+          <div class="section-header"><h2 id="runTitle" class="section-title">No run selected</h2><div id="runMeta" class="event-sub"><span class="semantic-value">n/a</span></div></div>
+        </section>
+        <div class="drydiff-panel-grid">
+          <section class="card section"><div class="section-header"><h2 class="section-title">Before</h2></div><pre id="beforeJson" class="drydiff-json">Select a run</pre></section>
+          <section class="card section"><div class="section-header"><h2 class="section-title">After</h2></div><pre id="afterJson" class="drydiff-json">Select a run</pre></section>
+          <section class="card section"><div class="section-header"><h2 class="section-title">Diff</h2></div><pre id="diffJson" class="drydiff-json">Select a run</pre></section>
+        </div>
+      </section>
+    </div>
+  </div>
+  <script type="module" src="/dry-diff.js"></script>
+</body>
+</html>

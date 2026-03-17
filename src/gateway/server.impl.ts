@@ -29,7 +29,7 @@ import {
   resolveControlUiRootOverrideSync,
   resolveControlUiRootSync,
 } from "../infra/control-ui-assets.js";
-import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
+import { isDiagnosticsEnabled, onDiagnosticEvent } from "../infra/diagnostic-events.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
 import { createExecApprovalForwarder } from "../infra/exec-approval-forwarder.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
@@ -802,6 +802,25 @@ export async function startGatewayServer(
         broadcast("heartbeat", evt, { dropIfSlow: true });
       });
 
+  const diagnosticUnsub = minimalTestGateway
+    ? null
+    : onDiagnosticEvent((evt) => {
+        if (evt.type === "model.usage") {
+          broadcast("diagnostic", evt, { dropIfSlow: true });
+          return;
+        }
+        if (
+          evt.type !== "message.ingressed" &&
+          evt.type !== "prompt.assembled" &&
+          evt.type !== "dispatch.path" &&
+          evt.type !== "final.path" &&
+          evt.type !== "final.committed"
+        ) {
+          return;
+        }
+        log.info(`[observability] ${evt.type} ${JSON.stringify(evt)}`);
+      });
+
   let heartbeatRunner: HeartbeatRunner = minimalTestGateway
     ? {
         stop: () => {},
@@ -1147,6 +1166,7 @@ export async function startGatewayServer(
       authRateLimiter?.dispose();
       browserAuthRateLimiter.dispose();
       channelHealthMonitor?.stop();
+      diagnosticUnsub?.();
       clearSecretsRuntimeSnapshot();
       await close(opts);
     },

@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "description": "Token saver dry-diff schema for observe-only mode. Real outbound must remain unchanged; after.json is simulated only.",
+  "files": {
+    "before.json": {
+      "required": [
+        "schemaVersion",
+        "runId",
+        "mode",
+        "phase",
+        "createdAt",
+        "messageCount",
+        "roles",
+        "recentThreeRoles",
+        "toolCallIds",
+        "toolNames",
+        "systemMessageRewritten",
+        "userPayload",
+        "contextEnvelope"
+      ]
+    },
+    "after.json": {
+      "required": [
+        "schemaVersion",
+        "runId",
+        "mode",
+        "phase",
+        "createdAt",
+        "messageCount",
+        "roles",
+        "recentThreeRoles",
+        "toolCallIds",
+        "toolNames",
+        "systemMessageRewritten",
+        "outboundMessage",
+        "extraSystemPrompt"
+      ]
+    },
+    "diff-summary.json": {
+      "required": [
+        "schemaVersion",
+        "runId",
+        "mode",
+        "createdAt",
+        "files",
+        "diff"
+      ]
+    }
+  },
+  "fieldNotes": {
+    "mode": "dry-observe-only | active-compression",
+    "messageCount": "Total logical message count seen by token-saver snapshot for this send.",
+    "roles": "Ordered role list for all logical messages considered in the snapshot.",
+    "recentThreeRoles": "Ordered roles for the most recent three logical messages.",
+    "toolCallIds": "Ordered tool_call_id list when available; empty array when none are present or not observable.",
+    "toolNames": "Ordered tool/tool-function names when available.",
+    "systemMessageRewritten": "Boolean flag indicating whether the effective system prompt was structurally rewritten.",
+    "userPayload": "Visible user payload summary before any simulated compression.",
+    "contextEnvelope": "Context payload summary before simulated compression.",
+    "outboundMessage": "Simulated outbound payload summary after token-saver logic.",
+    "extraSystemPrompt": "Effective extra system prompt summary after token-saver logic.",
+    "diff": {
+      "messageCountChanged": "Boolean",
+      "rolesChanged": "Boolean",
+      "recentThreeRolesChanged": "Boolean",
+      "toolCallIdsChanged": "Boolean",
+      "toolNamesChanged": "Boolean",
+      "systemMessageRewrittenChanged": "Boolean",
+      "summary": "Human-readable single-line diff summary"
+    }
+  }
+}

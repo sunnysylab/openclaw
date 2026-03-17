@@ -1,0 +1,100 @@
+{
+  "cases": [
+    {
+      "case_id": "success-approve",
+      "expected": {
+        "root_final_status": "approved",
+        "review_task_count": 1,
+        "review_verdicts": ["approve"],
+        "max_retry_count": 0,
+        "max_revise_count": 0,
+        "root_timeline_segments": [
+          "created -> planned",
+          "planned -> running",
+          "running -> approved"
+        ]
+      },
+      "actual_extract": {
+        "root_final_status": "snapshot.rootTasks[0].current_status",
+        "review_task_count": "snapshot.taskExecutions.filter(t => t.kind === 'review').length",
+        "review_verdicts": "snapshot.reviews.map(r => r.verdict)",
+        "max_retry_count": "Math.max(...snapshot.taskExecutions.filter(t => t.kind !== 'review').map(t => t.retry_count || 0))",
+        "max_revise_count": "Math.max(...snapshot.taskExecutions.filter(t => t.kind !== 'review').map(t => t.revise_count || 0))"
+      }
+    },
+    {
+      "case_id": "success-revise-approve",
+      "expected": {
+        "root_final_status": "approved",
+        "review_task_count": 2,
+        "review_verdicts": ["revise", "approve"],
+        "max_retry_count": 0,
+        "max_revise_count": 1,
+        "root_timeline_segments": [
+          "created -> planned",
+          "planned -> running",
+          "running -> revise_requested",
+          "revise_requested -> running",
+          "running -> approved"
+        ]
+      },
+      "actual_extract": {
+        "root_final_status": "snapshot.rootTasks[0].current_status",
+        "review_task_count": "snapshot.taskExecutions.filter(t => t.kind === 'review').length",
+        "review_verdicts": "snapshot.reviews.map(r => r.verdict)",
+        "max_retry_count": "Math.max(...snapshot.taskExecutions.filter(t => t.kind !== 'review').map(t => t.retry_count || 0))",
+        "max_revise_count": "Math.max(...snapshot.taskExecutions.filter(t => t.kind !== 'review').map(t => t.revise_count || 0))"
+      }
+    },
+    {
+      "case_id": "failed-retry-success",
+      "expected": {
+        "root_final_status": "approved",
+        "review_task_count": 1,
+        "review_verdicts": ["approve"],
+        "max_retry_count": 1,
+        "max_revise_count": 0,
+        "root_timeline_segments": [
+          "created -> planned",
+          "planned -> running",
+          "running -> partial",
+          "partial -> running",
+          "running -> approved"
+        ]
+      },
+      "actual_extract": {
+        "root_final_status": "snapshot.rootTasks[0].current_status",
+        "review_task_count": "snapshot.taskExecutions.filter(t => t.kind === 'review').length",
+        "review_verdicts": "snapshot.reviews.map(r => r.verdict)",
+        "max_retry_count": "Math.max(...snapshot.taskExecutions.filter(t => t.kind !== 'review').map(t => t.retry_count || 0))",
+        "max_revise_count": "Math.max(...snapshot.taskExecutions.filter(t => t.kind !== 'review').map(t => t.revise_count || 0))"
+      }
+    },
+    {
+      "case_id": "failed-retry-success-code-target",
+      "expected": {
+        "root_final_status": "approved",
+        "review_task_count": 1,
+        "review_verdicts": ["approve"],
+        "code_retry_count": 1,
+        "research_retry_count": 0,
+        "max_revise_count": 0,
+        "root_timeline_segments": [
+          "created -> planned",
+          "planned -> running",
+          "running -> partial",
+          "partial -> running",
+          "running -> approved"
+        ]
+      },
+      "actual_extract": {
+        "root_final_status": "snapshot.rootTasks[0].current_status",
+        "review_task_count": "snapshot.taskExecutions.filter(t => t.kind === 'review').length",
+        "review_verdicts": "snapshot.reviews.map(r => r.verdict)",
+        "code_retry_count": "(snapshot.taskExecutions.find(t => t.task_id === 'demo-retry-code-001::code') || {}).retry_count || 0",
+        "research_retry_count": "(snapshot.taskExecutions.find(t => t.task_id === 'demo-retry-code-001::research') || {}).retry_count || 0",
+        "max_revise_count": "Math.max(...snapshot.taskExecutions.filter(t => t.kind !== 'review').map(t => t.revise_count || 0))"
+      }
+    }
+  ]
+}

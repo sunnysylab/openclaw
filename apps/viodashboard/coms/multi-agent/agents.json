@@ -1,0 +1,101 @@
+{
+  "version": "v1",
+  "agents": [
+    {
+      "id": "orchestrator",
+      "role": "orchestrator",
+      "description": "Split root tasks, assign agents, route models, collect outputs, and produce the final merged response.",
+      "default_model": "model-main-stable",
+      "fallback_model": null,
+      "thinking": "medium",
+      "tool_mode": "limited",
+      "allowed_tools": ["read"],
+      "input_contract": {
+        "requires_goal": true,
+        "requires_context": true,
+        "requires_constraints": false
+      },
+      "output_contract": {
+        "format": "agent_report_v1"
+      },
+      "review_required": false,
+      "reviewer_pool": [],
+      "runtime_binding": {
+        "dispatch_mode": "per-dispatch",
+        "session_key": null
+      }
+    },
+    {
+      "id": "coder",
+      "role": "implementation",
+      "description": "Implement code or configuration changes and return structured change reports.",
+      "default_model": "model-code-1",
+      "fallback_model": "model-code-2",
+      "thinking": "medium",
+      "tool_mode": "full",
+      "allowed_tools": ["read", "edit", "exec"],
+      "input_contract": {
+        "requires_goal": true,
+        "requires_context": true,
+        "requires_constraints": true
+      },
+      "output_contract": {
+        "format": "agent_report_v1"
+      },
+      "review_required": true,
+      "reviewer_pool": ["reviewer"],
+      "runtime_binding": {
+        "dispatch_mode": "per-dispatch",
+        "session_key": null
+      }
+    },
+    {
+      "id": "researcher",
+      "role": "research",
+      "description": "Inspect existing architecture, gather references, compare options, and produce structured findings.",
+      "default_model": "model-research-1",
+      "fallback_model": "model-general-1",
+      "thinking": "medium",
+      "tool_mode": "limited",
+      "allowed_tools": ["read", "web_search", "web_fetch"],
+      "input_contract": {
+        "requires_goal": true,
+        "requires_context": true,
+        "requires_constraints": false
+      },
+      "output_contract": {
+        "format": "agent_report_v1"
+      },
+      "review_required": true,
+      "reviewer_pool": ["reviewer"],
+      "runtime_binding": {
+        "dispatch_mode": "per-dispatch",
+        "session_key": null
+      }
+    },
+    {
+      "id": "reviewer",
+      "role": "review",
+      "description": "Review outputs for correctness, completeness, risk, and policy compliance.",
+      "default_model": "model-review-1",
+      "fallback_model": "model-review-2",
+      "thinking": "high",
+      "tool_mode": "limited",
+      "allowed_tools": ["read"],
+      "input_contract": {
+        "requires_goal": true,
+        "requires_context": true,
+        "requires_constraints": true
+      },
+      "output_contract": {
+        "format": "review_report_v1"
+      },
+      "review_required": false,
+      "reviewer_pool": [],
+      "runtime_binding": {
+        "dispatch_mode": "per-dispatch",
+        "session_key": null
+      }
+    }
+  ]
+}

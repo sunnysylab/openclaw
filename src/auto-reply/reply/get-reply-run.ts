@@ -8,6 +8,11 @@ import {
   isEmbeddedPiRunStreaming,
   resolveEmbeddedSessionLane,
 } from "../../agents/pi-embedded.js";
+import {
+  buildWorkflowPlanningGateText,
+  selectWorkflowForPlanning,
+  shouldRequireWorkflowPlanningGate,
+} from "../../agents/workflow-selector.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import {
   resolveGroupSessionKey,
@@ -17,6 +22,7 @@ import {
   updateSessionStore,
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
+import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
@@ -387,6 +393,20 @@ export async function runPreparedReply(
   let prefixedCommandBody = mediaNote
     ? [mediaNote, mediaReplyHint, prefixedBody ?? ""].filter(Boolean).join("\n").trim()
     : prefixedBody;
+  const workflowPlanningGateText = shouldRequireWorkflowPlanningGate({
+    userTask: rawBodyTrimmed || baseBodyTrimmedRaw || prefixedCommandBody,
+    workspaceDir,
+  })
+    ? buildWorkflowPlanningGateText(
+        selectWorkflowForPlanning({
+          userTask: rawBodyTrimmed || baseBodyTrimmedRaw || prefixedCommandBody,
+          workspaceDir,
+        }),
+      )
+    : "";
+  if (workflowPlanningGateText) {
+    prefixedCommandBody = `${workflowPlanningGateText}\n\n${prefixedCommandBody}`.trim();
+  }
   if (!resolvedThinkLevel) {
     resolvedThinkLevel = await modelState.resolveDefaultThinkingLevel();
   }
@@ -432,7 +452,10 @@ export async function runPreparedReply(
   );
   // Use bodyWithEvents (events prepended, but no session hints / untrusted context) so
   // deferred turns receive system events while keeping the same scope as effectiveBaseBody did.
-  const queueBodyBase = [threadContextNote, bodyWithEvents].filter(Boolean).join("\n\n");
+  const queueBodyBaseRaw = [threadContextNote, bodyWithEvents].filter(Boolean).join("\n\n");
+  const queueBodyBase = workflowPlanningGateText
+    ? `${workflowPlanningGateText}\n\n${queueBodyBaseRaw}`.trim()
+    : queueBodyBaseRaw;
   const queuedBody = mediaNote
     ? [mediaNote, mediaReplyHint, queueBodyBase].filter(Boolean).join("\n").trim()
     : queueBodyBase;
@@ -443,6 +466,22 @@ export async function runPreparedReply(
     inlineMode: perMessageQueueMode,
     inlineOptions: perMessageQueueOptions,
   });
+  if (isDiagnosticsEnabled(cfg)) {
+    emitDiagnosticEvent({
+      type: "prompt.assembled",
+      runId: opts?.runId,
+      sessionKey,
+      sessionId: sessionIdFinal,
+      provider,
+      model,
+      queueMode: resolvedQueue.mode,
+      hasThreadContext: Boolean(threadContextNote),
+      hasSystemEvents: Boolean(eventsBlock),
+      summary: "Agent-facing prompt assembled",
+      bodyPreview: prefixedCommandBody.slice(0, 240),
+      sourceFile: "src/auto-reply/reply/get-reply-run.ts",
+    });
+  }
   const sessionLaneKey = resolveEmbeddedSessionLane(sessionKey ?? sessionIdFinal);
   const laneSize = getQueueSize(sessionLaneKey);
   if (resolvedQueue.mode === "interrupt" && laneSize > 0) {

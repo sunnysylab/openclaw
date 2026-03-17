@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vio Telemetry</title>
+  <link rel="stylesheet" href="/telemetry.css?v=2" />
+</head>
+<body>
+  <main class="telemetry-shell compact-two-col">
+    <section class="hero card telemetry-span-2">
+      <div class="hero-top">
+        <div>
+          <div class="eyebrow">Vio Observer</div>
+          <h1 id="heroMood">idle</h1>
+          <div id="heroRouting" class="hero-sub">routing n/a</div>
+        </div>
+        <div class="hero-badges">
+          <span id="heroLight" class="pill">light n/a</span>
+          <span id="heroQuiet" class="pill">day mode</span>
+        </div>
+      </div>
+      <div class="hero-grid">
+        <div class="metric"><span class="k">model</span><span id="heroModel" class="v">n/a</span></div>
+        <div class="metric"><span class="k">last tokens</span><span id="heroLastTokens" class="v">n/a</span></div>
+        <div class="metric"><span class="k">total tokens</span><span id="heroTotalTokens" class="v">0</span></div>
+        <div class="metric"><span class="k">window</span><span id="heroWindow" class="v">n/a</span></div>
+      </div>
+    </section>
+
+    <section class="card block">
+      <div class="block-title">Environment</div>
+      <div id="environmentSummary" class="block-main">loading…</div>
+      <div id="environmentDetail" class="block-sub">waiting for VioBody state</div>
+    </section>
+
+    <section class="card block">
+      <div class="block-title">Observer Notes</div>
+      <div class="block-main" id="observerNotesMain">compact mode</div>
+      <div class="block-sub" id="observerNotesDetail">Telemetry is optimized for the vertical side display.</div>
+    </section>
+
+    <section class="card block telemetry-span-2 task-panel">
+      <div class="panel-head">
+        <div>
+          <div class="block-title">Task Board</div>
+          <div class="block-sub">Track active work with explicit lifecycle controls: deploy, candidate, complete, block, reopen.</div>
+        </div>
+        <button id="addTaskBtn" class="pill action-pill" type="button">add task</button>
+      </div>
+      <div class="task-input-row">
+        <input id="taskInput" class="task-input" type="text" placeholder="记录今天的 todo…" />
+      </div>
+      <div id="taskBatchToolbar" class="task-batch-toolbar" hidden>
+        <div class="task-batch-summary"><span id="taskBatchCount">0</span> selected · deploy together in one batch</div>
+        <div class="task-batch-actions">
+          <button id="taskBatchDeployBtn" class="pill action-pill task-batch-deploy-btn" type="button">deploy selected</button>
+          <button id="taskBatchClearBtn" class="pill action-pill task-batch-clear-btn" type="button">clear selection</button>
+        </div>
+      </div>
+      <div id="taskList" class="task-list"></div>
+    </section>
+
+    <section class="card block telemetry-span-2 package-panel">
+      <div class="panel-head">
+        <div>
+          <div class="block-title">Road Map</div>
+          <div class="block-sub">Auto-refreshes from the latest backend roadmap after each assistant reply.</div>
+        </div>
+      </div>
+      <div class="roadmap-meta-row"><div id="roadmapMeta" class="block-sub">waiting for roadmap…</div></div>
+      <div id="roadmapBatchToolbar" class="task-batch-toolbar roadmap-batch-toolbar" hidden>
+        <div class="task-batch-summary"><span id="roadmapBatchCount">0</span> selected · claim together into Task Board</div>
+        <div class="task-batch-actions">
+          <button id="roadmapBatchClaimBtn" class="pill action-pill task-batch-deploy-btn" type="button">claim selected</button>
+          <button id="roadmapBatchClearBtn" class="pill action-pill task-batch-clear-btn" type="button">clear selection</button>
+        </div>
+      </div>
+      <div id="packageList" class="package-list"></div>
+    </section>
+
+
+    <section class="card block telemetry-span-2 history-panel">
+      <div class="panel-head">
+        <div>
+          <div class="block-title">Task History</div>
+          <div class="block-sub">Historical roadmaps and tasks in a compact audit-oriented view.</div>
+        </div>
+      </div>
+      <div class="history-grid history-grid-main">
+        <section class="history-column">
+          <div class="history-column-head">
+            <div class="history-column-title">Roadmap History</div>
+            <button id="clearRoadmapHistoryBtn" class="history-clear-btn" type="button">clear</button>
+          </div>
+          <div id="roadmapHistoryList" class="history-list"></div>
+        </section>
+        <section class="history-column">
+          <div class="history-column-head">
+            <div class="history-column-title">Task History</div>
+            <button id="clearTaskHistoryBtn" class="history-clear-btn" type="button">clear</button>
+          </div>
+          <div id="taskHistoryList" class="history-list"></div>
+        </section>
+      </div>
+      <details class="deleted-panel" id="deletedTasksFold">
+        <summary>
+          <span class="history-column-title">Deleted Tasks</span><button id="clearDeletedTasksBtn" class="history-clear-btn" type="button">clear</button>
+          <span class="summary-hint">collapsed</span>
+        </summary>
+        <div id="deletedTaskList" class="history-list deleted-task-list"></div>
+      </details>
+    </section>
+
+    <details class="card block telemetry-span-2 fold-section" id="telemetryVisionFold">
+      <summary>
+        <span class="block-title summary-title">Camera & Gesture</span>
+        <span class="summary-hint">collapsed</span>
+      </summary>
+      <div class="fold-grid">
+        <section class="card block inner-block">
+          <div class="block-title">Gesture Engine</div>
+          <div id="gestureSummary" class="block-main">watcher off</div>
+          <div id="gestureDetail" class="block-sub">provider pending</div>
+        </section>
+
+        <section class="card preview-card inner-block">
+          <div class="block-title">Camera Preview</div>
+          <img id="cameraPreview" class="preview preview-small" alt="camera preview" />
+          <div id="cameraMeta" class="block-sub">no capture yet</div>
+        </section>
+      </div>
+    </details>
+
+    <section class="card block telemetry-span-2">
+      <div class="block-title">Debug Stream</div>
+      <div id="debugStream" class="debug-stream"></div>
+    </section>
+  </main>
+  <script type="module" src="/telemetry.js?v=3"></script>
+</body>
+</html>

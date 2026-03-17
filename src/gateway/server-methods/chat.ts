@@ -11,6 +11,7 @@ import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.j
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import { createReplyPrefixOptions } from "../../channels/reply-prefix.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
+import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import { normalizeInputProvenance, type InputProvenance } from "../../sessions/input-provenance.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
@@ -894,11 +895,27 @@ function broadcastChatFinal(params: {
   runId: string;
   sessionKey: string;
   message?: Record<string, unknown>;
+  diagnosticsEnabled?: boolean;
 }) {
   const seq = nextChatSeq({ agentRunSeq: params.context.agentRunSeq }, params.runId);
   const strippedEnvelopeMessage = stripEnvelopeFromMessage(params.message) as
     | Record<string, unknown>
     | undefined;
+  if (params.diagnosticsEnabled) {
+    emitDiagnosticEvent({
+      type: "dispatch.path",
+      runId: params.runId,
+      sessionKey: params.sessionKey,
+      stage: "chat.broadcast.final",
+      hasMessage: Boolean(strippedEnvelopeMessage),
+      messageStopReason:
+        typeof strippedEnvelopeMessage?.stopReason === "string"
+          ? strippedEnvelopeMessage.stopReason
+          : undefined,
+      summary: "broadcastChatFinal sending final chat event",
+      sourceFile: "src/gateway/server-methods/chat.ts",
+    });
+  }
   const payload = {
     runId: params.runId,
     sessionKey: params.sessionKey,
@@ -1313,6 +1330,23 @@ export const chatHandlers: GatewayRequestHandlers = {
         GatewayClientScopes: client?.connect?.scopes,
       };
 
+      if (isDiagnosticsEnabled(cfg)) {
+        emitDiagnosticEvent({
+          type: "message.ingressed",
+          runId: clientRunId,
+          sessionKey,
+          sessionId: entry?.sessionId ?? clientRunId,
+          channel: originatingChannel,
+          provider: INTERNAL_MESSAGE_CHANNEL,
+          messageId: clientRunId,
+          summary:
+            rawMessage.length > 0
+              ? `Inbound chat accepted: ${rawMessage.slice(0, 120)}`
+              : "Inbound chat accepted",
+          sourceFile: "src/gateway/server-methods/chat.ts",
+        });
+      }
+
       const agentId = resolveSessionAgentId({
         sessionKey,
         config: cfg,
@@ -1377,6 +1411,27 @@ export const chatHandlers: GatewayRequestHandlers = {
               .filter(Boolean)
               .join("\n\n")
               .trim();
+            const finalReplyParts = deliveredReplies
+              .filter((entry) => entry.kind === "final")
+              .map((entry) => entry.payload.text?.trim() ?? "")
+              .filter(Boolean);
+            const combinedReply = finalReplyParts.join("\n\n").trim();
+            const diagnosticsEnabled = isDiagnosticsEnabled(cfg);
+
+            if (diagnosticsEnabled) {
+              emitDiagnosticEvent({
+                type: "dispatch.path",
+                runId: clientRunId,
+                sessionKey,
+                sessionId: entry?.sessionId ?? clientRunId,
+                stage: "chat.fallback.no_agent_run",
+                finalReplyPartsCount: finalReplyParts.length,
+                hasCombinedReply: combinedReply.length > 0,
+                summary: "chat.send fallback final path used because agent run did not start",
+                sourceFile: "src/gateway/server-methods/chat.ts",
+              });
+            }
+
             if (btwReplies.length > 0 && btwText) {
               broadcastSideResult({
                 context,
@@ -1390,57 +1445,47 @@ export const chatHandlers: GatewayRequestHandlers = {
                   ts: Date.now(),
                 },
               });
-              broadcastChatFinal({
-                context,
-                runId: clientRunId,
-                sessionKey: rawSessionKey,
-              });
-            } else {
-              const combinedReply = deliveredReplies
-                .filter((entry) => entry.kind === "final")
-                .map((entry) => entry.payload)
-                .map((part) => part.text?.trim() ?? "")
-                .filter(Boolean)
-                .join("\n\n")
-                .trim();
-              let message: Record<string, unknown> | undefined;
-              if (combinedReply) {
-                const { storePath: latestStorePath, entry: latestEntry } =
-                  loadSessionEntry(sessionKey);
-                const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
-                const appended = appendAssistantTranscriptMessage({
-                  message: combinedReply,
-                  sessionId,
-                  storePath: latestStorePath,
-                  sessionFile: latestEntry?.sessionFile,
-                  agentId,
-                  createIfMissing: true,
-                });
-                if (appended.ok) {
-                  message = appended.message;
-                } else {
-                  context.logGateway.warn(
-                    `webchat transcript append failed: ${appended.error ?? "unknown error"}`,
-                  );
-                  const now = Date.now();
-                  message = {
-                    role: "assistant",
-                    content: [{ type: "text", text: combinedReply }],
-                    timestamp: now,
-                    // Keep this compatible with Pi stopReason enums even though this message isn't
-                    // persisted to the transcript due to the append failure.
-                    stopReason: "stop",
-                    usage: { input: 0, output: 0, totalTokens: 0 },
-                  };
-                }
-              }
-              broadcastChatFinal({
-                context,
-                runId: clientRunId,
-                sessionKey: rawSessionKey,
-                message,
-              });
             }
+
+            let message: Record<string, unknown> | undefined;
+            if (combinedReply) {
+              const { storePath: latestStorePath, entry: latestEntry } =
+                loadSessionEntry(sessionKey);
+              const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
+              const appended = appendAssistantTranscriptMessage({
+                message: combinedReply,
+                sessionId,
+                storePath: latestStorePath,
+                sessionFile: latestEntry?.sessionFile,
+                agentId,
+                createIfMissing: true,
+              });
+              if (appended.ok) {
+                message = appended.message;
+              } else {
+                context.logGateway.warn(
+                  `webchat transcript append failed: ${appended.error ?? "unknown error"}`,
+                );
+                const now = Date.now();
+                message = {
+                  role: "assistant",
+                  content: [{ type: "text", text: combinedReply }],
+                  timestamp: now,
+                  // Keep this compatible with Pi stopReason enums even though this message isn't
+                  // persisted to the transcript due to the append failure.
+                  stopReason: "stop",
+                  usage: { input: 0, output: 0, totalTokens: 0 },
+                };
+              }
+            }
+
+            broadcastChatFinal({
+              context,
+              runId: clientRunId,
+              sessionKey: rawSessionKey,
+              message,
+              diagnosticsEnabled,
+            });
           }
           setGatewayDedupeEntry({
             dedupe: context.dedupe,

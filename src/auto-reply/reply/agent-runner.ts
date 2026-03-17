@@ -15,6 +15,7 @@ import {
   updateSessionStoreEntry,
 } from "../../config/sessions.js";
 import type { TypingMode } from "../../config/types.js";
+import { logVerbose } from "../../globals.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { generateSecureUuid } from "../../infra/secure-random.js";
@@ -197,6 +198,22 @@ export async function runReplyAgent(params: {
   if (shouldSteer && isStreaming) {
     const steered = queueEmbeddedPiMessage(followupRun.run.sessionId, followupRun.prompt);
     if (steered && !shouldFollowup) {
+      if (isDiagnosticsEnabled(cfg)) {
+        emitDiagnosticEvent({
+          type: "dispatch.path",
+          runId: opts?.runId,
+          sessionKey,
+          sessionId: followupRun.run.sessionId,
+          provider: followupRun.run.provider,
+          model: followupRun.run.model,
+          stage: "runReplyAgent.active_run",
+          activeRunDetected: true,
+          queueAction: "run-now",
+          reason: "Steered message into already streaming active run instead of creating a new run",
+          summary: "runReplyAgent reused active streaming run",
+          sourceFile: "src/auto-reply/reply/agent-runner.ts",
+        });
+      }
       await touchActiveSessionEntry();
       typing.cleanup();
       return undefined;
@@ -210,12 +227,66 @@ export async function runReplyAgent(params: {
     queueMode: resolvedQueue.mode,
   });
 
+  if (isDiagnosticsEnabled(cfg)) {
+    emitDiagnosticEvent({
+      type: "dispatch.path",
+      runId: opts?.runId,
+      sessionKey,
+      sessionId: followupRun.run.sessionId,
+      provider: followupRun.run.provider,
+      model: followupRun.run.model,
+      stage: "runReplyAgent.entry",
+      activeRunDetected: isActive,
+      queueAction:
+        activeRunQueueAction === "drop"
+          ? "drop"
+          : activeRunQueueAction === "enqueue-followup"
+            ? "enqueue-followup"
+            : "run-now",
+      reason: `Resolved active run queue action: ${activeRunQueueAction}`,
+      summary: "runReplyAgent entry resolved queue behavior",
+      sourceFile: "src/auto-reply/reply/agent-runner.ts",
+    });
+  }
+
   if (activeRunQueueAction === "drop") {
+    if (isDiagnosticsEnabled(cfg)) {
+      emitDiagnosticEvent({
+        type: "dispatch.path",
+        runId: opts?.runId,
+        sessionKey,
+        sessionId: followupRun.run.sessionId,
+        provider: followupRun.run.provider,
+        model: followupRun.run.model,
+        stage: "runReplyAgent.queue_short_circuit",
+        queueAction: "drop",
+        activeRunDetected: isActive,
+        reason: "Active-run policy dropped this turn before agent run creation",
+        summary: "runReplyAgent exited before creating agent run",
+        sourceFile: "src/auto-reply/reply/agent-runner.ts",
+      });
+    }
     typing.cleanup();
     return undefined;
   }
 
   if (activeRunQueueAction === "enqueue-followup") {
+    if (isDiagnosticsEnabled(cfg)) {
+      emitDiagnosticEvent({
+        type: "dispatch.path",
+        runId: opts?.runId,
+        sessionKey,
+        sessionId: followupRun.run.sessionId,
+        provider: followupRun.run.provider,
+        model: followupRun.run.model,
+        stage: "runReplyAgent.queue_short_circuit",
+        queueAction: "enqueue-followup",
+        activeRunDetected: isActive,
+        reason: "Queued as followup before agent run creation",
+        summary: "runReplyAgent enqueued followup instead of starting run",
+        sourceFile: "src/auto-reply/reply/agent-runner.ts",
+      });
+    }
     enqueueFollowupRun(queueKey, followupRun, resolvedQueue);
     await touchActiveSessionEntry();
     typing.cleanup();
@@ -369,6 +440,32 @@ export async function runReplyAgent(params: {
     });
 
     if (runOutcome.kind === "final") {
+      if (isDiagnosticsEnabled(cfg)) {
+        emitDiagnosticEvent({
+          type: "dispatch.path",
+          runId: runOutcome.runId,
+          sessionKey,
+          sessionId: followupRun.run.sessionId,
+          provider: followupRun.run.provider,
+          model: followupRun.run.model,
+          stage: "runReplyAgent.runOutcome.final",
+          runOutcomeKind: "final",
+          reason:
+            "runAgentTurnWithFallback returned a final payload before normal agent-run success path",
+          summary: "runReplyAgent received final outcome before payload array handling",
+          sourceFile: "src/auto-reply/reply/agent-runner.ts",
+        });
+        emitDiagnosticEvent({
+          type: "final.path",
+          runId: runOutcome.runId,
+          sessionKey,
+          sessionId: followupRun.run.sessionId,
+          stage: "runOutcome.final",
+          payloadCount: runOutcome.payload ? 1 : 0,
+          summary: "Entered runOutcome.kind=final branch",
+          sourceFile: "src/auto-reply/reply/agent-runner.ts",
+        });
+      }
       return finalizeWithFollowup(runOutcome.payload, queueKey, runFollowupTurn);
     }
 
@@ -478,10 +575,40 @@ export async function runReplyAgent(params: {
       cliSessionId,
     });
 
+    if (isDiagnosticsEnabled(cfg)) {
+      emitDiagnosticEvent({
+        type: "final.path",
+        runId,
+        sessionKey,
+        sessionId: followupRun.run.sessionId,
+        provider: providerUsed,
+        model: modelUsed,
+        stage: "payloadArray",
+        payloadCount: payloadArray.length,
+        summary: "Collected runResult payload array before final payload shaping",
+        sourceFile: "src/auto-reply/reply/agent-runner.ts",
+      });
+    }
+
     // Drain any late tool/block deliveries before deciding there's "nothing to send".
     // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
     // keep the typing indicator stuck.
     if (payloadArray.length === 0) {
+      if (isDiagnosticsEnabled(cfg)) {
+        emitDiagnosticEvent({
+          type: "dispatch.path",
+          runId,
+          sessionKey,
+          sessionId: followupRun.run.sessionId,
+          provider: providerUsed,
+          model: modelUsed,
+          stage: "runReplyAgent.payload.empty",
+          runOutcomeKind: "success",
+          reason: "runAgentTurnWithFallback succeeded but produced an empty payload array",
+          summary: "runReplyAgent success path had no payloads to finalize",
+          sourceFile: "src/auto-reply/reply/agent-runner.ts",
+        });
+      }
       return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     }
 
@@ -602,6 +729,10 @@ export async function runReplyAgent(params: {
       }
     }
 
+    logVerbose(
+      `[final-payloads] runId=${runId} sessionId=${followupRun.run.sessionId} blockStreamingEnabled=${blockStreamingEnabled} payloadArray=${payloadArray.length} guardedReplyPayloads=${guardedReplyPayloads.length} directlySentBlockKeys=${directlySentBlockKeys?.size ?? 0}`,
+    );
+
     // If verbose is enabled, prepend operational run notices.
     let finalPayloads = guardedReplyPayloads;
     const verboseNotices: ReplyPayload[] = [];
@@ -699,6 +830,49 @@ export async function runReplyAgent(params: {
     }
     if (responseUsageLine) {
       finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);
+    }
+
+    logVerbose(
+      `[final-payloads] runId=${runId} sessionId=${followupRun.run.sessionId} finalPayloads=${finalPayloads.length} responseUsageLine=${Boolean(responseUsageLine)} verboseNotices=${verboseNotices.length}`,
+    );
+
+    if (isDiagnosticsEnabled(cfg)) {
+      const textPayloads = finalPayloads.map((payload) => payload.text?.trim()).filter(Boolean);
+      const hasMedia = finalPayloads.some(
+        (payload) => Boolean(payload.mediaUrl) || (payload.mediaUrls?.length ?? 0) > 0,
+      );
+      emitDiagnosticEvent({
+        type: "dispatch.path",
+        runId,
+        sessionKey,
+        sessionId: followupRun.run.sessionId,
+        provider: providerUsed,
+        model: modelUsed,
+        stage: "runReplyAgent.finalize",
+        runOutcomeKind: "success",
+        reason: `Committing ${finalPayloads.length} finalized payload(s) after successful agent run`,
+        summary: "runReplyAgent finalized payloads for commit",
+        sourceFile: "src/auto-reply/reply/agent-runner.ts",
+      });
+      emitDiagnosticEvent({
+        type: "final.committed",
+        runId,
+        sessionKey,
+        sessionId: followupRun.run.sessionId,
+        provider: providerUsed,
+        model: modelUsed,
+        payloadKind:
+          textPayloads.length > 0 && hasMedia
+            ? "mixed"
+            : textPayloads.length > 0
+              ? "text"
+              : hasMedia
+                ? "media"
+                : "empty",
+        textPreview: textPayloads.join("\n\n").slice(0, 160),
+        summary: "Final payload committed after reply shaping",
+        sourceFile: "src/auto-reply/reply/agent-runner.ts",
+      });
     }
 
     return finalizeWithFollowup(
