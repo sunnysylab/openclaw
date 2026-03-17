@@ -76,7 +76,14 @@ describe("telegram reaction semantics schema", () => {
     expect(JSON.stringify(res.error.format())).toContain("emoji:👍");
   });
 
-  it.each(["customemoji:123", "emoji:", "custom_emoji:   ", "thumbsup"])(
+  it.each([
+    "customemoji:123",
+    "emoji:",
+    "emoji:thumbsup",
+    "custom_emoji:   ",
+    "custom_emoji:abc",
+    "thumbsup",
+  ])(
     "rejects invalid reaction semantics key %s",
     (invalidKey) => {
       const res = OpenClawSchema.safeParse({

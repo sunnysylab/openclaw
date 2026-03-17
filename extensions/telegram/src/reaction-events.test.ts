@@ -15,6 +15,8 @@ describe("telegram reaction events", () => {
       "custom_emoji:1234567890123456789",
     );
     expect(normalizeTelegramReactionKey("badprefix:value")).toBeNull();
+    expect(normalizeTelegramReactionKey("emoji:thumbsup")).toBeNull();
+    expect(normalizeTelegramReactionKey("custom_emoji:abc")).toBeNull();
     expect(normalizeTelegramReactionKey("thumbsup")).toBeNull();
   });
 

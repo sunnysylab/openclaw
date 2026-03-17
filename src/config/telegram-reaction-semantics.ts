@@ -10,6 +10,7 @@ export type TelegramReactionSemanticsInvalidKey = {
 
 const TELEGRAM_REACTION_EMOJI_SHORTHAND_PATTERN =
   /^(?:\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3|\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?)*)$/u;
+const TELEGRAM_CUSTOM_EMOJI_ID_PATTERN = /^\d+$/;
 
 export function normalizeTelegramReactionKey(raw: string): string | null {
   const trimmed = raw.trim();
@@ -25,8 +26,11 @@ export function normalizeTelegramReactionKey(raw: string): string | null {
   if (!value) {
     return null;
   }
-  if (prefix === "emoji" || prefix === "custom_emoji") {
-    return `${prefix}:${value}`;
+  if (prefix === "emoji") {
+    return TELEGRAM_REACTION_EMOJI_SHORTHAND_PATTERN.test(value) ? `emoji:${value}` : null;
+  }
+  if (prefix === "custom_emoji") {
+    return TELEGRAM_CUSTOM_EMOJI_ID_PATTERN.test(value) ? `custom_emoji:${value}` : null;
   }
   return null;
 }
