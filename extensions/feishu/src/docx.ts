@@ -124,7 +124,7 @@ async function transferOwnership(
       member_id: memberId,
     },
   });
-  
+
   if (res.code !== 0) {
     throw new Error(res.msg);
   }
