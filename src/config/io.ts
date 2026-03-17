@@ -52,6 +52,7 @@ import type { OpenClawConfig, ConfigFileSnapshot, LegacyConfigIssue } from "./ty
 import {
   validateConfigObjectRawWithPlugins,
   validateConfigObjectTolerantWithPlugins,
+  validateConfigObjectWithPlugins,
 } from "./validation.js";
 import { compareOpenClawVersions } from "./version.js";
 
@@ -979,7 +980,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       // entries (for auto-migration) when they are present in the parsed source.
       const legacyIssues = findLegacyConfigIssues(resolvedConfigRaw, parsedRes.parsed);
 
-      const validated = validateConfigObjectTolerantWithPlugins(resolvedConfigRaw);
+      const validated = validateConfigObjectWithPlugins(resolvedConfigRaw);
       if (!validated.ok) {
         return {
           snapshot: {

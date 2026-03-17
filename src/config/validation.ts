@@ -299,7 +299,10 @@ function validateConfigObjectTolerantBase(
     const keys = issueRecord.keys;
     if (Array.isArray(keys)) {
       for (const key of keys) {
-        removePathFromObject(cleanedRaw, [...issue.path, key as string | number]);
+        removePathFromObject(cleanedRaw, [
+          ...(issue.path as (string | number)[]),
+          key as string | number,
+        ]);
       }
     } else {
       removePathFromObject(cleanedRaw, issue.path as (string | number)[]);
