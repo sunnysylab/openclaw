@@ -10,6 +10,7 @@ public enum ErrorCode: String, Codable, Sendable {
     case agentTimeout = "AGENT_TIMEOUT"
     case invalidRequest = "INVALID_REQUEST"
     case unavailable = "UNAVAILABLE"
+    case permissionDenied = "PERMISSION_DENIED"
 }
 
 public struct ConnectParams: Codable, Sendable {
@@ -2862,6 +2863,7 @@ public struct CronListParams: Codable, Sendable {
     public let enabled: AnyCodable?
     public let sortby: AnyCodable?
     public let sortdir: AnyCodable?
+    public let callersessionkey: String?
 
     public init(
         includedisabled: Bool?,
@@ -2870,7 +2872,8 @@ public struct CronListParams: Codable, Sendable {
         query: String?,
         enabled: AnyCodable?,
         sortby: AnyCodable?,
-        sortdir: AnyCodable?)
+        sortdir: AnyCodable?,
+        callersessionkey: String?)
     {
         self.includedisabled = includedisabled
         self.limit = limit
@@ -2879,6 +2882,7 @@ public struct CronListParams: Codable, Sendable {
         self.enabled = enabled
         self.sortby = sortby
         self.sortdir = sortdir
+        self.callersessionkey = callersessionkey
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2889,6 +2893,7 @@ public struct CronListParams: Codable, Sendable {
         case enabled
         case sortby = "sortBy"
         case sortdir = "sortDir"
+        case callersessionkey = "callerSessionKey"
     }
 }
 
