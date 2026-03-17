@@ -83,26 +83,23 @@ describe("telegram reaction semantics schema", () => {
     "custom_emoji:   ",
     "custom_emoji:abc",
     "thumbsup",
-  ])(
-    "rejects invalid reaction semantics key %s",
-    (invalidKey) => {
-      const res = OpenClawSchema.safeParse({
-        channels: {
-          telegram: {
-            reactionSemantics: {
-              [invalidKey]: "acknowledged",
-            },
+  ])("rejects invalid reaction semantics key %s", (invalidKey) => {
+    const res = OpenClawSchema.safeParse({
+      channels: {
+        telegram: {
+          reactionSemantics: {
+            [invalidKey]: "acknowledged",
           },
         },
-      });
+      },
+    });
 
-      expect(res.success).toBe(false);
-      if (res.success) {
-        return;
-      }
+    expect(res.success).toBe(false);
+    if (res.success) {
+      return;
+    }
 
-      expect(JSON.stringify(res.error.format())).toContain("invalid");
-      expect(JSON.stringify(res.error.format())).toContain(invalidKey.trim());
-    },
-  );
+    expect(JSON.stringify(res.error.format())).toContain("invalid");
+    expect(JSON.stringify(res.error.format())).toContain(invalidKey.trim());
+  });
 });
