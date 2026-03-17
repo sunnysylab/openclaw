@@ -789,7 +789,7 @@ export class DiscordTypingListener extends BaseListener {
         },
       });
 
-      enqueueSystemEvent(`[discord] User is typing in <#${data.channel_id}>`, {
+      enqueueSystemEvent(`[discord] User ${data.user_id} is typing in <#${data.channel_id}>`, {
         sessionKey: route.sessionKey,
         contextKey: `discord:typing:${data.channel_id}:${data.user_id}`,
       });

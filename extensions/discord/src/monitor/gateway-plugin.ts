@@ -38,6 +38,7 @@ export function resolveDiscordGatewayIntents(
   }
   if (intentsConfig?.typingIndicator) {
     intents |= GatewayIntents.GuildMessageTyping;
+    intents |= GatewayIntents.DirectMessageTyping;
   }
   return intents;
 }
