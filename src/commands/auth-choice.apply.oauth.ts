@@ -1,3 +1,4 @@
+import { applyChutesConfig, applyChutesProviderConfig } from "../../extensions/chutes/onboard.js";
 import { applyAuthProfileConfig, writeOAuthCredentials } from "../plugins/provider-auth-helpers.js";
 import type { ApplyAuthChoiceParams, ApplyAuthChoiceResult } from "./auth-choice.apply.js";
 import { loginChutes } from "./chutes-oauth.js";
@@ -74,6 +75,14 @@ export async function applyAuthChoiceOAuth(
         provider: "chutes",
         mode: "oauth",
       });
+
+      // Register provider models and set default if this is the primary auth choice.
+      // This ensures the model picker shows a Chutes model pre-selected as current.
+      if (params.setDefaultModel) {
+        nextConfig = applyChutesConfig(nextConfig);
+      } else {
+        nextConfig = applyChutesProviderConfig(nextConfig);
+      }
     } catch (err) {
       spin.stop("Chutes OAuth failed");
       params.runtime.error(String(err));

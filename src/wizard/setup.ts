@@ -457,7 +457,7 @@ export async function runSetupWizard(
     }
   }
 
-  if (authChoiceFromPrompt && authChoice !== "custom-api-key") {
+  if (authChoiceFromPrompt && authChoice !== "custom-api-key" && authChoice !== "skip") {
     const modelSelection = await promptDefaultModel({
       config: nextConfig,
       prompter,
