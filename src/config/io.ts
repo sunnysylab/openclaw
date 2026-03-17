@@ -51,7 +51,7 @@ import { applyConfigOverrides } from "./runtime-overrides.js";
 import type { OpenClawConfig, ConfigFileSnapshot, LegacyConfigIssue } from "./types.js";
 import {
   validateConfigObjectRawWithPlugins,
-  validateConfigObjectWithPlugins,
+  validateConfigObjectTolerantWithPlugins,
 } from "./validation.js";
 import { compareOpenClawVersions } from "./version.js";
 
@@ -769,7 +769,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       if (preValidationDuplicates.length > 0) {
         throw new DuplicateAgentDirError(preValidationDuplicates);
       }
-      const validated = validateConfigObjectWithPlugins(resolvedConfig);
+      const validated = validateConfigObjectTolerantWithPlugins(resolvedConfig);
       if (!validated.ok) {
         const details = validated.issues
           .map(
@@ -979,7 +979,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       // entries (for auto-migration) when they are present in the parsed source.
       const legacyIssues = findLegacyConfigIssues(resolvedConfigRaw, parsedRes.parsed);
 
-      const validated = validateConfigObjectWithPlugins(resolvedConfigRaw);
+      const validated = validateConfigObjectTolerantWithPlugins(resolvedConfigRaw);
       if (!validated.ok) {
         return {
           snapshot: {

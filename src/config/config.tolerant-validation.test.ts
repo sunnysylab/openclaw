@@ -59,6 +59,23 @@ describe("config tolerant validation mode", () => {
       }
     });
 
+    it("succeeds with a warning when config contains an unknown nested key", () => {
+      const result = validateConfigObjectTolerantWithPlugins({
+        ...BASE_VALID_CONFIG,
+        gateway: {
+          bind: "loopback",
+          unknownNestedKey: "some-value",
+        } as unknown as OpenClawConfig,
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const warnTexts = result.warnings.map((w) => w.message.toLowerCase()).join(" ");
+        expect(warnTexts).toMatch(/unrecognized/);
+        // Ensure path is traced correctly
+        expect(result.warnings.some((w) => w.path.includes("gateway"))).toBe(true);
+      }
+    });
+
     it("still fails hard on real type errors even in tolerant mode", () => {
       const result = validateConfigObjectTolerantWithPlugins({
         ...BASE_VALID_CONFIG,

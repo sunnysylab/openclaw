@@ -227,6 +227,26 @@ type TolerantBaseResult =
   | { ok: false; issues: ConfigValidationIssue[]; unknownKeyWarnings: ConfigValidationIssue[] };
 
 /**
+ * Recursively removes a property from an object given a path array.
+ */
+function removePathFromObject(obj: unknown, path: (string | number)[]): void {
+  if (typeof obj !== "object" || obj === null || path.length === 0) {
+    return;
+  }
+  let current = obj as Record<string, unknown>;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    const next = current[key as string];
+    if (typeof next !== "object" || next === null) {
+      return;
+    }
+    current = next as Record<string, unknown>;
+  }
+  const lastKey = path[path.length - 1];
+  delete (current as Record<string, unknown>)[lastKey as string];
+}
+
+/**
  * Internal helper: validates config allowing unknown keys to pass as warnings.
  * Only `unrecognized_keys` issues from Zod's `.strict()` are demoted to warnings.
  * All other schema violations (wrong types, invalid values, etc.) remain errors.
@@ -271,8 +291,14 @@ function validateConfigObjectTolerantBase(
     };
   }
 
-  // Only unknown-key issues remain — retry with passthrough to get valid data.
-  const passResult = OpenClawSchema.strip().safeParse(raw);
+  // Only unknown-key issues remain — prune them and retry parse to get valid data.
+  // We use JSON.parse(JSON.stringify) for deep cloning as config is a POJO.
+  const cleanedRaw = JSON.parse(JSON.stringify(raw));
+  for (const issue of unknownKeyIssues) {
+    removePathFromObject(cleanedRaw, issue.path);
+  }
+
+  const passResult = OpenClawSchema.safeParse(cleanedRaw);
   if (!passResult.success) {
     return {
       ok: false,
