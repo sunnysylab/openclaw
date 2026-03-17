@@ -30,6 +30,12 @@ import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { throwIfAborted } from "./abort.js";
 import { resolveOutboundChannelPlugin } from "./channel-resolution.js";
 import { ackDelivery, enqueueDelivery, failDelivery } from "./delivery-queue.js";
+import {
+  isDuplicate,
+  recordMessage,
+  startDedupeCleanup,
+  getDedupeStats,
+} from "./message-dedupe.js";
 import type { OutboundIdentity } from "./identity.js";
 import type { DeliveryMirror } from "./mirror.js";
 import type { NormalizedOutboundPayload } from "./payloads.js";
@@ -657,6 +663,14 @@ async function deliverOutboundPayloadsCore(
       const effectivePayload = hookResult.payload;
       payloadSummary = hookResult.payloadSummary;
 
+      // Check for duplicate message (deduplication)
+      const mediaUrl = payloadSummary.mediaUrls[0];
+      if (isDuplicate({ channel, to, text: payloadSummary.text, mediaUrl })) {
+        log.info("Skipping duplicate message", { channel, to, textPreview: payloadSummary.text.slice(0, 50) });
+        params.onPayload?.(payloadSummary + " [DUPLICATE SKIPPED]");
+        continue;
+      }
+
       params.onPayload?.(payloadSummary);
       const sendOverrides = {
         replyToId: effectivePayload.replyToId ?? params.replyToId ?? undefined,
@@ -672,6 +686,8 @@ async function deliverOutboundPayloadsCore(
       ) {
         const delivery = await handler.sendPayload(effectivePayload, sendOverrides);
         results.push(delivery);
+        // Record fingerprint after successful delivery
+        recordMessage({ channel, to, text: payloadSummary.text, mediaUrl });
         emitMessageSent({
           success: true,
           content: payloadSummary.text,
@@ -687,6 +703,8 @@ async function deliverOutboundPayloadsCore(
           await sendTextChunks(payloadSummary.text, sendOverrides);
         }
         const messageId = results.at(-1)?.messageId;
+        // Record fingerprint after successful delivery
+        recordMessage({ channel, to, text: payloadSummary.text });
         emitMessageSent({
           success: results.length > beforeCount,
           content: payloadSummary.text,
@@ -713,6 +731,8 @@ async function deliverOutboundPayloadsCore(
         const beforeCount = results.length;
         await sendTextChunks(fallbackText, sendOverrides);
         const messageId = results.at(-1)?.messageId;
+        // Record fingerprint after successful delivery
+        recordMessage({ channel, to, text: fallbackText });
         emitMessageSent({
           success: results.length > beforeCount,
           content: payloadSummary.text,
@@ -737,6 +757,8 @@ async function deliverOutboundPayloadsCore(
           lastMessageId = delivery.messageId;
         }
       }
+      // Record fingerprint after successful media delivery
+      recordMessage({ channel, to, text: payloadSummary.text, mediaUrl: payloadSummary.mediaUrls[0] });
       emitMessageSent({
         success: true,
         content: payloadSummary.text,
