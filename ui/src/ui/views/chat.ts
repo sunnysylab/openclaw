@@ -343,7 +343,7 @@ function handleFileSelect(e: Event, props: ChatProps) {
   const additions: ChatAttachment[] = [];
   let pending = 0;
   for (const file of input.files) {
-    if (!isSupportedChatAttachmentMimeType(file.type)) {
+    if (!isSupportedChatAttachmentMimeType(file.type, file.name)) {
       continue;
     }
     pending++;
@@ -374,7 +374,7 @@ function handleDrop(e: DragEvent, props: ChatProps) {
   const additions: ChatAttachment[] = [];
   let pending = 0;
   for (const file of files) {
-    if (!isSupportedChatAttachmentMimeType(file.type)) {
+    if (!isSupportedChatAttachmentMimeType(file.type, file.name)) {
       continue;
     }
     pending++;
