@@ -14,6 +14,7 @@ import kimiCodingPlugin from "../../../extensions/kimi-coding/index.js";
 import microsoftPlugin from "../../../extensions/microsoft/index.js";
 import minimaxPlugin from "../../../extensions/minimax/index.js";
 import mistralPlugin from "../../../extensions/mistral/index.js";
+import modelscopePlugin from "../../../extensions/modelscope/index.js";
 import modelStudioPlugin from "../../../extensions/modelstudio/index.js";
 import moonshotPlugin from "../../../extensions/moonshot/index.js";
 import nvidiaPlugin from "../../../extensions/nvidia/index.js";
@@ -88,6 +89,7 @@ const bundledProviderPlugins: RegistrablePlugin[] = [
   kimiCodingPlugin,
   minimaxPlugin,
   mistralPlugin,
+  modelscopePlugin,
   modelStudioPlugin,
   moonshotPlugin,
   nvidiaPlugin,

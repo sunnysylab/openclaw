@@ -8,6 +8,7 @@ import huggingfacePlugin from "../../extensions/huggingface/index.js";
 import kimiCodingPlugin from "../../extensions/kimi-coding/index.js";
 import minimaxPlugin from "../../extensions/minimax/index.js";
 import mistralPlugin from "../../extensions/mistral/index.js";
+import modelscopePlugin from "../../extensions/modelscope/index.js";
 import moonshotPlugin from "../../extensions/moonshot/index.js";
 import ollamaPlugin from "../../extensions/ollama/index.js";
 import openAIPlugin from "../../extensions/openai/index.js";
@@ -87,6 +88,7 @@ function createDefaultProviderPlugins() {
     cloudflareAiGatewayPlugin,
     googlePlugin,
     huggingfacePlugin,
+    modelscopePlugin,
     kimiCodingPlugin,
     minimaxPlugin,
     mistralPlugin,
@@ -117,6 +119,7 @@ describe("applyAuthChoice", () => {
     "OPENROUTER_API_KEY",
     "HF_TOKEN",
     "HUGGINGFACE_HUB_TOKEN",
+    "MODELSCOPE_API_KEY",
     "LITELLM_API_KEY",
     "AI_GATEWAY_API_KEY",
     "CLOUDFLARE_AI_GATEWAY_API_KEY",
@@ -309,7 +312,8 @@ describe("applyAuthChoice", () => {
         | "minimax-global-api"
         | "minimax-cn-api"
         | "synthetic-api-key"
-        | "huggingface-api-key";
+        | "huggingface-api-key"
+        | "modelscope-api-key";
       promptContains: string;
       profileId: string;
       provider: string;
@@ -346,6 +350,14 @@ describe("applyAuthChoice", () => {
         provider: "huggingface",
         token: "hf-test-token",
         expectedModelPrefix: "huggingface/",
+      },
+      {
+        authChoice: "modelscope-api-key" as const,
+        promptContains: "ModelScope",
+        profileId: "modelscope:default",
+        provider: "modelscope",
+        token: "ms-test-token",
+        expectedModelPrefix: "modelscope/",
       },
     ];
     for (const scenario of scenarios) {
@@ -507,6 +519,13 @@ describe("applyAuthChoice", () => {
         expectedModelPrefix: "huggingface/",
       },
       {
+        tokenProvider: "modelscope",
+        token: "ms-token-provider-test",
+        profileId: "modelscope:default",
+        provider: "modelscope",
+        expectedModelPrefix: "modelscope/",
+      },
+      {
         tokenProvider: "  ToGeThEr  ",
         token: "sk-together-token-provider-test",
         profileId: "together:default",
@@ -650,6 +669,13 @@ describe("applyAuthChoice", () => {
       profileId: "synthetic:default",
       provider: "synthetic",
       modelPrefix: "synthetic/",
+    },
+    {
+      authChoice: "modelscope-api-key",
+      tokenProvider: "modelscope",
+      profileId: "modelscope:default",
+      provider: "modelscope",
+      modelPrefix: "modelscope/",
     },
   ] as const)(
     "uses opts token for $authChoice without prompting",

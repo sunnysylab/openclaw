@@ -1,0 +1,28 @@
+{
+  "id": "modelscope",
+  "providers": ["modelscope"],
+  "providerAuthEnvVars": {
+    "modelscope": ["MODELSCOPE_API_KEY"]
+  },
+  "providerAuthChoices": [
+    {
+      "provider": "modelscope",
+      "method": "api-key",
+      "choiceId": "modelscope-api-key",
+      "choiceLabel": "ModelScope API key",
+      "choiceHint": "Inference API",
+      "groupId": "modelscope",
+      "groupLabel": "ModelScope",
+      "groupHint": "Inference API",
+      "optionKey": "modelscopeApiKey",
+      "cliFlag": "--modelscope-api-key",
+      "cliOption": "--modelscope-api-key <key>",
+      "cliDescription": "ModelScope API key"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

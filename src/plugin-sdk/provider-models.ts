@@ -80,6 +80,12 @@ export {
   HUGGINGFACE_MODEL_CATALOG,
   buildHuggingfaceModelDefinition,
 } from "../agents/huggingface-models.js";
+export {
+  discoverModelScopeModels,
+  MODELSCOPE_BASE_URL,
+  MODELSCOPE_MODEL_CATALOG,
+  buildModelScopeModelDefinition,
+} from "../agents/modelscope-models.js";
 export { discoverKilocodeModels } from "../agents/kilocode-models.js";
 export { resolveOllamaApiBase } from "../agents/ollama-models.js";
 export {
