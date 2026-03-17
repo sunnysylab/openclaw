@@ -276,7 +276,7 @@ describe("discoverOpenClawPlugins", () => {
     expect(bundle).toBeDefined();
     expect(bundle?.format).toBe("bundle");
     expect(bundle?.bundleFormat).toBe("claude");
-    expect(bundle?.source).toBe(bundleDir);
+    expect(normalizeTestPath(bundle?.source)).toBe(normalizeTestPath(bundleDir));
   });
 
   it("auto-detects Cursor bundles as bundle candidates", async () => {
@@ -298,7 +298,7 @@ describe("discoverOpenClawPlugins", () => {
     expect(bundle).toBeDefined();
     expect(bundle?.format).toBe("bundle");
     expect(bundle?.bundleFormat).toBe("cursor");
-    expect(bundle?.source).toBe(bundleDir);
+    expect(normalizeTestPath(bundle?.source)).toBe(normalizeTestPath(bundleDir));
   });
 
   it("falls back to legacy index discovery when a scanned bundle sidecar is malformed", async () => {

@@ -8,5 +8,5 @@ export {
   CONFIGURE_WIZARD_SECTIONS,
   parseConfigureWizardSections,
   type WizardSection,
-} from "./configure.shared.js";
+} from "./configure.sections.js";
 export { runConfigureWizard } from "./configure.wizard.js";

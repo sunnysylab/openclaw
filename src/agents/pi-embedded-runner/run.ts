@@ -36,6 +36,11 @@ import {
   resolveFailoverStatus,
 } from "../failover-error.js";
 import {
+  resolveOutputGuardModelConfig,
+  resolveInputGuardModelConfig,
+  applyGuardToPayloads,
+} from "../guard-model.js";
+import {
   applyLocalNoAuthHeaderOverride,
   ensureAuthProfileStore,
   getApiKeyForModel,
@@ -70,6 +75,7 @@ import { log } from "./logger.js";
 import { resolveModelAsync } from "./model.js";
 import { runEmbeddedAttempt } from "./run/attempt.js";
 import { createFailoverDecisionLogger } from "./run/failover-observation.js";
+import { applyEmbeddedInputGuardForAttempt } from "./run/input-guard.js";
 import type { RunEmbeddedPiAgentParams } from "./run/params.js";
 import { buildEmbeddedRunPayloads } from "./run/payloads.js";
 import {
@@ -879,6 +885,7 @@ export async function runEmbeddedPiAgent(
       // repeated initialization/connection overhead per attempt.
       ensureContextEnginesInitialized();
       const contextEngine = await resolveContextEngine(params.config);
+      const inputGuardConfig = resolveInputGuardModelConfig(params.config);
       try {
         let authRetryPending = false;
         // Hoisted so the retry-limit error path can use the most recent API total.
@@ -922,8 +929,34 @@ export async function runEmbeddedPiAgent(
           attemptedThinking.add(thinkLevel);
           await fs.mkdir(resolvedWorkspace, { recursive: true });
 
-          const prompt =
+          let prompt =
             provider === "anthropic" ? scrubAnthropicRefusalMagic(params.prompt) : params.prompt;
+
+          if (inputGuardConfig) {
+            const inputCheck = await applyEmbeddedInputGuardForAttempt({
+              prompt,
+              inputGuardConfig,
+              cfg: params.config,
+              agentDir: params.agentDir,
+            });
+            if (inputCheck.blocked) {
+              return {
+                payloads: inputCheck.payloads,
+                meta: {
+                  durationMs: Date.now() - started,
+                  agentMeta: {
+                    sessionId: params.sessionId,
+                    provider,
+                    model: model.id,
+                  },
+                },
+              };
+            }
+            prompt = inputCheck.prompt;
+          }
+
+          const outputGuardConfig = resolveOutputGuardModelConfig(params.config);
+          const suppressLiveStreaming = Boolean(outputGuardConfig);
 
           const attempt = await runEmbeddedAttempt({
             sessionId: params.sessionId,
@@ -981,16 +1014,17 @@ export async function runEmbeddedPiAgent(
             abortSignal: params.abortSignal,
             shouldEmitToolResult: params.shouldEmitToolResult,
             shouldEmitToolOutput: params.shouldEmitToolOutput,
-            onPartialReply: params.onPartialReply,
+            onPartialReply: suppressLiveStreaming ? undefined : params.onPartialReply,
             onAssistantMessageStart: params.onAssistantMessageStart,
-            onBlockReply: params.onBlockReply,
-            onBlockReplyFlush: params.onBlockReplyFlush,
+            onBlockReply: suppressLiveStreaming ? undefined : params.onBlockReply,
+            onBlockReplyFlush: suppressLiveStreaming ? undefined : params.onBlockReplyFlush,
             blockReplyBreak: params.blockReplyBreak,
             blockReplyChunking: params.blockReplyChunking,
-            onReasoningStream: params.onReasoningStream,
+            onReasoningStream: suppressLiveStreaming ? undefined : params.onReasoningStream,
             onReasoningEnd: params.onReasoningEnd,
             onToolResult: params.onToolResult,
             onAgentEvent: params.onAgentEvent,
+            suppressAssistantAgentEvents: suppressLiveStreaming,
             extraSystemPrompt: params.extraSystemPrompt,
             inputProvenance: params.inputProvenance,
             streamParams: params.streamParams,
@@ -1595,7 +1629,7 @@ export async function runEmbeddedPiAgent(
             compactionCount: autoCompactionCount > 0 ? autoCompactionCount : undefined,
           };
 
-          const payloads = buildEmbeddedRunPayloads({
+          let payloads = buildEmbeddedRunPayloads({
             assistantTexts: attempt.assistantTexts,
             toolMetas: attempt.toolMetas,
             lastAssistant: attempt.lastAssistant,
@@ -1612,6 +1646,14 @@ export async function runEmbeddedPiAgent(
             didSendViaMessagingTool: attempt.didSendViaMessagingTool,
             didSendDeterministicApprovalPrompt: attempt.didSendDeterministicApprovalPrompt,
           });
+
+          // Output guard model screening — evaluate payloads before delivery
+          if (outputGuardConfig && payloads.length > 0) {
+            payloads = await applyGuardToPayloads(payloads, outputGuardConfig, {
+              cfg: params.config,
+              agentDir: params.agentDir,
+            });
+          }
 
           // Timeout aborts can leave the run without any assistant payloads.
           // Emit an explicit timeout error instead of silently completing, so

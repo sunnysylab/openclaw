@@ -37,6 +37,13 @@ import {
 import { resolveOpenClawDocsPath } from "./docs-path.js";
 import { FailoverError, resolveFailoverStatus } from "./failover-error.js";
 import {
+  applyGuardToPayloads,
+  applyGuardToInput,
+  resolveOutputGuardModelConfig,
+  resolveInputGuardModelConfig,
+  type ReplyPayload,
+} from "./guard-model.js";
+import {
   classifyFailoverReason,
   isFailoverErrorMessage,
   resolveBootstrapMaxChars,
@@ -53,6 +60,7 @@ export async function runCliAgent(params: {
   sessionId: string;
   sessionKey?: string;
   agentId?: string;
+  agentDir?: string;
   sessionFile: string;
   workspaceDir: string;
   config?: OpenClawConfig;
@@ -189,6 +197,8 @@ export async function runCliAgent(params: {
     tools: [],
   });
 
+  let guardedPrompt = params.prompt;
+
   // Helper function to execute CLI with given session ID
   const executeCliWithSession = async (
     cliSessionIdToUse?: string,
@@ -218,7 +228,7 @@ export async function runCliAgent(params: {
 
     let imagePaths: string[] | undefined;
     let cleanupImages: (() => Promise<void>) | undefined;
-    let prompt = params.prompt;
+    let prompt = guardedPrompt;
     if (params.images && params.images.length > 0) {
       const imagePayload = await writeCliImages(params.images);
       imagePaths = imagePayload.paths;
@@ -254,7 +264,7 @@ export async function runCliAgent(params: {
     try {
       const output = await enqueueCliRun(queueKey, async () => {
         log.info(
-          `cli exec: provider=${params.provider} model=${normalizedModel} promptChars=${params.prompt.length}`,
+          `cli exec: provider=${params.provider} model=${normalizedModel} promptChars=${prompt.length}`,
         );
         const logOutputText = isTruthyEnvValue(process.env.OPENCLAW_CLAUDE_CLI_LOG_OUTPUT);
         if (logOutputText) {
@@ -412,12 +422,59 @@ export async function runCliAgent(params: {
     }
   };
 
+  let inputGuardPayloads: ReplyPayload[] = [];
+
+  // Input guard screening — check user message before invoking the CLI backend
+  const inputGuardConfig = resolveInputGuardModelConfig(params.config);
+  if (inputGuardConfig) {
+    const inputCheck = await applyGuardToInput(guardedPrompt, inputGuardConfig, {
+      cfg: params.config,
+      agentDir: params.agentDir,
+    });
+    if (inputCheck.blocked) {
+      return {
+        payloads: inputCheck.payloads,
+        meta: {
+          durationMs: Date.now() - started,
+          agentMeta: {
+            sessionId: params.sessionId,
+            provider: params.provider,
+            model: modelId,
+          },
+        },
+      };
+    }
+    if (inputCheck.rewrittenText) {
+      guardedPrompt = inputCheck.rewrittenText;
+    }
+    // Honor non-blocking input-guard actions (warn, redact)
+    if (inputCheck.payloads.length > 0) {
+      inputGuardPayloads = inputCheck.payloads;
+    }
+  }
+
+  const outputGuardConfig = resolveOutputGuardModelConfig(params.config);
+
   // Try with the provided CLI session ID first
   try {
     try {
       const output = await executeCliWithSession(params.cliSessionId);
       const text = output.text?.trim();
-      const payloads = text ? [{ text }] : undefined;
+      let payloads: ReplyPayload[] | undefined = text ? [{ text }] : undefined;
+
+      // P1 Badge Guard: output guard screening on success path
+      if (outputGuardConfig && payloads?.length) {
+        payloads = await applyGuardToPayloads(payloads, outputGuardConfig, {
+          cfg: params.config,
+          agentDir: params.agentDir,
+        });
+      }
+
+      if (inputGuardPayloads.length > 0 && payloads) {
+        payloads = [...inputGuardPayloads, ...payloads];
+      } else if (inputGuardPayloads.length > 0) {
+        payloads = inputGuardPayloads;
+      }
 
       return {
         payloads,
@@ -440,14 +497,24 @@ export async function runCliAgent(params: {
             `CLI session expired, clearing session ID and retrying: provider=${params.provider} session=${redactRunIdentifier(params.cliSessionId)}`,
           );
 
-          // Clear the expired session ID from the session entry
-          // This requires access to the session store, which we don't have here
-          // We'll need to modify the caller to handle this case
-
           // For now, retry without the session ID to create a new session
           const output = await executeCliWithSession(undefined);
           const text = output.text?.trim();
-          const payloads = text ? [{ text }] : undefined;
+          let payloads: EmbeddedPiRunResult["payloads"] = text ? [{ text }] : undefined;
+
+          // P1: output guard screening on retry path
+          if (outputGuardConfig && payloads?.length) {
+            payloads = await applyGuardToPayloads(payloads, outputGuardConfig, {
+              cfg: params.config,
+              agentDir: params.agentDir,
+            });
+          }
+
+          if (inputGuardPayloads.length > 0 && payloads) {
+            payloads = [...inputGuardPayloads, ...payloads];
+          } else if (inputGuardPayloads.length > 0) {
+            payloads = inputGuardPayloads;
+          }
 
           return {
             payloads,
@@ -487,6 +554,7 @@ export async function runClaudeCliAgent(params: {
   sessionId: string;
   sessionKey?: string;
   agentId?: string;
+  agentDir?: string;
   sessionFile: string;
   workspaceDir: string;
   config?: OpenClawConfig;
@@ -505,6 +573,7 @@ export async function runClaudeCliAgent(params: {
     sessionId: params.sessionId,
     sessionKey: params.sessionKey,
     agentId: params.agentId,
+    agentDir: params.agentDir,
     sessionFile: params.sessionFile,
     workspaceDir: params.workspaceDir,
     config: params.config,

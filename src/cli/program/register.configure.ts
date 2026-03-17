@@ -1,8 +1,5 @@
 import type { Command } from "commander";
-import {
-  CONFIGURE_WIZARD_SECTIONS,
-  configureCommandFromSectionsArg,
-} from "../../commands/configure.js";
+import { CONFIGURE_WIZARD_SECTIONS } from "../../commands/configure.sections.js";
 import { defaultRuntime } from "../../runtime.js";
 import { formatDocsLink } from "../../terminal/links.js";
 import { theme } from "../../terminal/theme.js";
@@ -25,6 +22,7 @@ export function registerConfigureCommand(program: Command) {
     )
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
+        const { configureCommandFromSectionsArg } = await import("../../commands/configure.js");
         await configureCommandFromSectionsArg(opts.section, defaultRuntime);
       });
     });
