@@ -63,13 +63,13 @@ describe("feishu tool account routing", () => {
     );
     registerFeishuWikiTools(api);
 
-    const tool = resolveTool("feishu_wiki", { agentAccountId: "b" });
+    const tool = resolveTool("feishu_wiki", { agentAccountId: "b", messageChannel: "feishu" });
     await tool.execute("call", { action: "search" });
 
     expect(createFeishuClientMock.mock.calls.at(-1)?.[0]?.appId).toBe("app-b");
   });
 
-  test("wiki tool prefers configured defaultAccount over inherited default account context", async () => {
+  test("routed account context (agentAccountId) takes priority over configured defaultAccount", async () => {
     const { api, resolveTool } = createToolFactoryHarness(
       createConfig({
         defaultAccount: "b",
@@ -79,7 +79,24 @@ describe("feishu tool account routing", () => {
     );
     registerFeishuWikiTools(api);
 
-    const tool = resolveTool("feishu_wiki", { agentAccountId: "a" });
+    // agentAccountId "a" should win over defaultAccount "b"
+    const tool = resolveTool("feishu_wiki", { agentAccountId: "a", messageChannel: "feishu" });
+    await tool.execute("call", { action: "search" });
+
+    expect(createFeishuClientMock.mock.calls.at(-1)?.[0]?.appId).toBe("app-a");
+  });
+
+  test("falls back to configured defaultAccount when agentAccountId is absent", async () => {
+    const { api, resolveTool } = createToolFactoryHarness(
+      createConfig({
+        defaultAccount: "b",
+        toolsA: { wiki: true },
+        toolsB: { wiki: true },
+      }),
+    );
+    registerFeishuWikiTools(api);
+
+    const tool = resolveTool("feishu_wiki", {});
     await tool.execute("call", { action: "search" });
 
     expect(createFeishuClientMock.mock.calls.at(-1)?.[0]?.appId).toBe("app-b");
@@ -94,7 +111,7 @@ describe("feishu tool account routing", () => {
     );
     registerFeishuDriveTools(api);
 
-    const tool = resolveTool("feishu_drive", { agentAccountId: "b" });
+    const tool = resolveTool("feishu_drive", { agentAccountId: "b", messageChannel: "feishu" });
     await tool.execute("call", { action: "unknown_action" });
 
     expect(createFeishuClientMock.mock.calls.at(-1)?.[0]?.appId).toBe("app-b");
@@ -109,7 +126,7 @@ describe("feishu tool account routing", () => {
     );
     registerFeishuPermTools(api);
 
-    const tool = resolveTool("feishu_perm", { agentAccountId: "b" });
+    const tool = resolveTool("feishu_perm", { agentAccountId: "b", messageChannel: "feishu" });
     await tool.execute("call", { action: "unknown_action" });
 
     expect(createFeishuClientMock.mock.calls.at(-1)?.[0]?.appId).toBe("app-b");
@@ -119,11 +136,68 @@ describe("feishu tool account routing", () => {
     const { api, resolveTool } = createToolFactoryHarness(createConfig({}));
     registerFeishuBitableTools(api);
 
-    const tool = resolveTool("feishu_bitable_get_meta", { agentAccountId: "b" });
+    const tool = resolveTool("feishu_bitable_get_meta", {
+      agentAccountId: "b",
+      messageChannel: "feishu",
+    });
     await tool.execute("call-ctx", { url: "invalid-url" });
     await tool.execute("call-override", { url: "invalid-url", accountId: "a" });
 
     expect(createFeishuClientMock.mock.calls[0]?.[0]?.appId).toBe("app-b");
     expect(createFeishuClientMock.mock.calls[1]?.[0]?.appId).toBe("app-a");
+  });
+
+  test("cross-channel: falls back to configured defaultAccount when agentAccountId is not a Feishu account", async () => {
+    const { api, resolveTool } = createToolFactoryHarness(
+      createConfig({
+        defaultAccount: "a",
+        toolsA: { wiki: true },
+        toolsB: { wiki: true },
+      }),
+    );
+    registerFeishuWikiTools(api);
+
+    // "discord-default" is not a known Feishu account → should fall back to defaultAccount "a"
+    const tool = resolveTool("feishu_wiki", {
+      agentAccountId: "discord-default",
+      messageChannel: "discord",
+    });
+    await tool.execute("call", { action: "search" });
+
+    expect(createFeishuClientMock.mock.calls.at(-1)?.[0]?.appId).toBe("app-a");
+  });
+
+  test("cross-channel: does not treat colliding account id as Feishu route context", async () => {
+    const { api, resolveTool } = createToolFactoryHarness(
+      createConfig({
+        defaultAccount: "b",
+        toolsA: { wiki: true },
+        toolsB: { wiki: true },
+      }),
+    );
+    registerFeishuWikiTools(api);
+
+    // "a" is a valid Feishu account ID but request comes from non-Feishu channel.
+    const tool = resolveTool("feishu_wiki", { agentAccountId: "a", messageChannel: "discord" });
+    await tool.execute("call", { action: "search" });
+
+    expect(createFeishuClientMock.mock.calls.at(-1)?.[0]?.appId).toBe("app-b");
+  });
+
+  test("missing messageChannel: trusts agentAccountId when it is a known Feishu account (HTTP tool path)", async () => {
+    const { api, resolveTool } = createToolFactoryHarness(
+      createConfig({
+        defaultAccount: "b",
+        toolsA: { wiki: true },
+        toolsB: { wiki: true },
+      }),
+    );
+    registerFeishuWikiTools(api);
+
+    // Without messageChannel (HTTP tool invocation), known Feishu accountId is still trusted.
+    const tool = resolveTool("feishu_wiki", { agentAccountId: "a" });
+    await tool.execute("call", { action: "search" });
+
+    expect(createFeishuClientMock.mock.calls.at(-1)?.[0]?.appId).toBe("app-a");
   });
 });
