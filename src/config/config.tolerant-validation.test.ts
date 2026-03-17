@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { OpenClawConfig } from "./types.js";
 import {
   validateConfigObjectTolerantWithPlugins,
   validateConfigObjectWithPlugins,
