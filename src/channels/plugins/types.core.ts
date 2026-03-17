@@ -359,6 +359,8 @@ export type ChannelMessagingAdapter = {
   hasStructuredReplyPayload?: (params: { payload: ReplyPayload }) => boolean;
   targetResolver?: {
     looksLikeId?: (raw: string, normalized?: string) => boolean;
+    /** Default target kind for bare names without `@`/`#`/`user:`/`channel:` prefixes. */
+    defaultTargetKind?: "user" | "group";
     hint?: string;
     resolveTarget?: (params: {
       cfg: OpenClawConfig;
