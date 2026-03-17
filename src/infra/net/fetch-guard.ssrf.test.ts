@@ -291,4 +291,39 @@ describe("fetchWithSsrFGuard hardening", () => {
       expectEnvProxy: true,
     });
   });
+
+  it("skips local DNS pinning when trusted env proxy mode is active", async () => {
+    vi.stubEnv("HTTP_PROXY", "http://127.0.0.1:7890");
+    const lookupFn = vi.fn(async () => {
+      throw new Error("lookup should not run");
+    });
+    const fetchImpl = vi.fn(async () => new Response("ok", { status: 200 }));
+
+    const result = await fetchWithSsrFGuard({
+      url: "https://public.example/resource",
+      mode: GUARDED_FETCH_MODE.TRUSTED_ENV_PROXY,
+      fetchImpl,
+      lookupFn,
+    });
+
+    expect(lookupFn).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    await result.release();
+  });
+
+  it("still enforces hostname allowlist in trusted env proxy mode", async () => {
+    vi.stubEnv("HTTP_PROXY", "http://127.0.0.1:7890");
+    const fetchImpl = vi.fn();
+
+    await expect(
+      fetchWithSsrFGuard({
+        url: "https://evil.example.org/file.txt",
+        fetchImpl,
+        mode: GUARDED_FETCH_MODE.TRUSTED_ENV_PROXY,
+        policy: { hostnameAllowlist: ["cdn.example.com", "*.assets.example.com"] },
+      }),
+    ).rejects.toThrow(/allowlist/i);
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });
