@@ -114,7 +114,7 @@ export function buildTelegramTopicStatusLines(
   ];
 
   const configuredTargetSessionKey = configuredBinding?.record.targetSessionKey?.trim();
-  if (configuredTargetSessionKey) {
+  if (configuredBinding && configuredTargetSessionKey) {
     const details = [
       configuredBinding.spec.mode,
       configuredBinding.spec.backend ?? params.sessionEntry?.acp?.backend,
@@ -127,7 +127,7 @@ export function buildTelegramTopicStatusLines(
   }
 
   const liveTargetSessionKey = liveBinding?.targetSessionKey?.trim();
-  if (liveTargetSessionKey) {
+  if (liveBinding && liveTargetSessionKey) {
     const kindLabel =
       liveBinding.targetKind === "subagent" ? "focused subagent" : "focused session";
     lines.push(`🧷 Live: ${kindLabel} (${liveBinding.status}) -> ${liveTargetSessionKey}`);
