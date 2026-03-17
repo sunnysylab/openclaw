@@ -1,3 +1,4 @@
+import { readResponseWithLimit } from "openclaw/plugin-sdk/media-runtime";
 import { fetchWithSsrFGuard, type SsrFPolicy } from "openclaw/plugin-sdk/msteams";
 import { getMSTeamsRuntime } from "../runtime.js";
 import { downloadMSTeamsAttachments } from "./download.js";
@@ -248,7 +249,7 @@ async function downloadGraphHostedContent(params: {
         if (contentLength > 0 && contentLength > params.maxBytes) {
           continue;
         }
-        buffer = Buffer.from(await valResp.arrayBuffer());
+        buffer = await readResponseWithLimit(valResp, params.maxBytes);
       } catch {
         continue;
       } finally {

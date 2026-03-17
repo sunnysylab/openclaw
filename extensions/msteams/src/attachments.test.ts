@@ -226,6 +226,28 @@ const createBufferResponse = (payload: Buffer | string, contentType: string, sta
     headers: { "content-type": contentType },
   });
 };
+const createStreamingBufferResponse = (
+  payload: Buffer,
+  contentType: string,
+  status = 200,
+  headers?: HeadersInit,
+) => {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(payload));
+        controller.close();
+      },
+    }),
+    {
+      status,
+      headers: {
+        "content-type": contentType,
+        ...headers,
+      },
+    },
+  );
+};
 const createJsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), { status });
 const createTextResponse = (body: string, status = 200) => new Response(body, { status });
@@ -897,6 +919,42 @@ describe("msteams attachments", () => {
       expectAttachmentMediaLength(media.media, 0);
       expect(fetchMock).toHaveBeenCalledWith(
         `${DEFAULT_MESSAGE_URL}/hostedContents/hosted-oversized/$value`,
+        expect.any(Object),
+      );
+      expect(saveMediaBufferMock).not.toHaveBeenCalled();
+    });
+
+    it("skips hosted /$value payloads that exceed maxBytes without content-length", async () => {
+      const oversizedBuffer = Buffer.alloc(DEFAULT_MAX_BYTES + 1, 1);
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === `${DEFAULT_MESSAGE_URL}/hostedContents`) {
+          return createGraphCollectionResponse([
+            { id: "hosted-stream-oversized", contentType: "image/png" },
+          ]);
+        }
+        if (url === `${DEFAULT_MESSAGE_URL}/hostedContents/hosted-stream-oversized/$value`) {
+          return createStreamingBufferResponse(oversizedBuffer, CONTENT_TYPE_IMAGE_PNG);
+        }
+        if (url === `${DEFAULT_MESSAGE_URL}/attachments`) {
+          return createGraphCollectionResponse([]);
+        }
+        if (url === DEFAULT_MESSAGE_URL) {
+          return createJsonResponse({ attachments: [] });
+        }
+        return createNotFoundResponse();
+      });
+
+      const media = await downloadMSTeamsGraphMedia({
+        messageUrl: DEFAULT_MESSAGE_URL,
+        tokenProvider: createTokenProvider(),
+        maxBytes: DEFAULT_MAX_BYTES,
+        fetchFn: asFetchFn(fetchMock),
+      });
+
+      expectAttachmentMediaLength(media.media, 0);
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${DEFAULT_MESSAGE_URL}/hostedContents/hosted-stream-oversized/$value`,
         expect.any(Object),
       );
       expect(saveMediaBufferMock).not.toHaveBeenCalled();
