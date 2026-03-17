@@ -26,8 +26,10 @@ type ActiveLogin = {
   id: string;
   sock: WaSocket;
   startedAt: number;
+  qrVersion: number;
   qr?: string;
   qrDataUrl?: string;
+  qrRenderPromise?: Promise<void>;
   connected: boolean;
   error?: string;
   errorStatus?: number;
@@ -60,6 +62,28 @@ async function resetActiveLogin(accountId: string, reason?: string) {
 
 function isLoginFresh(login: ActiveLogin) {
   return Date.now() - login.startedAt < ACTIVE_LOGIN_TTL_MS;
+}
+
+async function updateLoginQrData(login: ActiveLogin, qr: string) {
+  login.qr = qr;
+  login.qrVersion += 1;
+  const version = login.qrVersion;
+  const renderPromise = renderQrPngBase64(qr)
+    .then((base64) => {
+      const current = activeLogins.get(login.accountId);
+      if (!current || current.id !== login.id || current.qrVersion !== version) {
+        return;
+      }
+      current.qrDataUrl = `data:image/png;base64,${base64}`;
+    })
+    .finally(() => {
+      const current = activeLogins.get(login.accountId);
+      if (current?.id === login.id && current.qrRenderPromise === renderPromise) {
+        current.qrRenderPromise = undefined;
+      }
+    });
+  login.qrRenderPromise = renderPromise;
+  await renderPromise;
 }
 
 function attachLoginWaiter(accountId: string, login: ActiveLogin) {
@@ -140,6 +164,7 @@ export async function startWebLoginWithQr(
 
   let resolveQr: ((qr: string) => void) | null = null;
   let rejectQr: ((err: Error) => void) | null = null;
+  let pendingQr: string | undefined;
   const qrPromise = new Promise<string>((resolve, reject) => {
     resolveQr = resolve;
     rejectQr = reject;
@@ -153,22 +178,23 @@ export async function startWebLoginWithQr(
   );
 
   let sock: WaSocket;
-  let pendingQr: string | null = null;
   try {
     sock = await createWaSocket(false, Boolean(opts.verbose), {
       authDir: account.authDir,
       onQr: (qr: string) => {
-        if (pendingQr) {
-          return;
-        }
         pendingQr = qr;
-        const current = activeLogins.get(account.accountId);
-        if (current && !current.qr) {
-          current.qr = qr;
-        }
         clearTimeout(qrTimer);
         runtime.log(info("WhatsApp QR received."));
-        resolveQr?.(qr);
+        if (resolveQr) {
+          resolveQr(qr);
+          resolveQr = null;
+          rejectQr = null;
+        }
+        const current = activeLogins.get(account.accountId);
+        if (!current) {
+          return;
+        }
+        void updateLoginQrData(current, qr);
       },
     });
   } catch (err) {
@@ -185,16 +211,17 @@ export async function startWebLoginWithQr(
     id: randomUUID(),
     sock,
     startedAt: Date.now(),
+    qrVersion: 0,
     connected: false,
     waitPromise: Promise.resolve(),
     restartAttempted: false,
     verbose: Boolean(opts.verbose),
   };
   activeLogins.set(account.accountId, login);
-  if (pendingQr && !login.qr) {
-    login.qr = pendingQr;
-  }
   attachLoginWaiter(account.accountId, login);
+  if (pendingQr) {
+    void updateLoginQrData(login, pendingQr);
+  }
 
   let qr: string;
   try {
@@ -207,8 +234,11 @@ export async function startWebLoginWithQr(
     };
   }
 
-  const base64 = await renderQrPngBase64(qr);
-  login.qrDataUrl = `data:image/png;base64,${base64}`;
+  if (login.qr !== qr || !login.qrDataUrl) {
+    await updateLoginQrData(login, qr);
+  } else if (login.qrRenderPromise) {
+    await login.qrRenderPromise;
+  }
   return {
     qrDataUrl: login.qrDataUrl,
     message: "Scan this QR in WhatsApp → Linked Devices.",
