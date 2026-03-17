@@ -693,13 +693,13 @@
     "vitest": "^4.1.0"
   },
   "peerDependencies": {
-    "@napi-rs/canvas": "^0.1.89",
-    "node-llama-cpp": "3.16.2"
+    "@napi-rs/canvas": "^0.1.89"
   },
-  "peerDependenciesMeta": {
-    "node-llama-cpp": {
-      "optional": true
-    }
+  "optionalDependencies": {
+    "node-llama-cpp": "^3.18.1"
+  },
+  "config": {
+    "nodeLlamaCppPostinstall": "ignoreFailedBuild"
   },
   "engines": {
     "node": ">=22.16.0"
