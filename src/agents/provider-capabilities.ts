@@ -66,6 +66,16 @@ const PLUGIN_CAPABILITIES_FALLBACKS: Record<string, Partial<ProviderCapabilities
   },
 };
 
+const STRICT9_TRANSCRIPT_TOOL_CALL_MODEL_HINTS = [
+  ...new Set(
+    Object.values(PROVIDER_CAPABILITIES).flatMap((capabilities) =>
+      capabilities.transcriptToolCallIdMode === "strict9"
+        ? (capabilities.transcriptToolCallIdModelHints ?? [])
+        : [],
+    ),
+  ),
+];
+
 export function resolveProviderCapabilities(provider?: string | null): ProviderCapabilities {
   const normalized = normalizeProviderId(provider ?? "");
   const pluginCapabilities = normalized
@@ -149,7 +159,10 @@ export function resolveTranscriptToolCallIdMode(
   if (mode === "strict9") {
     return mode;
   }
-  if (modelIncludesAnyHint(modelId, capabilities.transcriptToolCallIdModelHints)) {
+  if (
+    modelIncludesAnyHint(modelId, capabilities.transcriptToolCallIdModelHints) ||
+    modelIncludesAnyHint(modelId, STRICT9_TRANSCRIPT_TOOL_CALL_MODEL_HINTS)
+  ) {
     return "strict9";
   }
   return undefined;
