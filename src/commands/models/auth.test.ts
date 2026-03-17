@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   updateConfig: vi.fn(),
   logConfigUpdated: vi.fn(),
   openUrl: vi.fn(),
+  loadNodeHostConfig: vi.fn(),
   loadAuthProfileStoreForRuntime: vi.fn(),
   listProfilesForProvider: vi.fn(),
   clearAuthProfileCooldown: vi.fn(),
@@ -69,6 +70,10 @@ vi.mock("./shared.js", async (importActual) => {
 
 vi.mock("../../config/logging.js", () => ({
   logConfigUpdated: mocks.logConfigUpdated,
+}));
+
+vi.mock("../../node-host/config.js", () => ({
+  loadNodeHostConfig: mocks.loadNodeHostConfig,
 }));
 
 vi.mock("../onboard-helpers.js", () => ({
@@ -182,6 +187,7 @@ describe("modelsAuthLoginCommand", () => {
         run: runProviderAuth as ProviderPlugin["auth"][number]["run"],
       }),
     ]);
+    mocks.loadNodeHostConfig.mockResolvedValue(null);
     mocks.loadAuthProfileStoreForRuntime.mockReturnValue({ profiles: {}, usageStats: {} });
     mocks.listProfilesForProvider.mockReturnValue([]);
     mocks.clearAuthProfileCooldown.mockResolvedValue(undefined);
@@ -289,6 +295,22 @@ describe("modelsAuthLoginCommand", () => {
     await expect(modelsAuthLoginCommand({ provider: "anthropic" }, runtime)).rejects.toThrow(
       'Unknown provider "anthropic". Loaded providers: openai-codex. Verify plugins via `openclaw plugins list --json`.',
     );
+  });
+
+  it("blocks oauth login when running on a remote node host", async () => {
+    const runtime = createRuntime();
+    mocks.loadNodeHostConfig.mockResolvedValue({
+      version: 1,
+      nodeId: "node-1",
+      token: "node-token",
+      gateway: { host: "10.30.10.20", port: 18789 },
+    });
+
+    await expect(modelsAuthLoginCommand({ provider: "openai-codex" }, runtime)).rejects.toThrow(
+      "configured as a remote node host",
+    );
+    expect(runProviderAuth).not.toHaveBeenCalled();
+    expect(mocks.upsertAuthProfile).not.toHaveBeenCalled();
   });
 
   it("does not persist a cancelled manual token entry", async () => {
