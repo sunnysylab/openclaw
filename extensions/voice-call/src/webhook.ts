@@ -51,6 +51,7 @@ function normalizeWebhookResponse(parsed: {
 export class VoiceCallWebhookServer {
   private server: http.Server | null = null;
   private listeningUrl: string | null = null;
+  private startPromise: Promise<string> | null = null;
   private config: VoiceCallConfig;
   private manager: CallManager;
   private provider: VoiceCallProvider;
@@ -223,7 +224,14 @@ export class VoiceCallWebhookServer {
       return this.listeningUrl ?? this.resolveListeningUrl(bind, webhookPath);
     }
 
-    return new Promise((resolve, reject) => {
+    // Guard concurrent start() calls before the first listen() completes.
+    // Without this, two overlapping callers can each create a server and race
+    // to bind the same port, producing EADDRINUSE on the second bind.
+    if (this.startPromise) {
+      return this.startPromise;
+    }
+
+    this.startPromise = new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => {
         this.handleRequest(req, res, webhookPath).catch((err) => {
           console.error("[voice-call] Webhook error:", err);
@@ -245,11 +253,17 @@ export class VoiceCallWebhookServer {
         });
       }
 
-      this.server.on("error", reject);
+      this.server.on("error", (err) => {
+        this.server = null;
+        this.listeningUrl = null;
+        this.startPromise = null;
+        reject(err);
+      });
 
       this.server.listen(port, bind, () => {
         const url = this.resolveListeningUrl(bind, webhookPath);
         this.listeningUrl = url;
+        this.startPromise = null;
         console.log(`[voice-call] Webhook server listening on ${url}`);
         if (this.mediaStreamHandler) {
           const address = this.server?.address();
@@ -268,6 +282,8 @@ export class VoiceCallWebhookServer {
         });
       });
     });
+
+    return this.startPromise;
   }
 
   /**
@@ -278,6 +294,7 @@ export class VoiceCallWebhookServer {
       this.stopStaleCallReaper();
       this.stopStaleCallReaper = null;
     }
+    this.startPromise = null;
     return new Promise((resolve) => {
       if (this.server) {
         this.server.close(() => {
