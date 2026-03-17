@@ -1423,6 +1423,7 @@ export function renderApp(state: AppViewState) {
                   });
                   void loadChatHistory(state);
                   void state.loadAssistantIdentity();
+                  void refreshChatAvatar(state);
                 },
                 onNavigateToAgent: () => {
                   state.agentsSelectedId = resolvedAgentId;
@@ -1433,6 +1434,7 @@ export function renderApp(state: AppViewState) {
                   state.chatMessages = [];
                   void loadChatHistory(state);
                   void state.loadAssistantIdentity();
+                  void refreshChatAvatar(state);
                 },
                 showNewMessages: state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
                 onScrollToBottom: () => state.scrollToBottom(),
