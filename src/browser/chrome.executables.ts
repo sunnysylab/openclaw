@@ -225,10 +225,16 @@ function detectDefaultChromiumExecutableMac(): BrowserExecutable | null {
   }
 
   // Fallback to known paths if osascript/defaults resolution failed
+  // Check both /Applications (system-wide) and ~/Applications (user installs)
   if (!exePath && bundleId in KNOWN_BUNDLE_ID_PATHS) {
-    const knownPath = KNOWN_BUNDLE_ID_PATHS[bundleId];
-    if (exists(knownPath)) {
-      exePath = knownPath;
+    const systemPath = KNOWN_BUNDLE_ID_PATHS[bundleId];
+    const userPath = path.join(os.homedir(), "Applications", systemPath.replace("/Applications/", ""));
+
+    // Try system-wide path first, then user home path
+    if (exists(systemPath)) {
+      exePath = systemPath;
+    } else if (exists(userPath)) {
+      exePath = userPath;
     }
   }
 
