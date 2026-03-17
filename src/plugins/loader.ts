@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
 import type { ChannelPlugin } from "../channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
@@ -1202,7 +1202,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
 
     let mod: OpenClawPluginModule | null = null;
     try {
-      mod = getJiti()(safeSource) as OpenClawPluginModule;
+      mod = getJiti()(pathToFileURL(safeSource).href) as OpenClawPluginModule;
     } catch (err) {
       recordPluginError({
         logger,
