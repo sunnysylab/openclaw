@@ -1,5 +1,6 @@
 import { estimateBase64DecodedBytes } from "../media/base64.js";
 import { sniffMimeFromBase64 } from "../media/sniff-mime-from-base64.js";
+import mammoth from "mammoth";
 
 export type ChatAttachment = {
   type?: string;
@@ -14,13 +15,22 @@ export type ChatImageContent = {
   mimeType: string;
 };
 
-export type ParsedMessageWithImages = {
+export type ChatDocumentContent = {
+  type: "document";
+  fileName: string;
+  mimeType: string;
+  text: string;
+};
+
+export type ParsedMessageWithAttachments = {
   message: string;
   images: ChatImageContent[];
+  documents: ChatDocumentContent[];
 };
 
 type AttachmentLog = {
   warn: (message: string) => void;
+  info: (message: string) => void;
 };
 
 type NormalizedAttachment = {
@@ -39,6 +49,26 @@ function normalizeMime(mime?: string): string | undefined {
 
 function isImageMime(mime?: string): boolean {
   return typeof mime === "string" && mime.startsWith("image/");
+}
+
+function isDocumentMime(mime?: string): boolean {
+  if (!mime) return false;
+  const documentMimes = [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+    "application/msword", // .doc
+    "application/pdf", // .pdf
+    "text/plain", // .txt
+    "text/markdown", // .md
+    "application/markdown",
+  ];
+  return documentMimes.includes(mime);
+}
+
+function isDocumentFileName(fileName?: string): boolean {
+  if (!fileName) return false;
+  const documentExtensions = [".docx", ".doc", ".pdf", ".txt", ".md", ".markdown"];
+  const ext = fileName.toLowerCase().slice(fileName.lastIndexOf("."));
+  return documentExtensions.includes(ext);
 }
 
 function isValidBase64(value: string): boolean {
@@ -89,23 +119,53 @@ function validateAttachmentBase64OrThrow(
   return sizeBytes;
 }
 
+async function parseDocumentContent(
+  base64: string,
+  mimeType: string,
+  fileName: string,
+): Promise<string> {
+  const buffer = Buffer.from(base64, "base64");
+
+  // DOCX
+  if (mimeType.includes("word") || fileName.endsWith(".docx") || fileName.endsWith(".doc")) {
+    try {
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value;
+    } catch (error) {
+      throw new Error(`Failed to parse DOCX: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  // PDF - return placeholder, actual parsing would need pdfjs-dist
+  if (mimeType.includes("pdf") || fileName.endsWith(".pdf")) {
+    return `[PDF document: ${fileName}]`;
+  }
+
+  // Plain text
+  if (mimeType.includes("text") || fileName.endsWith(".txt") || fileName.endsWith(".md")) {
+    return buffer.toString("utf-8");
+  }
+
+  return `[Document: ${fileName}]`;
+}
+
 /**
- * Parse attachments and extract images as structured content blocks.
- * Returns the message text and an array of image content blocks
- * compatible with Claude API's image format.
+ * Parse attachments and extract images and documents as structured content blocks.
+ * Returns the message text and arrays of image and document content blocks.
  */
 export async function parseMessageWithAttachments(
   message: string,
   attachments: ChatAttachment[] | undefined,
   opts?: { maxBytes?: number; log?: AttachmentLog },
-): Promise<ParsedMessageWithImages> {
+): Promise<ParsedMessageWithAttachments> {
   const maxBytes = opts?.maxBytes ?? 5_000_000; // decoded bytes (5,000,000)
   const log = opts?.log;
   if (!attachments || attachments.length === 0) {
-    return { message, images: [] };
+    return { message, images: [], documents: [] };
   }
 
   const images: ChatImageContent[] = [];
+  const documents: ChatDocumentContent[] = [];
 
   for (const [idx, att] of attachments.entries()) {
     if (!att) {
@@ -120,28 +180,54 @@ export async function parseMessageWithAttachments(
 
     const providedMime = normalizeMime(mime);
     const sniffedMime = normalizeMime(await sniffMimeFromBase64(b64));
-    if (sniffedMime && !isImageMime(sniffedMime)) {
-      log?.warn(`attachment ${label}: detected non-image (${sniffedMime}), dropping`);
+    const fileName = att.fileName || label;
+
+    // Check if it's an image
+    if (isImageMime(sniffedMime) || isImageMime(providedMime)) {
+      if (sniffedMime && providedMime && sniffedMime !== providedMime) {
+        log?.warn(
+          `attachment ${label}: mime mismatch (${providedMime} -> ${sniffedMime}), using sniffed`,
+        );
+      }
+      images.push({
+        type: "image",
+        data: b64,
+        mimeType: sniffedMime ?? providedMime ?? mime,
+      });
       continue;
-    }
-    if (!sniffedMime && !isImageMime(providedMime)) {
-      log?.warn(`attachment ${label}: unable to detect image mime type, dropping`);
-      continue;
-    }
-    if (sniffedMime && providedMime && sniffedMime !== providedMime) {
-      log?.warn(
-        `attachment ${label}: mime mismatch (${providedMime} -> ${sniffedMime}), using sniffed`,
-      );
     }
 
-    images.push({
-      type: "image",
-      data: b64,
-      mimeType: sniffedMime ?? providedMime ?? mime,
-    });
+    // Check if it's a document
+    if (isDocumentMime(sniffedMime) || isDocumentMime(providedMime) || isDocumentFileName(fileName)) {
+      log?.info(`attachment ${label}: detected document, parsing content...`);
+      try {
+        const text = await parseDocumentContent(b64, providedMime || sniffedMime || "", fileName);
+        documents.push({
+          type: "document",
+          fileName,
+          mimeType: providedMime || sniffedMime || mime,
+          text,
+        });
+      } catch (error) {
+        log?.warn(`attachment ${label}: failed to parse document - ${error instanceof Error ? error.message : String(error)}`);
+      }
+      continue;
+    }
+
+    // Unknown type
+    log?.warn(`attachment ${label}: unsupported mime type (${sniffedMime || providedMime || "unknown"}), skipping`);
   }
 
-  return { message, images };
+  // Append document contents to message
+  let finalMessage = message;
+  if (documents.length > 0) {
+    const docContents = documents.map(doc => 
+      `--- ${doc.fileName} ---\n${doc.text}\n`
+    ).join("\n");
+    finalMessage = message.trim() ? `${message}\n\n${docContents}` : docContents;
+  }
+
+  return { message: finalMessage, images, documents };
 }
 
 /**
@@ -165,20 +251,3 @@ export function buildMessageWithAttachments(
       continue;
     }
     const normalized = normalizeAttachment(att, idx, {
-      stripDataUrlPrefix: false,
-      requireImageMime: true,
-    });
-    validateAttachmentBase64OrThrow(normalized, { maxBytes });
-    const { base64, label, mime } = normalized;
-
-    const safeLabel = label.replace(/\s+/g, "_");
-    const dataUrl = `![${safeLabel}](data:${mime};base64,${base64})`;
-    blocks.push(dataUrl);
-  }
-
-  if (blocks.length === 0) {
-    return message;
-  }
-  const separator = message.trim().length > 0 ? "\n\n" : "";
-  return `${message}${separator}${blocks.join("\n\n")}`;
-}
