@@ -148,6 +148,7 @@ Full schema is in [Gateway configuration](/gateway/configuration).
     },
   },
 }
+```
 
 ### Microsoft primary (no API key)
 

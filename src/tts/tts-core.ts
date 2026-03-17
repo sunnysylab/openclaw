@@ -12,6 +12,7 @@ import {
 import { createConfiguredOllamaStreamFn } from "../agents/ollama-stream.js";
 import { resolveModelAsync } from "../agents/pi-embedded-runner/model.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { isValidXaiVoice, parseXaiOutputFormat, XAI_TTS_VOICES } from "./providers/xai.js";
 import type {
   ResolvedTtsConfig,
   ResolvedTtsModelOverrides,
@@ -397,8 +398,6 @@ export const OPENAI_TTS_VOICES = [
   "verse",
 ] as const;
 
-export const XAI_TTS_VOICES = ["eve", "ara", "rex", "sal", "leo"] as const;
-
 type OpenAiTtsVoice = (typeof OPENAI_TTS_VOICES)[number];
 
 export function isValidOpenAIModel(model: string, baseUrl?: string): boolean {
@@ -423,10 +422,6 @@ export function isValidOpenAIVoice(voice: string, baseUrl?: string): voice is Op
     return true;
   }
   return OPENAI_TTS_VOICES.includes(voice as OpenAiTtsVoice);
-}
-
-export function isValidXaiVoice(voice: string): voice is (typeof XAI_TTS_VOICES)[number] {
-  return XAI_TTS_VOICES.includes(voice as (typeof XAI_TTS_VOICES)[number]);
 }
 
 type SummarizeResult = {
@@ -719,67 +714,6 @@ export function inferEdgeExtension(outputFormat: string): string {
     return ".wav";
   }
   return ".mp3";
-}
-
-export function parseXaiOutputFormat(formatString: string): {
-  codec: "mp3" | "wav" | "pcm" | "mulaw" | "alaw";
-  sample_rate: number | null;
-  bit_rate: number | null;
-} {
-  const parts = formatString.split("_");
-  const codec = parts[0] as "mp3" | "wav" | "pcm" | "mulaw" | "alaw";
-  const sampleRate = parts[1] ? parseInt(parts[1], 10) : null;
-  const bitRate = parts[2] ? parseInt(parts[2], 10) * 1000 : null; // kb to b
-  return {
-    codec: codec || "mp3",
-    sample_rate: sampleRate,
-    bit_rate: bitRate,
-  };
-}
-
-export async function xaiTTS(params: {
-  text: string;
-  apiKey: string;
-  baseUrl: string;
-  voiceId: string;
-  outputFormat: string;
-  language?: string;
-  timeoutMs: number;
-}): Promise<Buffer> {
-  const { text, apiKey, baseUrl, voiceId, outputFormat, language, timeoutMs } = params;
-  if (!isValidXaiVoice(voiceId)) {
-    throw new Error(`Invalid voiceId: ${voiceId}`);
-  }
-
-  const outputFormatObj = parseXaiOutputFormat(outputFormat);
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(`${baseUrl}/tts`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text,
-        voice_id: voiceId,
-        output_format: outputFormatObj,
-        language,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`xAI TTS API error (${response.status})`);
-    }
-
-    return Buffer.from(await response.arrayBuffer());
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 export async function edgeTTS(params: {

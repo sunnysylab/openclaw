@@ -31,22 +31,21 @@ import {
   normalizeSpeechProviderId,
 } from "./provider-registry.js";
 import type { SpeechVoiceOption } from "./provider-types.js";
+import { isValidXaiVoice, parseXaiOutputFormat, XAI_TTS_VOICES } from "./providers/xai.js";
 import {
   DEFAULT_OPENAI_BASE_URL,
   isValidOpenAIModel,
   isValidOpenAIVoice,
   isValidVoiceId,
-  isValidXaiVoice,
   OPENAI_TTS_MODELS,
   OPENAI_TTS_VOICES,
-  parseXaiOutputFormat,
   resolveOpenAITtsInstructions,
   parseTtsDirectives,
   scheduleCleanup,
   summarizeText,
-  XAI_TTS_VOICES,
 } from "./tts-core.js";
-export { OPENAI_TTS_MODELS, OPENAI_TTS_VOICES, XAI_TTS_VOICES } from "./tts-core.js";
+export { OPENAI_TTS_MODELS, OPENAI_TTS_VOICES } from "./tts-core.js";
+export { XAI_TTS_VOICES } from "./providers/xai.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_TTS_MAX_LENGTH = 1500;

@@ -426,10 +426,10 @@ export const TtsConfigSchema = z
       .optional(),
     xai: z
       .object({
-          apiKey: SecretInputSchema.optional().register(sensitive),
-          baseUrl: z.string().optional(),
-          voiceId: z.string().optional(),
-          language: z.string().optional(),
+        apiKey: SecretInputSchema.optional().register(sensitive),
+        baseUrl: z.string().optional(),
+        voiceId: z.string().optional(),
+        language: z.string().optional(),
       })
       .strict()
       .optional(),
