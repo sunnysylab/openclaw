@@ -243,7 +243,7 @@ function removePathFromObject(obj: unknown, path: (string | number)[]): void {
     current = next as Record<string, unknown>;
   }
   const lastKey = path[path.length - 1];
-  delete (current as Record<string, unknown>)[lastKey as string];
+  delete (current as Record<string, unknown>)[lastKey];
 }
 
 /**
@@ -295,7 +295,15 @@ function validateConfigObjectTolerantBase(
   // We use JSON.parse(JSON.stringify) for deep cloning as config is a POJO.
   const cleanedRaw = JSON.parse(JSON.stringify(raw));
   for (const issue of unknownKeyIssues) {
-    removePathFromObject(cleanedRaw, issue.path);
+    const issueRecord = issue as unknown as Record<string, unknown>;
+    const keys = issueRecord.keys;
+    if (Array.isArray(keys)) {
+      for (const key of keys) {
+        removePathFromObject(cleanedRaw, [...issue.path, key as string | number]);
+      }
+    } else {
+      removePathFromObject(cleanedRaw, issue.path as (string | number)[]);
+    }
   }
 
   const passResult = OpenClawSchema.safeParse(cleanedRaw);
