@@ -1489,7 +1489,10 @@ describe("initSessionState preserves behavior overrides across /new and /reset",
       storePath,
       sessionKey,
       sessionId: existingSessionId,
-      overrides: { verboseLevel: "on" },
+      overrides: {
+        verboseLevel: "on",
+        sessionHistory: [{ sessionId: "older-session", createdAt: Date.now() - 5_000 }],
+      },
     });
     const sessionUtils = await import("../../gateway/session-utils.fs.js");
     const archiveSpy = vi.spyOn(sessionUtils, "archiveSessionTranscripts");
@@ -1516,6 +1519,7 @@ describe("initSessionState preserves behavior overrides across /new and /reset",
 
     expect(result.isNewSession).toBe(true);
     expect(result.resetTriggered).toBe(true);
+    expect(archiveSpy).toHaveBeenCalledTimes(1);
     expect(archiveSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: existingSessionId,

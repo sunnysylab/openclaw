@@ -53,8 +53,6 @@ import { buildSessionEndHookPayload, buildSessionStartHookPayload } from "./sess
 
 const log = createSubsystemLogger("session-init");
 
-const DEFAULT_SESSION_HISTORY_LIMIT = 5;
-
 /**
  * Push the current sessionId into the session history queue (LRU).
  * Captures a metadata snapshot so settings can be restored when switching back.
@@ -598,13 +596,15 @@ export async function initSessionState(params: {
   sessionEntry = resolvedSessionFile.sessionEntry;
   let evictedFromHistory: SessionHistoryItem[] = [];
   if (isNewSession) {
-    if (previousSessionEntry?.sessionId) {
+    if (previousSessionEntry?.sessionId && historyLimit > 0) {
       const historyCarrier: SessionEntry = {
         ...previousSessionEntry,
         sessionHistory: [...(previousSessionEntry.sessionHistory ?? [])],
       };
       evictedFromHistory = pushSessionHistory(historyCarrier, historyLimit);
       sessionEntry.sessionHistory = historyCarrier.sessionHistory;
+    } else if (historyLimit === 0) {
+      sessionEntry.sessionHistory = [];
     }
     sessionEntry.compactionCount = 0;
     sessionEntry.memoryFlushCompactionCount = undefined;
