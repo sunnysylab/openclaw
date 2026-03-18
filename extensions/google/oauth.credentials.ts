@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
+import { GEMINI_CLI_CLIENT_ID, GEMINI_CLI_CLIENT_SECRET } from "./constants.ts";
 import { CLIENT_ID_KEYS, CLIENT_SECRET_KEYS } from "./oauth.shared.js";
 
 type CredentialFs = {
@@ -32,10 +33,13 @@ function resolveEnv(keys: string[]): string | undefined {
   return undefined;
 }
 
-let cachedGeminiCliCredentials: { clientId: string; clientSecret: string } | null = null;
+let geminiCliCredentials: { clientId: string; clientSecret: string } | null = {
+  clientId: GEMINI_CLI_CLIENT_ID,
+  clientSecret: GEMINI_CLI_CLIENT_SECRET,
+};
 
 export function clearCredentialsCache(): void {
-  cachedGeminiCliCredentials = null;
+  geminiCliCredentials = null;
 }
 
 export function setOAuthCredentialsFsForTest(overrides?: Partial<CredentialFs>): void {
@@ -43,71 +47,8 @@ export function setOAuthCredentialsFsForTest(overrides?: Partial<CredentialFs>):
 }
 
 export function extractGeminiCliCredentials(): { clientId: string; clientSecret: string } | null {
-  if (cachedGeminiCliCredentials) {
-    return cachedGeminiCliCredentials;
-  }
-
-  try {
-    const geminiPath = findInPath("gemini");
-    if (!geminiPath) {
-      return null;
-    }
-
-    const resolvedPath = credentialFs.realpathSync(geminiPath);
-    const geminiCliDirs = resolveGeminiCliDirs(geminiPath, resolvedPath);
-
-    let content: string | null = null;
-    for (const geminiCliDir of geminiCliDirs) {
-      const searchPaths = [
-        join(
-          geminiCliDir,
-          "node_modules",
-          "@google",
-          "gemini-cli-core",
-          "dist",
-          "src",
-          "code_assist",
-          "oauth2.js",
-        ),
-        join(
-          geminiCliDir,
-          "node_modules",
-          "@google",
-          "gemini-cli-core",
-          "dist",
-          "code_assist",
-          "oauth2.js",
-        ),
-      ];
-      for (const path of searchPaths) {
-        if (credentialFs.existsSync(path)) {
-          content = credentialFs.readFileSync(path, "utf8");
-          break;
-        }
-      }
-      if (content) {
-        break;
-      }
-      const found = findFile(geminiCliDir, "oauth2.js", 10);
-      if (found) {
-        content = credentialFs.readFileSync(found, "utf8");
-        break;
-      }
-    }
-    if (!content) {
-      return null;
-    }
-
-    const idMatch = content.match(/(\d+-[a-z0-9]+\.apps\.googleusercontent\.com)/);
-    const secretMatch = content.match(/(GOCSPX-[A-Za-z0-9_-]+)/);
-    if (idMatch && secretMatch) {
-      cachedGeminiCliCredentials = { clientId: idMatch[1], clientSecret: secretMatch[1] };
-      return cachedGeminiCliCredentials;
-    }
-  } catch {
-    // Gemini CLI not installed or extraction failed
-  }
-  return null;
+  geminiCliCredentials = { clientId: GEMINI_CLIENT_ID, clientSecret: GEMINI_CLIENT_SECRET };
+  return geminiCliCredentials;
 }
 
 function resolveGeminiCliDirs(geminiPath: string, resolvedPath: string): string[] {
