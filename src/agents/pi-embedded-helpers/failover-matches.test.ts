@@ -38,7 +38,7 @@ describe("Z.ai vendor error codes (#48988)", () => {
     });
 
     it("classifies Z.ai 1113 with spaces as auth", () => {
-      const raw = '{"code": 1113, "message": "authentication failed"}';
+      const raw = '{"code": 1113, "message": "invalid api endpoint or credentials"}';
       expect(isAuthErrorMessage(raw)).toBe(true);
     });
 
