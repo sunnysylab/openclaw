@@ -1373,11 +1373,11 @@ describe("applyExtraParamsToAgent", () => {
         providers: {
           google: {
             baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-            api: "google-generative-ai",
+            api: "google-generative-ai" as const,
             models: [],
             safetySettings: {
-              harassment: "BLOCK_NONE",
-              dangerousContent: "BLOCK_ONLY_HIGH",
+              harassment: "BLOCK_NONE" as const,
+              dangerousContent: "BLOCK_ONLY_HIGH" as const,
             },
           },
         },
@@ -1432,10 +1432,10 @@ describe("applyExtraParamsToAgent", () => {
         providers: {
           google: {
             baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-            api: "google-generative-ai",
+            api: "google-generative-ai" as const,
             models: [],
             safetySettings: {
-              harassment: "BLOCK_NONE",
+              harassment: "BLOCK_NONE" as const,
             },
           },
         },
@@ -1479,10 +1479,10 @@ describe("applyExtraParamsToAgent", () => {
         providers: {
           google: {
             baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-            api: "google-generative-ai",
+            api: "google-generative-ai" as const,
             models: [],
             safetySettings: {
-              harassment: "BLOCK_NONE",
+              harassment: "BLOCK_NONE" as const,
             },
           },
         },
@@ -1517,12 +1517,12 @@ describe("applyExtraParamsToAgent", () => {
     const cfg = {
       models: {
         providers: {
-          googleAiStudio: {
+          "google-ai-studio": {
             baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-            api: "google-generative-ai",
+            api: "google-generative-ai" as const,
             models: [],
             safetySettings: {
-              hateSpeech: "BLOCK_ONLY_HIGH",
+              hateSpeech: "BLOCK_ONLY_HIGH" as const,
             },
           },
         },
