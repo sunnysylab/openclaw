@@ -163,7 +163,7 @@ vi.mock("../../../src/infra/heartbeat-wake.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../src/infra/heartbeat-wake.js")>();
   return {
     ...actual,
-    requestHeartbeatNow: requestHeartbeatNowSpy,
+    requestHeartbeatNow: heartbeatWakeHoisted.requestHeartbeatNowSpy,
   };
 });
 

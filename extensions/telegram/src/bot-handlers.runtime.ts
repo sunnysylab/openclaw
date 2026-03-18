@@ -36,6 +36,8 @@ import { buildCommandsMessagePaginated } from "openclaw/plugin-sdk/reply-runtime
 import { resolveAgentRoute } from "openclaw/plugin-sdk/routing";
 import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
 import { danger, logVerbose, warn } from "openclaw/plugin-sdk/runtime-env";
+import { requestHeartbeatNow } from "../../../src/infra/heartbeat-wake.js";
+import { scopedHeartbeatWakeOptions } from "../../../src/routing/session-key.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import {
   isSenderAllowed,
@@ -880,7 +882,7 @@ export const registerTelegramHandlers = ({
         );
       }
       if (requestedWake && enqueuedCount > 0) {
-        runtime.system.requestHeartbeatNow({ reason: "wake", sessionKey });
+        requestHeartbeatNow(scopedHeartbeatWakeOptions(sessionKey, { reason: "wake" }));
         logVerbose(`telegram: reaction wake requested session=${sessionKey}`);
       }
     } catch (err) {
