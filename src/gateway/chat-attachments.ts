@@ -54,11 +54,11 @@ function isImageMime(mime?: string): boolean {
 function isDocumentMime(mime?: string): boolean {
   if (!mime) return false;
   const documentMimes = [
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
-    "application/msword", // .doc
-    "application/pdf", // .pdf
-    "text/plain", // .txt
-    "text/markdown", // .md
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
     "application/markdown",
   ];
   return documentMimes.includes(mime);
@@ -72,7 +72,6 @@ function isDocumentFileName(fileName?: string): boolean {
 }
 
 function isValidBase64(value: string): boolean {
-  // Minimal validation; avoid full decode allocations for large payloads.
   return value.length > 0 && value.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(value);
 }
 
@@ -94,7 +93,6 @@ function normalizeAttachment(
 
   let base64 = content.trim();
   if (opts.stripDataUrlPrefix) {
-    // Strip data URL prefix if present (e.g., "data:image/jpeg;base64,...").
     const dataUrlMatch = /^data:[^;]+;base64,(.*)$/.exec(base64);
     if (dataUrlMatch) {
       base64 = dataUrlMatch[1];
@@ -126,7 +124,6 @@ async function parseDocumentContent(
 ): Promise<string> {
   const buffer = Buffer.from(base64, "base64");
 
-  // DOCX
   if (mimeType.includes("word") || fileName.endsWith(".docx") || fileName.endsWith(".doc")) {
     try {
       const result = await mammoth.extractRawText({ buffer });
@@ -136,12 +133,10 @@ async function parseDocumentContent(
     }
   }
 
-  // PDF - return placeholder, actual parsing would need pdfjs-dist
   if (mimeType.includes("pdf") || fileName.endsWith(".pdf")) {
     return `[PDF document: ${fileName}]`;
   }
 
-  // Plain text
   if (mimeType.includes("text") || fileName.endsWith(".txt") || fileName.endsWith(".md")) {
     return buffer.toString("utf-8");
   }
@@ -149,16 +144,12 @@ async function parseDocumentContent(
   return `[Document: ${fileName}]`;
 }
 
-/**
- * Parse attachments and extract images and documents as structured content blocks.
- * Returns the message text and arrays of image and document content blocks.
- */
 export async function parseMessageWithAttachments(
   message: string,
   attachments: ChatAttachment[] | undefined,
   opts?: { maxBytes?: number; log?: AttachmentLog },
-): Promise<ParsedMessageWithAttachments> {
-  const maxBytes = opts?.maxBytes ?? 5_000_000; // decoded bytes (5,000,000)
+): Promise<ParsedMessageWithImages> {
+  const maxBytes = opts?.maxBytes ?? 5_000_000;
   const log = opts?.log;
   if (!attachments || attachments.length === 0) {
     return { message, images: [], documents: [] };
@@ -182,7 +173,6 @@ export async function parseMessageWithAttachments(
     const sniffedMime = normalizeMime(await sniffMimeFromBase64(b64));
     const fileName = att.fileName || label;
 
-    // Check if it's an image
     if (isImageMime(sniffedMime) || isImageMime(providedMime)) {
       if (sniffedMime && providedMime && sniffedMime !== providedMime) {
         log?.warn(
@@ -197,7 +187,6 @@ export async function parseMessageWithAttachments(
       continue;
     }
 
-    // Check if it's a document
     if (isDocumentMime(sniffedMime) || isDocumentMime(providedMime) || isDocumentFileName(fileName)) {
       log?.info(`attachment ${label}: detected document, parsing content...`);
       try {
@@ -214,11 +203,9 @@ export async function parseMessageWithAttachments(
       continue;
     }
 
-    // Unknown type
     log?.warn(`attachment ${label}: unsupported mime type (${sniffedMime || providedMime || "unknown"}), skipping`);
   }
 
-  // Append document contents to message
   let finalMessage = message;
   if (documents.length > 0) {
     const docContents = documents.map(doc => 
@@ -230,16 +217,12 @@ export async function parseMessageWithAttachments(
   return { message: finalMessage, images, documents };
 }
 
-/**
- * @deprecated Use parseMessageWithAttachments instead.
- * This function converts images to markdown data URLs which Claude API cannot process as images.
- */
 export function buildMessageWithAttachments(
   message: string,
   attachments: ChatAttachment[] | undefined,
   opts?: { maxBytes?: number },
 ): string {
-  const maxBytes = opts?.maxBytes ?? 2_000_000; // 2 MB
+  const maxBytes = opts?.maxBytes ?? 2_000_000;
   if (!attachments || attachments.length === 0) {
     return message;
   }
@@ -251,3 +234,22 @@ export function buildMessageWithAttachments(
       continue;
     }
     const normalized = normalizeAttachment(att, idx, {
+      stripDataUrlPrefix: false,
+      requireImageMime: true,
+    });
+    validateAttachmentBase64OrThrow(normalized, { maxBytes });
+    const { base64, label, mime } = normalized;
+
+    const safeLabel = label.replace(/\s+/g, "_");
+    const dataUrl = `![${safeLabel}](data:${mime};base64,${base64})`;
+    blocks.push(dataUrl);
+  }
+
+  if (blocks.length === 0) {
+    return message;
+  }
+  const separator = message.trim().length > 0 ? "\n\n" : "";
+  return `${message}${separator}${blocks.join("\n\n")}`;
+}
+
+export { ChatAttachment, ChatImageContent };
