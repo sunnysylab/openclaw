@@ -1,12 +1,17 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
 type AnthropicContentBlock = {
-  type: "text" | "toolUse" | "toolResult";
+  type: "text" | "toolUse" | "toolResult" | "toolCall" | "functionCall";
   text?: string;
   id?: string;
   name?: string;
   toolUseId?: string;
 };
+
+/** Recognizes toolUse, toolCall, and functionCall block types from different providers/core versions */
+function isToolCallBlock(type: string | undefined): boolean {
+  return type === "toolUse" || type === "toolCall" || type === "functionCall";
+}
 
 /**
  * Strips dangling tool_use blocks from assistant messages when the immediately
@@ -65,7 +70,7 @@ function stripDanglingAnthropicToolUses(messages: AgentMessage[]): AgentMessage[
       if (!block) {
         return false;
       }
-      if (block.type !== "toolUse") {
+      if (!isToolCallBlock(block.type)) {
         return true;
       }
       // Keep tool_use if its id is in the valid set
@@ -83,6 +88,32 @@ function stripDanglingAnthropicToolUses(messages: AgentMessage[]): AgentMessage[
         ...assistantMsg,
         content: filteredContent,
       } as AgentMessage);
+    }
+  }
+
+  // Handle end-of-conversation orphans: if the last message is assistant with
+  // tool_use blocks and no following user message, strip the tool_use blocks.
+  if (result.length > 0) {
+    const lastMsg = result[result.length - 1];
+    const lastRole =
+      lastMsg && typeof lastMsg === "object"
+        ? ((lastMsg as { role?: unknown }).role as string | undefined)
+        : undefined;
+    if (lastRole === "assistant") {
+      const lastAssistant = lastMsg as { content?: AnthropicContentBlock[] };
+      if (Array.isArray(lastAssistant.content)) {
+        const hasToolUse = lastAssistant.content.some((b) => b && isToolCallBlock(b.type));
+        if (hasToolUse) {
+          const filtered = lastAssistant.content.filter((b) => b && !isToolCallBlock(b.type));
+          result[result.length - 1] =
+            filtered.length > 0
+              ? ({ ...lastAssistant, content: filtered } as AgentMessage)
+              : ({
+                  ...lastAssistant,
+                  content: [{ type: "text" as const, text: "[tool calls omitted]" }],
+                } as AgentMessage);
+        }
+      }
     }
   }
 
