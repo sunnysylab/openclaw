@@ -1,25 +1,36 @@
+import { formatCliCommand } from "openclaw/plugin-sdk/cli-runtime";
+import { parseDurationMs } from "openclaw/plugin-sdk/cli-runtime";
 import {
-  emptyPluginConfigSchema,
-  type OpenClawPluginApi,
+  definePluginEntry,
   type ProviderAuthContext,
   type ProviderResolveDynamicModelContext,
   type ProviderRuntimeModel,
 } from "openclaw/plugin-sdk/core";
-import { upsertAuthProfile } from "../../src/agents/auth-profiles.js";
-import { normalizeModelCompat } from "../../src/agents/model-compat.js";
-import { parseDurationMs } from "../../src/cli/parse-duration.js";
 import {
+  CLAUDE_CLI_PROFILE_ID,
+  applyAuthProfileConfig,
+  buildTokenProfileId,
+  createProviderApiKeyAuthMethod,
+  ensureApiKeyFromOptionEnvOrPrompt,
+  listProfilesForProvider,
+  normalizeApiKeyInput,
+  suggestOAuthProfileIdForLegacyDefault,
+  type AuthProfileStore,
+  type ProviderAuthResult,
+  normalizeSecretInput,
   normalizeSecretInputModeInput,
   promptSecretRefForSetup,
   resolveSecretInputModeForEnvSelection,
-} from "../../src/commands/auth-choice.apply-helpers.js";
-import { buildTokenProfileId, validateAnthropicSetupToken } from "../../src/commands/auth-token.js";
-import { applyAuthProfileConfig } from "../../src/commands/onboard-auth.js";
-import { fetchClaudeUsage } from "../../src/infra/provider-usage.fetch.js";
-import type { ProviderAuthResult } from "../../src/plugins/types.js";
-import { normalizeSecretInput } from "../../src/utils/normalize-secret-input.js";
+  upsertAuthProfile,
+  validateAnthropicSetupToken,
+  validateApiKeyInput,
+} from "openclaw/plugin-sdk/provider-auth";
+import { normalizeModelCompat } from "openclaw/plugin-sdk/provider-models";
+import { fetchClaudeUsage } from "openclaw/plugin-sdk/provider-usage";
+import { anthropicMediaUnderstandingProvider } from "./media-understanding-provider.js";
 
 const PROVIDER_ID = "anthropic";
+const DEFAULT_ANTHROPIC_MODEL = "anthropic/claude-sonnet-4-6";
 const ANTHROPIC_OPUS_46_MODEL_ID = "claude-opus-4-6";
 const ANTHROPIC_OPUS_46_DOT_MODEL_ID = "claude-opus-4.6";
 const ANTHROPIC_OPUS_TEMPLATE_MODEL_IDS = ["claude-opus-4-5", "claude-opus-4.5"] as const;
@@ -32,6 +43,13 @@ const ANTHROPIC_MODERN_MODEL_PREFIXES = [
   "claude-opus-4-5",
   "claude-sonnet-4-5",
   "claude-haiku-4-5",
+] as const;
+const ANTHROPIC_OAUTH_ALLOWLIST = [
+  "anthropic/claude-sonnet-4-6",
+  "anthropic/claude-opus-4-6",
+  "anthropic/claude-opus-4-5",
+  "anthropic/claude-sonnet-4-5",
+  "anthropic/claude-haiku-4-5",
 ] as const;
 
 function cloneFirstTemplateModel(params: {
@@ -118,6 +136,41 @@ function resolveAnthropicForwardCompatModel(
 function matchesAnthropicModernModel(modelId: string): boolean {
   const lower = modelId.trim().toLowerCase();
   return ANTHROPIC_MODERN_MODEL_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+function buildAnthropicAuthDoctorHint(params: {
+  config?: ProviderAuthContext["config"];
+  store: AuthProfileStore;
+  profileId?: string;
+}): string {
+  const legacyProfileId = params.profileId ?? "anthropic:default";
+  const suggested = suggestOAuthProfileIdForLegacyDefault({
+    cfg: params.config,
+    store: params.store,
+    provider: PROVIDER_ID,
+    legacyProfileId,
+  });
+  if (!suggested || suggested === legacyProfileId) {
+    return "";
+  }
+
+  const storeOauthProfiles = listProfilesForProvider(params.store, PROVIDER_ID)
+    .filter((id) => params.store.profiles[id]?.type === "oauth")
+    .join(", ");
+
+  const cfgMode = params.config?.auth?.profiles?.[legacyProfileId]?.mode;
+  const cfgProvider = params.config?.auth?.profiles?.[legacyProfileId]?.provider;
+
+  return [
+    "Doctor hint (for GitHub issue):",
+    `- provider: ${PROVIDER_ID}`,
+    `- config: ${legacyProfileId}${
+      cfgProvider || cfgMode ? ` (provider=${cfgProvider ?? "?"}, mode=${cfgMode ?? "?"})` : ""
+    }`,
+    `- auth store oauth profiles: ${storeOauthProfiles || "(none)"}`,
+    `- suggested profile: ${suggested}`,
+    `Fix: run "${formatCliCommand("openclaw doctor --yes")}"`,
+  ].join("\n");
 }
 
 async function runAnthropicSetupToken(ctx: ProviderAuthContext): Promise<ProviderAuthResult> {
@@ -258,23 +311,36 @@ async function runAnthropicSetupTokenNonInteractive(ctx: {
   });
 }
 
-const anthropicPlugin = {
+export default definePluginEntry({
   id: PROVIDER_ID,
   name: "Anthropic Provider",
   description: "Bundled Anthropic provider plugin",
-  configSchema: emptyPluginConfigSchema(),
-  register(api: OpenClawPluginApi) {
+  register(api) {
     api.registerProvider({
       id: PROVIDER_ID,
       label: "Anthropic",
       docsPath: "/providers/models",
       envVars: ["ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
+      deprecatedProfileIds: [CLAUDE_CLI_PROFILE_ID],
       auth: [
         {
           id: "setup-token",
           label: "setup-token (claude)",
           hint: "Paste a setup-token from `claude setup-token`",
           kind: "token",
+          wizard: {
+            choiceId: "token",
+            choiceLabel: "Anthropic token (paste setup-token)",
+            choiceHint: "Run `claude setup-token` elsewhere, then paste the token here",
+            groupId: "anthropic",
+            groupLabel: "Anthropic",
+            groupHint: "setup-token + API key",
+            modelAllowlist: {
+              allowedKeys: [...ANTHROPIC_OAUTH_ALLOWLIST],
+              initialSelections: ["anthropic/claude-sonnet-4-6"],
+              message: "Anthropic OAuth models",
+            },
+          },
           run: async (ctx: ProviderAuthContext) => await runAnthropicSetupToken(ctx),
           runNonInteractive: async (ctx) =>
             await runAnthropicSetupTokenNonInteractive({
@@ -284,15 +350,26 @@ const anthropicPlugin = {
               agentDir: ctx.agentDir,
             }),
         },
+        createProviderApiKeyAuthMethod({
+          providerId: PROVIDER_ID,
+          methodId: "api-key",
+          label: "Anthropic API key",
+          hint: "Direct Anthropic API key",
+          optionKey: "anthropicApiKey",
+          flagName: "--anthropic-api-key",
+          envVar: "ANTHROPIC_API_KEY",
+          promptMessage: "Enter Anthropic API key",
+          defaultModel: DEFAULT_ANTHROPIC_MODEL,
+          expectedProviders: ["anthropic"],
+          wizard: {
+            choiceId: "apiKey",
+            choiceLabel: "Anthropic API key",
+            groupId: "anthropic",
+            groupLabel: "Anthropic",
+            groupHint: "setup-token + API key",
+          },
+        }),
       ],
-      wizard: {
-        setup: {
-          choiceId: "token",
-          choiceLabel: "Anthropic token (paste setup-token)",
-          choiceHint: "Run `claude setup-token` elsewhere, then paste the token here",
-          methodId: "setup-token",
-        },
-      },
       resolveDynamicModel: (ctx) => resolveAnthropicForwardCompatModel(ctx),
       capabilities: {
         providerFamily: "anthropic",
@@ -311,8 +388,13 @@ const anthropicPlugin = {
       fetchUsageSnapshot: async (ctx) =>
         await fetchClaudeUsage(ctx.token, ctx.timeoutMs, ctx.fetchFn),
       isCacheTtlEligible: () => true,
+      buildAuthDoctorHint: (ctx) =>
+        buildAnthropicAuthDoctorHint({
+          config: ctx.config,
+          store: ctx.store,
+          profileId: ctx.profileId,
+        }),
     });
+    api.registerMediaUnderstandingProvider(anthropicMediaUnderstandingProvider);
   },
-};
-
-export default anthropicPlugin;
+});

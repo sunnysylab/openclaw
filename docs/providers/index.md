@@ -3,7 +3,7 @@ summary: "Model providers (LLMs) supported by OpenClaw"
 read_when:
   - You want to choose a model provider
   - You need a quick overview of supported LLM backends
-title: "Model Providers"
+title: "Provider Directory"
 ---
 
 # Model Providers
@@ -15,7 +15,7 @@ Looking for chat channel docs (WhatsApp/Telegram/Discord/Slack/Mattermost (plugi
 
 ## Quick start
 
-1. Authenticate with the provider (usually via `openclaw setup --wizard`).
+1. Authenticate with the provider (usually via `openclaw onboard`).
 2. Set the default model:
 
 ```json5
@@ -47,6 +47,7 @@ Looking for chat channel docs (WhatsApp/Telegram/Discord/Slack/Mattermost (plugi
 - [Vercel AI Gateway](/providers/vercel-ai-gateway)
 - [Venice (Venice AI, privacy-focused)](/providers/venice)
 - [vLLM (local models)](/providers/vllm)
+- [xAI](/providers/xai)
 - [Xiaomi](/providers/xiaomi)
 - [Z.AI](/providers/zai)
 
