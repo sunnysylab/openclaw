@@ -84,12 +84,10 @@ describe("gaxios fetch compat", () => {
 
   it("shares in-flight install work across concurrent callers", async () => {
     class MockGaxios {
-      _defaultAdapter = vi.fn(async () => {
-        return new Response("ok", {
-          headers: { "content-type": "text/plain" },
-          status: 200,
-        });
-      });
+      _defaultAdapter!: (config: {
+        fetchImplementation?: FetchLike;
+        url: string;
+      }) => Promise<Response>;
     }
 
     const fetchMock = vi.fn<FetchLike>(async () => {
@@ -98,6 +96,10 @@ describe("gaxios fetch compat", () => {
         status: 200,
       });
     });
+    MockGaxios.prototype._defaultAdapter = async (config) => {
+      const fetchImplementation = config.fetchImplementation ?? fetch;
+      return await fetchImplementation(config.url, config);
+    };
     let releaseInstall!: () => void;
     const installGate = new Promise<void>((resolve) => {
       releaseInstall = resolve;

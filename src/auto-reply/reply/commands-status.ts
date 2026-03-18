@@ -1,5 +1,5 @@
 import { parseTelegramChatIdFromTarget } from "../../acp/conversation-id.js";
-import { resolveConfiguredAcpBindingRecord } from "../../acp/persistent-bindings.js";
+import { resolveConfiguredAcpBindingRecord } from "../../acp/persistent-bindings.resolve.js";
 import {
   resolveAgentDir,
   resolveDefaultAgentId,
