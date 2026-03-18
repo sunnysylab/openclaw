@@ -392,7 +392,12 @@ export async function initSessionState(params: {
   const freshEntry = entry
     ? isSystemEvent
       ? true
-      : evaluateSessionFreshness({ updatedAt: entry.updatedAt, now, policy: resetPolicy }).fresh
+      : evaluateSessionFreshness({
+          updatedAt: entry.updatedAt,
+          now,
+          policy: resetPolicy,
+          cfg,
+        }).fresh
     : false;
   // Capture the current session entry before any reset so its transcript can be
   // archived afterward.  We need to do this for both explicit resets (/new, /reset)

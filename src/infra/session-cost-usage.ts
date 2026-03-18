@@ -20,6 +20,7 @@ import type { SessionEntry } from "../config/sessions/types.js";
 import { stripEnvelope, stripMessageIdHints } from "../shared/chat-envelope.js";
 import { countToolResults, extractToolCallNames } from "../utils/transcript-tools.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../utils/usage-format.js";
+import { formatHumanDayKey } from "./format-time/human-day.js";
 import type {
   CostBreakdown,
   CostUsageTotals,
@@ -170,8 +171,8 @@ const parseTranscriptEntry = (entry: Record<string, unknown>): ParsedTranscriptE
   };
 };
 
-const formatDayKey = (date: Date): string =>
-  date.toLocaleDateString("en-CA", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+const formatDayKey = (date: Date, config?: OpenClawConfig): string =>
+  formatHumanDayKey(date, config);
 
 const computeLatencyStats = (values: number[]): SessionLatencyStats | undefined => {
   if (!values.length) {
@@ -413,7 +414,7 @@ export async function loadCostUsageSummary(params?: {
         if (!ts || ts < sinceTime || ts > untilTime) {
           return;
         }
-        const dayKey = formatDayKey(entry.timestamp ?? now);
+        const dayKey = formatDayKey(entry.timestamp ?? now, params?.config);
         const bucket = dailyMap.get(dayKey) ?? emptyTotals();
         applyUsageTotals(bucket, entry.usage);
         if (entry.costBreakdown?.total !== undefined) {
@@ -630,7 +631,7 @@ export async function loadSessionCostSummary(params: {
             latencyMs <= MAX_LATENCY_MS
           ) {
             latencyValues.push(latencyMs);
-            const dayKey = formatDayKey(entry.timestamp ?? new Date(ts));
+            const dayKey = formatDayKey(entry.timestamp ?? new Date(ts), params?.config);
             const dailyLatencies = dailyLatencyMap.get(dayKey) ?? [];
             dailyLatencies.push(latencyMs);
             dailyLatencyMap.set(dayKey, dailyLatencies);
@@ -655,7 +656,7 @@ export async function loadSessionCostSummary(params: {
       }
 
       if (entry.timestamp) {
-        const dayKey = formatDayKey(entry.timestamp);
+        const dayKey = formatDayKey(entry.timestamp, params?.config);
         activityDatesSet.add(dayKey);
         const daily = dailyMessageMap.get(dayKey) ?? {
           date: dayKey,
@@ -693,7 +694,7 @@ export async function loadSessionCostSummary(params: {
       }
 
       if (entry.timestamp) {
-        const dayKey = formatDayKey(entry.timestamp);
+        const dayKey = formatDayKey(entry.timestamp, params?.config);
         const entryTokens =
           (entry.usage.input ?? 0) +
           (entry.usage.output ?? 0) +
