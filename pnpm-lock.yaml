@@ -463,6 +463,13 @@ importers:
 
   extensions/modelstudio: {}
 
+  extensions/memory-memoria:
+    dependencies:
+      '@sinclair/typebox':
+        specifier: 0.34.48
+        version: 0.34.48
+
+  extensions/minimax-portal-auth: {}
   extensions/moonshot: {}
 
   extensions/msteams:
