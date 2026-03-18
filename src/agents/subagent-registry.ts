@@ -5,6 +5,7 @@ import { loadConfig } from "../config/config.js";
 import {
   loadSessionStore,
   resolveAgentIdFromSessionKey,
+  resolveAgentsDirFromSessionStorePath,
   resolveStorePath,
   type SessionEntry,
 } from "../config/sessions.js";
@@ -267,16 +268,31 @@ async function reconcileOrphanedSessionStoreEntries() {
         .map((e) => e.childSessionKey?.trim().toLowerCase())
         .filter(Boolean),
     );
-    // Collect all store paths we need to scan. Use the same helper that
-    // resolveSubagentRunOrphanReason uses so we don't re-implement path resolution.
+    // Collect all store paths we need to scan.
     const storePaths = new Set<string>();
     // Always include the default store path.
-    storePaths.add(resolveStorePath(cfg.session?.store, {}));
+    const defaultStorePath = resolveStorePath(cfg.session?.store, {});
+    storePaths.add(defaultStorePath);
     // Also include store paths for any known subagent agent IDs.
     for (const entry of subagentRuns.values()) {
       if (entry.childSessionKey) {
         const agentId = resolveAgentIdFromSessionKey(entry.childSessionKey);
         storePaths.add(resolveStorePath(cfg.session?.store, { agentId }));
+      }
+    }
+    // Scan ALL agent subdirectories to catch orphans whose run records
+    // are already gone (we can't derive agent IDs from missing records).
+    const agentsDir = resolveAgentsDirFromSessionStorePath(defaultStorePath);
+    if (agentsDir) {
+      try {
+        const entries = await fs.readdir(agentsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            storePaths.add(resolveStorePath(cfg.session?.store, { agentId: entry.name }));
+          }
+        }
+      } catch {
+        // Best-effort: agents dir may not exist yet.
       }
     }
     for (const storePath of storePaths) {
@@ -804,11 +820,6 @@ async function sweepSubagentRuns() {
       continue;
     }
     clearPendingLifecycleError(runId);
-    void notifyContextEngineSubagentEnded({
-      childSessionKey: entry.childSessionKey,
-      reason: "swept",
-      workspaceDir: entry.workspaceDir,
-    });
     // Archive/purge is terminal for the run record; remove any retained attachments too.
     await safeRemoveAttachmentsDir(entry);
     // Delete the session store entry BEFORE removing the run record so that if the
@@ -830,6 +841,14 @@ async function sweepSubagentRuns() {
       );
       continue;
     }
+    // Notify AFTER successful deletion to avoid duplicate notifications on retry.
+    // If sessions.delete fails above, the run record is kept and the sweep retries
+    // on the next interval — we only want one notification per actual cleanup.
+    void notifyContextEngineSubagentEnded({
+      childSessionKey: entry.childSessionKey,
+      reason: "swept",
+      workspaceDir: entry.workspaceDir,
+    });
     subagentRuns.delete(runId);
     mutated = true;
   }
