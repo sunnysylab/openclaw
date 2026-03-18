@@ -305,7 +305,7 @@ function validateConfigObjectTolerantBase(
         ]);
       }
     } else {
-      removePathFromObject(cleanedRaw, issue.path as (string | number)[]);
+      removePathFromObject(cleanedRaw, issue.path);
     }
   }
 
