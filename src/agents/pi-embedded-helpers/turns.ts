@@ -1,12 +1,18 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
+// Extend this union when pi-agent-core adds new tool-call block types
 type AnthropicContentBlock = {
-  type: "text" | "toolUse" | "toolResult";
+  type: "text" | "toolUse" | "toolResult" | "toolCall" | "functionCall";
   text?: string;
   id?: string;
   name?: string;
   toolUseId?: string;
 };
+
+/** Recognizes toolUse, toolCall, and functionCall block types from different providers/core versions */
+function isToolCallBlock(type: string | undefined): boolean {
+  return type === "toolUse" || type === "toolCall" || type === "functionCall";
+}
 
 /**
  * Strips dangling tool_use blocks from assistant messages when the immediately
@@ -46,7 +52,10 @@ function stripDanglingAnthropicToolUses(messages: AgentMessage[]): AgentMessage[
       continue;
     }
 
-    // Collect tool_use_ids from the next user message's tool_result blocks
+    // Collect tool_use_ids from the next user message's tool_result blocks.
+    // All tool-call block types (toolUse, toolCall, functionCall) produce
+    // "toolResult" type results in pi-agent-core — there is no separate
+    // "functionResult" type.
     const nextUserMsg = nextMsg as {
       content?: AnthropicContentBlock[];
     };
@@ -60,12 +69,13 @@ function stripDanglingAnthropicToolUses(messages: AgentMessage[]): AgentMessage[
     }
 
     // Filter out tool_use blocks that don't have matching tool_result
+    // See also: end-of-conversation orphan handling below
     const originalContent = Array.isArray(assistantMsg.content) ? assistantMsg.content : [];
     const filteredContent = originalContent.filter((block) => {
       if (!block) {
         return false;
       }
-      if (block.type !== "toolUse") {
+      if (!isToolCallBlock(block.type)) {
         return true;
       }
       // Keep tool_use if its id is in the valid set
@@ -83,6 +93,33 @@ function stripDanglingAnthropicToolUses(messages: AgentMessage[]): AgentMessage[
         ...assistantMsg,
         content: filteredContent,
       } as AgentMessage);
+    }
+  }
+
+  // See also: main loop tool_use stripping above
+  // Handle end-of-conversation orphans: if the last message is assistant with
+  // tool_use blocks and no following user message, strip the tool_use blocks.
+  if (result.length > 0) {
+    const lastMsg = result[result.length - 1];
+    const lastRole =
+      lastMsg && typeof lastMsg === "object"
+        ? ((lastMsg as { role?: unknown }).role as string | undefined)
+        : undefined;
+    if (lastRole === "assistant") {
+      const lastAssistant = lastMsg as { content?: AnthropicContentBlock[] };
+      if (Array.isArray(lastAssistant.content)) {
+        const hasToolUse = lastAssistant.content.some((b) => b && isToolCallBlock(b.type));
+        if (hasToolUse) {
+          const filtered = lastAssistant.content.filter((b) => b && !isToolCallBlock(b.type));
+          result[result.length - 1] =
+            filtered.length > 0
+              ? ({ ...lastAssistant, content: filtered } as AgentMessage)
+              : ({
+                  ...lastAssistant,
+                  content: [{ type: "text" as const, text: "[tool calls omitted]" }],
+                } as AgentMessage);
+        }
+      }
     }
   }
 
