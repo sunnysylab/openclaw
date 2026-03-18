@@ -340,6 +340,12 @@ export function attachGatewayWsMessageHandler(params: {
           return;
         }
 
+        // Clear the handshake timer as soon as we have a valid connect request.
+        // Auth resolution is async and can take longer than the handshake timeout
+        // on resource-constrained hosts — clearing early prevents the timer from
+        // killing a connection that is legitimately in-progress.
+        clearHandshakeTimer();
+
         const frame = parsed;
         const connectParams = frame.params as ConnectParams;
         const clientLabel = connectParams.client.displayName ?? connectParams.client.id;
@@ -980,7 +986,6 @@ export function attachGatewayWsMessageHandler(params: {
           },
         };
 
-        clearHandshakeTimer();
         const nextClient: GatewayWsClient = {
           socket,
           connect: connectParams,
