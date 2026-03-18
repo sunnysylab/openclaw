@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
+// Extend this union when pi-agent-core adds new tool-call block types
 type AnthropicContentBlock = {
   type: "text" | "toolUse" | "toolResult" | "toolCall" | "functionCall";
   text?: string;
@@ -51,7 +52,10 @@ function stripDanglingAnthropicToolUses(messages: AgentMessage[]): AgentMessage[
       continue;
     }
 
-    // Collect tool_use_ids from the next user message's tool_result blocks
+    // Collect tool_use_ids from the next user message's tool_result blocks.
+    // All tool-call block types (toolUse, toolCall, functionCall) produce
+    // "toolResult" type results in pi-agent-core — there is no separate
+    // "functionResult" type.
     const nextUserMsg = nextMsg as {
       content?: AnthropicContentBlock[];
     };
@@ -65,6 +69,7 @@ function stripDanglingAnthropicToolUses(messages: AgentMessage[]): AgentMessage[
     }
 
     // Filter out tool_use blocks that don't have matching tool_result
+    // See also: end-of-conversation orphan handling below
     const originalContent = Array.isArray(assistantMsg.content) ? assistantMsg.content : [];
     const filteredContent = originalContent.filter((block) => {
       if (!block) {
@@ -91,6 +96,7 @@ function stripDanglingAnthropicToolUses(messages: AgentMessage[]): AgentMessage[
     }
   }
 
+  // See also: main loop tool_use stripping above
   // Handle end-of-conversation orphans: if the last message is assistant with
   // tool_use blocks and no following user message, strip the tool_use blocks.
   if (result.length > 0) {
