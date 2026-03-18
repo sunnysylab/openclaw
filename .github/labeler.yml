@@ -103,6 +103,11 @@
       - any-glob-to-any-file:
           - "extensions/zalouser/**"
           - "docs/channels/zalouser.md"
+"channel: qqbot":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "extensions/qqbot/**"
+          - "docs/channels/qqbot.md"
 
 "app: android":
   - changed-files:
