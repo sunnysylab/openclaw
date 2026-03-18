@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
-import { GEMINI_CLI_CLIENT_ID, GEMINI_CLI_CLIENT_SECRET } from "./constants.ts";
+import { GEMINI_CLI_CLIENT_ID, GEMINI_CLI_CLIENT_SECRET } from "./constants.js";
 import { CLIENT_ID_KEYS, CLIENT_SECRET_KEYS } from "./oauth.shared.js";
 
 type CredentialFs = {
@@ -33,22 +33,17 @@ function resolveEnv(keys: string[]): string | undefined {
   return undefined;
 }
 
-let geminiCliCredentials: { clientId: string; clientSecret: string } | null = {
-  clientId: GEMINI_CLI_CLIENT_ID,
-  clientSecret: GEMINI_CLI_CLIENT_SECRET,
-};
-
-export function clearCredentialsCache(): void {
-  geminiCliCredentials = null;
-}
+export function clearCredentialsCache(): void {}
 
 export function setOAuthCredentialsFsForTest(overrides?: Partial<CredentialFs>): void {
   credentialFs = overrides ? { ...defaultFs, ...overrides } : defaultFs;
 }
 
-export function extractGeminiCliCredentials(): { clientId: string; clientSecret: string } | null {
-  geminiCliCredentials = { clientId: GEMINI_CLIENT_ID, clientSecret: GEMINI_CLIENT_SECRET };
-  return geminiCliCredentials;
+export function extractGeminiCliCredentials(): { clientId: string; clientSecret: string } {
+  return {
+    clientId: GEMINI_CLI_CLIENT_ID,
+    clientSecret: GEMINI_CLI_CLIENT_SECRET,
+  };
 }
 
 function resolveGeminiCliDirs(geminiPath: string, resolvedPath: string): string[] {
