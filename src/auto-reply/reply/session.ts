@@ -433,15 +433,6 @@ export async function initSessionState(params: {
     persistedAuthProfileOverrideCompactionCount = entry.authProfileOverrideCompactionCount;
     persistedLabel = entry.label;
   } else {
-    // Push the outgoing session into the LRU history queue so the user can
-    // switch back to it later via `/session <n>` or `/session back`.
-    if (entry?.sessionId) {
-      const historyLimit = sessionCfg?.historyLimit ?? DEFAULT_SESSION_HISTORY_LIMIT;
-      if (historyLimit > 0) {
-        pushSessionHistory(entry, historyLimit);
-      }
-    }
-
     sessionId = crypto.randomUUID();
     isNewSession = true;
     systemSent = false;
