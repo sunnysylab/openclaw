@@ -167,7 +167,29 @@ htmlEscapeRenderer.image = (token: { href?: string | null; text?: string | null 
   if (!INLINE_DATA_IMAGE_RE.test(href)) {
     return escapeHtml(label);
   }
-  return `<img class="markdown-inline-image" src="${escapeHtml(href)}" alt="${escapeHtml(label)}">`;
+  
+  // 检测文档类型并显示相应图标
+  const mimeType = href.split(',')[0]?.split(':')[1]?.split(';')[0] || '';
+  const fileName = label || 'attachment';
+  
+  // 图片：显示缩略图
+  if (mimeType.startsWith('image/')) {
+    return `<img class="markdown-inline-image" src="${escapeHtml(href)}" alt="${escapeHtml(label)}">`;
+  }
+  
+  // 文档：显示图标和文件名
+  let icon = '📎';
+  if (mimeType.includes('word') || fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+    icon = '📄';
+  } else if (mimeType.includes('pdf') || fileName.endsWith('.pdf')) {
+    icon = '📕';
+  } else if (mimeType.includes('text') || fileName.endsWith('.txt')) {
+    icon = '📝';
+  } else if (mimeType.includes('markdown') || fileName.endsWith('.md')) {
+    icon = '📋';
+  }
+  
+  return `<div class="markdown-attachment-document"><span class="markdown-attachment-icon">${icon}</span><span class="markdown-attachment-name">${escapeHtml(fileName)}</span></div>`;
 };
 
 function normalizeMarkdownImageLabel(text?: string | null): string {

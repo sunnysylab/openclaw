@@ -82,7 +82,8 @@ function normalizeAttachment(
 ): NormalizedAttachment {
   const mime = att.mimeType ?? "";
   const content = att.content;
-  const label = att.fileName || att.type || `attachment-${idx + 1}`;
+  // 优先使用 fileName，如果没有则使用默认值（不使用 type，因为 type 可能是 "image"）
+  const label = att.fileName || `attachment-${idx + 1}`;
 
   if (typeof content !== "string") {
     throw new Error(`attachment ${label}: content must be base64 string`);
@@ -162,6 +163,9 @@ export async function parseMessageWithAttachments(
     if (!att) {
       continue;
     }
+    // 调试日志：检查附件数据
+    log?.info(`attachment ${idx}: fileName=${att.fileName}, type=${att.type}, mimeType=${att.mimeType}`);
+    
     const normalized = normalizeAttachment(att, idx, {
       stripDataUrlPrefix: true,
       requireImageMime: false,
@@ -172,6 +176,7 @@ export async function parseMessageWithAttachments(
     const providedMime = normalizeMime(mime);
     const sniffedMime = normalizeMime(await sniffMimeFromBase64(b64));
     const fileName = att.fileName || label;
+    log?.info(`attachment ${idx}: final fileName=${fileName}, label=${label}`);
 
     if (isImageMime(sniffedMime) || isImageMime(providedMime)) {
       if (sniffedMime && providedMime && sniffedMime !== providedMime) {
@@ -208,10 +213,16 @@ export async function parseMessageWithAttachments(
 
   let finalMessage = message;
   if (documents.length > 0) {
+    // 为每个文档添加附件标识，让前端知道有文档附件
+    const docHeaders = documents.map(doc => `**📄 已上传文件：${doc.fileName}**`).join("\n");
+    
     const docContents = documents.map(doc => 
-      `--- ${doc.fileName} ---\n${doc.text}\n`
+      `\n\n--- **${doc.fileName}** 内容如下 ---\n${doc.text}\n`
     ).join("\n");
-    finalMessage = message.trim() ? `${message}\n\n${docContents}` : docContents;
+    
+    finalMessage = message.trim() 
+      ? `${message}\n\n${docHeaders}${docContents}` 
+      : `${docHeaders}${docContents}`;
   }
 
   return { message: finalMessage, images, documents };

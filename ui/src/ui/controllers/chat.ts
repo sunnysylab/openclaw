@@ -209,6 +209,7 @@ export async function sendChatMessage(
             type: "image",
             mimeType: parsed.mimeType,
             content: parsed.content,
+            fileName: att.fileName,
           };
         })
         .filter((a): a is NonNullable<typeof a> => a !== null)

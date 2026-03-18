@@ -40,9 +40,11 @@ function extractImages(message: unknown): ImageBlock[] {
         if (source?.type === "base64" && typeof source.data === "string") {
           const data = source.data;
           const mediaType = (source.media_type as string) || "image/png";
-          // If data is already a data URL, use it directly
-          const url = data.startsWith("data:") ? data : `data:${mediaType};base64,${data}`;
-          images.push({ url });
+          // 跳过文档类型，只渲染真正的图片
+          if (mediaType.startsWith("image/")) {
+            const url = data.startsWith("data:") ? data : `data:${mediaType};base64,${data}`;
+            images.push({ url });
+          }
         } else if (typeof b.url === "string") {
           images.push({ url: b.url });
         }

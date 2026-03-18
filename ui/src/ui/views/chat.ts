@@ -353,6 +353,7 @@ function handleFileSelect(e: Event, props: ChatProps) {
         id: generateAttachmentId(),
         dataUrl: reader.result as string,
         mimeType: file.type,
+        fileName: file.name,
       });
       pending--;
       if (pending === 0) {
@@ -384,6 +385,7 @@ function handleDrop(e: DragEvent, props: ChatProps) {
         id: generateAttachmentId(),
         dataUrl: reader.result as string,
         mimeType: file.type,
+        fileName: file.name,
       });
       pending--;
       if (pending === 0) {
@@ -394,6 +396,25 @@ function handleDrop(e: DragEvent, props: ChatProps) {
   }
 }
 
+function getAttachmentIcon(mimeType?: string, fileName?: string): string {
+  if (!mimeType && !fileName) return "📎";
+  
+  const mime = mimeType || "";
+  const name = fileName || "";
+  
+  // 图片
+  if (mime.startsWith("image/")) return "🖼️";
+  
+  // 文档
+  if (mime.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) return "📄";
+  if (mime.includes("pdf") || name.endsWith(".pdf")) return "📕";
+  if (mime.includes("text") || name.endsWith(".txt")) return "📝";
+  if (mime.includes("markdown") || name.endsWith(".md")) return "📋";
+  
+  // 其他
+  return "📎";
+}
+
 function renderAttachmentPreview(props: ChatProps): TemplateResult | typeof nothing {
   const attachments = props.attachments ?? [];
   if (attachments.length === 0) {
@@ -402,20 +423,45 @@ function renderAttachmentPreview(props: ChatProps): TemplateResult | typeof noth
   return html`
     <div class="chat-attachments-preview">
       ${attachments.map(
-        (att) => html`
-          <div class="chat-attachment-thumb">
-            <img src=${att.dataUrl} alt="Attachment preview" />
-            <button
-              class="chat-attachment-remove"
-              type="button"
-              aria-label="Remove attachment"
-              @click=${() => {
-                const next = (props.attachments ?? []).filter((a) => a.id !== att.id);
-                props.onAttachmentsChange?.(next);
-              }}
-            >&times;</button>
-          </div>
-        `,
+        (att) => {
+          const isImage = att.mimeType?.startsWith("image/");
+          const icon = getAttachmentIcon(att.mimeType, att.fileName);
+          
+          if (isImage) {
+            return html`
+              <div class="chat-attachment-thumb">
+                <img src=${att.dataUrl} alt="Attachment preview" />
+                <button
+                  class="chat-attachment-remove"
+                  type="button"
+                  aria-label="Remove attachment"
+                  @click=${() => {
+                    const next = (props.attachments ?? []).filter((a) => a.id !== att.id);
+                    props.onAttachmentsChange?.(next);
+                  }}
+                >&times;</button>
+              </div>
+            `;
+          } else {
+            // 文档类型：显示图标和文件名
+            const fileName = att.fileName || "attachment";
+            return html`
+              <div class="chat-attachment-thumb chat-attachment-document">
+                <div class="chat-attachment-icon">${icon}</div>
+                <div class="chat-attachment-name">${fileName}</div>
+                <button
+                  class="chat-attachment-remove"
+                  type="button"
+                  aria-label="Remove attachment"
+                  @click=${() => {
+                    const next = (props.attachments ?? []).filter((a) => a.id !== att.id);
+                    props.onAttachmentsChange?.(next);
+                  }}
+                >&times;</button>
+              </div>
+            `;
+          }
+        },
       )}
     </div>
   `;
