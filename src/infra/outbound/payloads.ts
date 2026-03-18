@@ -1,3 +1,4 @@
+import { isAnnounceSkip } from "../../agents/tools/sessions-send-helpers.js";
 import { parseReplyDirectives } from "../../auto-reply/reply/reply-directives.js";
 import {
   formatBtwTextForExternalDelivery,
@@ -11,7 +12,6 @@ import {
   hasReplyContent,
   type InteractiveReply,
 } from "../../interactive/payload.js";
-import { isAnnounceSkip } from "../../agents/tools/sessions-send-helpers.js";
 
 export type NormalizedOutboundPayload = {
   text: string;
