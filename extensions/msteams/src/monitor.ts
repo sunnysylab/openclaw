@@ -270,7 +270,36 @@ export async function monitorMSTeamsProvider(
   // Create Express server
   const expressApp = express.default();
   expressApp.use(authorizeJWT(authConfig));
-  expressApp.use(express.json({ limit: MSTEAMS_WEBHOOK_MAX_BODY_BYTES }));
+
+  // Use raw body parser so we can repair invalid JSON escape sequences that some
+  // Bot Framework clients include in activity payloads (e.g. conversationUpdate
+  // activities with bare backslashes like \p or \q that are not valid per RFC 8259).
+  // The strict express.json() parser throws SyntaxError on such payloads, which
+  // causes a non-200 response and puts Azure Bot Service into exponential backoff,
+  // dropping all subsequent messages until the backoff window expires.
+  expressApp.use(express.raw({ type: "application/json", limit: MSTEAMS_WEBHOOK_MAX_BODY_BYTES }));
+  expressApp.use((req: Request, _res: Response, next: (err?: unknown) => void) => {
+    if (Buffer.isBuffer(req.body)) {
+      const rawText = req.body.toString("utf-8");
+      try {
+        req.body = JSON.parse(rawText);
+      } catch {
+        // Attempt to repair invalid escape sequences.
+        // IMPORTANT: the alternation /(\\)+|\([^...])/ consumes valid \\\\ pairs
+        // first so that they are never misidentified as bare-backslash escapes.
+        // See repairJsonEscapes() above for full explanation.
+        const fixed = repairJsonEscapes(rawText);
+        try {
+          req.body = JSON.parse(fixed);
+          log.warn("msteams: repaired invalid JSON escape sequences in Bot Framework activity");
+        } catch (parseErr) {
+          next(parseErr);
+          return;
+        }
+      }
+    }
+    next();
+  });
   expressApp.use((err: unknown, _req: Request, res: Response, next: (err?: unknown) => void) => {
     if (err && typeof err === "object" && "status" in err && err.status === 413) {
       res.status(413).json({ error: "Payload too large" });
