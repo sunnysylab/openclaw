@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClawdbotConfig } from "../runtime-api.js";
 import {
+  buildFeishuPostMessagePayload,
   buildStructuredCard,
   editMessageFeishu,
   getMessageFeishu,
@@ -349,5 +350,58 @@ describe("buildStructuredCard", () => {
         },
       }),
     );
+  });
+});
+
+describe("buildFeishuPostMessagePayload", () => {
+  it("produces only md element when no mentions provided", () => {
+    const { content, msgType } = buildFeishuPostMessagePayload({ messageText: "hello world" });
+    expect(msgType).toBe("post");
+    const parsed = JSON.parse(content);
+    expect(parsed.zh_cn.content).toEqual([[{ tag: "md", text: "hello world" }]]);
+  });
+
+  it("produces native at elements before md text for single mention", () => {
+    const { content } = buildFeishuPostMessagePayload({
+      messageText: "check this out",
+      mentions: [{ openId: "ou_abc123", name: "Alice" }],
+    });
+    const parsed = JSON.parse(content);
+    expect(parsed.zh_cn.content).toEqual([
+      [
+        { tag: "at", user_id: "ou_abc123" },
+        { tag: "md", text: " " },
+        { tag: "md", text: "check this out" },
+      ],
+    ]);
+  });
+
+  it("produces multiple at elements for multiple mentions", () => {
+    const { content } = buildFeishuPostMessagePayload({
+      messageText: "hi team",
+      mentions: [
+        { openId: "ou_user1", name: "Alice" },
+        { openId: "ou_user2", name: "Bob" },
+      ],
+    });
+    const parsed = JSON.parse(content);
+    expect(parsed.zh_cn.content).toEqual([
+      [
+        { tag: "at", user_id: "ou_user1" },
+        { tag: "md", text: " " },
+        { tag: "at", user_id: "ou_user2" },
+        { tag: "md", text: " " },
+        { tag: "md", text: "hi team" },
+      ],
+    ]);
+  });
+
+  it("handles empty mentions array same as no mentions", () => {
+    const { content } = buildFeishuPostMessagePayload({
+      messageText: "no mentions",
+      mentions: [],
+    });
+    const parsed = JSON.parse(content);
+    expect(parsed.zh_cn.content).toEqual([[{ tag: "md", text: "no mentions" }]]);
   });
 });

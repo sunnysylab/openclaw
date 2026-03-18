@@ -37,11 +37,9 @@ export {
   extractMentionTargets,
   extractMessageBody,
   isMentionForwardRequest,
-  formatMentionForText,
   formatMentionForCard,
   formatMentionAllForText,
   formatMentionAllForCard,
-  buildMentionedMessage,
   buildMentionedCardContent,
   type MentionTarget,
 } from "./src/mention.js";

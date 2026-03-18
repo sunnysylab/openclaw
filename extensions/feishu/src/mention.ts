@@ -81,13 +81,6 @@ export function extractMessageBody(text: string, allMentionKeys: string[]): stri
 }
 
 /**
- * Format @mention for text message
- */
-export function formatMentionForText(target: MentionTarget): string {
-  return `<at user_id="${target.openId}">${target.name}</at>`;
-}
-
-/**
  * Format @everyone for text message
  */
 export function formatMentionAllForText(): string {
@@ -106,18 +99,6 @@ export function formatMentionForCard(target: MentionTarget): string {
  */
 export function formatMentionAllForCard(): string {
   return `<at id=all></at>`;
-}
-
-/**
- * Build complete message with @mentions (text format)
- */
-export function buildMentionedMessage(targets: MentionTarget[], message: string): string {
-  if (targets.length === 0) {
-    return message;
-  }
-
-  const mentionParts = targets.map((t) => formatMentionForText(t));
-  return `${mentionParts.join(" ")} ${message}`;
 }
 
 /**
