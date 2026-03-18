@@ -23,7 +23,9 @@ import { resolveAndPersistSessionFile } from "../../config/sessions/session-file
 import { resolveSessionKey } from "../../config/sessions/session-key.js";
 import { loadSessionStore, updateSessionStore } from "../../config/sessions/store.js";
 import {
+  buildSessionHistoryMetadata,
   DEFAULT_RESET_TRIGGERS,
+  DEFAULT_SESSION_HISTORY_LIMIT,
   type GroupKeyResolution,
   type SessionEntry,
   type SessionHistoryItem,
@@ -70,26 +72,7 @@ function pushSessionHistory(
     sessionId: currentId,
     createdAt: sessionEntry.updatedAt ?? Date.now(),
     label: sessionEntry.label,
-    metadata: {
-      systemSent: sessionEntry.systemSent,
-      thinkingLevel: sessionEntry.thinkingLevel,
-      verboseLevel: sessionEntry.verboseLevel,
-      reasoningLevel: sessionEntry.reasoningLevel,
-      ttsAuto: sessionEntry.ttsAuto,
-      modelOverride: sessionEntry.modelOverride,
-      providerOverride: sessionEntry.providerOverride,
-      label: sessionEntry.label,
-      inputTokens: sessionEntry.inputTokens,
-      outputTokens: sessionEntry.outputTokens,
-      cacheRead: sessionEntry.cacheRead,
-      cacheWrite: sessionEntry.cacheWrite,
-      totalTokens: sessionEntry.totalTokens,
-      totalTokensFresh: sessionEntry.totalTokensFresh,
-      contextTokens: sessionEntry.contextTokens,
-      compactionCount: sessionEntry.compactionCount,
-      memoryFlushAt: sessionEntry.memoryFlushAt,
-      memoryFlushCompactionCount: sessionEntry.memoryFlushCompactionCount,
-    },
+    metadata: buildSessionHistoryMetadata(sessionEntry),
   };
 
   const history = sessionEntry.sessionHistory
