@@ -82,6 +82,60 @@ describe("gaxios fetch compat", () => {
     }
   });
 
+  it("shares in-flight install work across concurrent callers", async () => {
+    class MockGaxios {
+      _defaultAdapter!: (config: {
+        fetchImplementation?: FetchLike;
+        url: string;
+      }) => Promise<Response>;
+    }
+
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response("ok", {
+        headers: { "content-type": "text/plain" },
+        status: 200,
+      });
+    });
+    MockGaxios.prototype._defaultAdapter = async (config) => {
+      const fetchImplementation = config.fetchImplementation ?? fetch;
+      return await fetchImplementation(config.url, config);
+    };
+    let releaseInstall!: () => void;
+    const installGate = new Promise<void>((resolve) => {
+      releaseInstall = resolve;
+    });
+    const overrideFactory = vi.fn(async () => {
+      await installGate;
+      return MockGaxios;
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    (globalThis as Record<string, unknown>)[TEST_GAXIOS_CONSTRUCTOR_OVERRIDE] = overrideFactory;
+
+    const { installGaxiosFetchCompat } = await import("./gaxios-fetch-compat.js");
+
+    const firstInstall = installGaxiosFetchCompat();
+    const secondInstall = installGaxiosFetchCompat();
+    await Promise.resolve();
+
+    expect(overrideFactory).toHaveBeenCalledTimes(1);
+
+    let secondResolved = false;
+    void secondInstall.then(() => {
+      secondResolved = true;
+    });
+
+    await Promise.resolve();
+    expect(secondResolved).toBe(false);
+
+    releaseInstall();
+    await expect(Promise.all([firstInstall, secondInstall])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(secondResolved).toBe(true);
+  });
+
   it("translates proxy agents into undici dispatchers for native fetch", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response("ok", {

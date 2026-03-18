@@ -39,6 +39,7 @@ type GaxiosConstructor = {
 const TEST_GAXIOS_CONSTRUCTOR_OVERRIDE = "__OPENCLAW_TEST_GAXIOS_CONSTRUCTOR__";
 
 let installState: "not-installed" | "installing" | "shimmed" | "installed" = "not-installed";
+let installPromise: Promise<void> | null = null;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -182,7 +183,14 @@ function hasGaxiosConstructorShape(value: unknown): value is GaxiosConstructor {
   );
 }
 
-function getTestGaxiosConstructorOverride(): GaxiosConstructor | null | undefined {
+function isGaxiosTestOverrideEnabled(): boolean {
+  return process.env.NODE_ENV === "test" || process.env.VITEST === "true";
+}
+
+async function getTestGaxiosConstructorOverride(): Promise<GaxiosConstructor | null | undefined> {
+  if (!isGaxiosTestOverrideEnabled()) {
+    return undefined;
+  }
   const testGlobal = globalThis as Record<string, unknown>;
   if (!Object.prototype.hasOwnProperty.call(testGlobal, TEST_GAXIOS_CONSTRUCTOR_OVERRIDE)) {
     return undefined;
@@ -193,6 +201,15 @@ function getTestGaxiosConstructorOverride(): GaxiosConstructor | null | undefine
   }
   if (hasGaxiosConstructorShape(override)) {
     return override;
+  }
+  if (typeof override === "function") {
+    const resolved = await override();
+    if (resolved === null) {
+      return null;
+    }
+    if (hasGaxiosConstructorShape(resolved)) {
+      return resolved;
+    }
   }
   throw new Error("invalid gaxios test constructor override");
 }
@@ -209,7 +226,7 @@ function isDirectGaxiosImportMiss(err: unknown): boolean {
 }
 
 async function loadGaxiosConstructor(): Promise<GaxiosConstructor | null> {
-  const testOverride = getTestGaxiosConstructorOverride();
+  const testOverride = await getTestGaxiosConstructorOverride();
   if (testOverride !== undefined) {
     return testOverride;
   }
@@ -268,41 +285,49 @@ export function createGaxiosCompatFetch(
   };
 }
 
-export async function installGaxiosFetchCompat(): Promise<void> {
+export function installGaxiosFetchCompat(): Promise<void> {
+  if (installPromise) {
+    return installPromise;
+  }
   if (installState !== "not-installed" || typeof globalThis.fetch !== "function") {
-    return;
+    return Promise.resolve();
   }
 
   installState = "installing";
-
-  try {
-    const Gaxios = await loadGaxiosConstructor();
-    if (!Gaxios) {
-      installLegacyWindowFetchShim();
-      installState = "shimmed";
-      return;
-    }
-
-    const prototype = Gaxios.prototype;
-    const originalDefaultAdapter = prototype._defaultAdapter;
-    const compatFetch = createGaxiosCompatFetch();
-
-    prototype._defaultAdapter = function patchedDefaultAdapter(
-      this: unknown,
-      config: GaxiosFetchRequestInit,
-    ): Promise<unknown> {
-      if (config.fetchImplementation) {
-        return originalDefaultAdapter.call(this, config);
+  installPromise = (async () => {
+    try {
+      const Gaxios = await loadGaxiosConstructor();
+      if (!Gaxios) {
+        installLegacyWindowFetchShim();
+        installState = "shimmed";
+        return;
       }
-      return originalDefaultAdapter.call(this, {
-        ...config,
-        fetchImplementation: compatFetch,
-      });
-    };
 
-    installState = "installed";
-  } catch (err) {
-    installState = "not-installed";
-    throw err;
-  }
+      const prototype = Gaxios.prototype;
+      const originalDefaultAdapter = prototype._defaultAdapter;
+      const compatFetch = createGaxiosCompatFetch();
+
+      prototype._defaultAdapter = function patchedDefaultAdapter(
+        this: unknown,
+        config: GaxiosFetchRequestInit,
+      ): Promise<unknown> {
+        if (config.fetchImplementation) {
+          return originalDefaultAdapter.call(this, config);
+        }
+        return originalDefaultAdapter.call(this, {
+          ...config,
+          fetchImplementation: compatFetch,
+        });
+      };
+
+      installState = "installed";
+    } catch (err) {
+      installState = "not-installed";
+      throw err;
+    } finally {
+      installPromise = null;
+    }
+  })();
+
+  return installPromise;
 }
