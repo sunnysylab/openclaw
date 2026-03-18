@@ -4,7 +4,7 @@ import type { ChannelOutboundAdapter } from "openclaw/plugin-sdk/feishu";
 import { resolveFeishuAccount } from "./accounts.js";
 import { sendMediaFeishu } from "./media.js";
 import { getFeishuRuntime } from "./runtime.js";
-import { sendMarkdownCardFeishu, sendMessageFeishu, sendStructuredCardFeishu } from "./send.js";
+import { sendMarkdownCardFeishu, sendMessageFeishu } from "./send.js";
 
 function normalizePossibleLocalImagePath(text: string | undefined): string | null {
   const raw = text?.trim();
@@ -46,7 +46,19 @@ function shouldUseCard(text: string): boolean {
 function resolveReplyToMessageId(params: {
   replyToId?: string | null;
   threadId?: string | number | null;
+  cfg?: import("openclaw/plugin-sdk/feishu").ClawdbotConfig;
 }): string | undefined {
+  // Check replyToMode config - if "off", never reply to messages
+  const replyToMode = params.cfg?.channels?.feishu?.replyToMode;
+  if (replyToMode === "off") {
+    // Still respect explicit replyToId, just don't use thread fallback
+    const replyToId = params.replyToId?.trim();
+    if (replyToId) {
+      return replyToId;
+    }
+    return undefined;
+  }
+  
   const replyToId = params.replyToId?.trim();
   if (replyToId) {
     return replyToId;
@@ -81,17 +93,8 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   chunker: (text, limit) => getFeishuRuntime().channel.text.chunkMarkdownText(text, limit),
   chunkerMode: "markdown",
   textChunkLimit: 4000,
-  sendText: async ({
-    cfg,
-    to,
-    text,
-    accountId,
-    replyToId,
-    threadId,
-    mediaLocalRoots,
-    identity,
-  }) => {
-    const replyToMessageId = resolveReplyToMessageId({ replyToId, threadId });
+  sendText: async ({ cfg, to, text, accountId, replyToId, threadId, mediaLocalRoots }) => {
+    const replyToMessageId = resolveReplyToMessageId({ replyToId, threadId, cfg });
     // Scheme A compatibility shim:
     // when upstream accidentally returns a local image path as plain text,
     // auto-upload and send as Feishu image message instead of leaking path text.
@@ -113,29 +116,6 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       }
     }
 
-    const account = resolveFeishuAccount({ cfg, accountId: accountId ?? undefined });
-    const renderMode = account.config?.renderMode ?? "auto";
-    const useCard = renderMode === "card" || (renderMode === "auto" && shouldUseCard(text));
-    if (useCard) {
-      const header = identity
-        ? {
-            title: identity.emoji
-              ? `${identity.emoji} ${identity.name ?? ""}`.trim()
-              : (identity.name ?? ""),
-            template: "blue" as const,
-          }
-        : undefined;
-      const result = await sendStructuredCardFeishu({
-        cfg,
-        to,
-        text,
-        replyToMessageId,
-        replyInThread: threadId != null && !replyToId,
-        accountId: accountId ?? undefined,
-        header: header?.title ? header : undefined,
-      });
-      return { channel: "feishu", ...result };
-    }
     const result = await sendOutboundText({
       cfg,
       to,
@@ -155,7 +135,7 @@ export const feishuOutbound: ChannelOutboundAdapter = {
     replyToId,
     threadId,
   }) => {
-    const replyToMessageId = resolveReplyToMessageId({ replyToId, threadId });
+    const replyToMessageId = resolveReplyToMessageId({ replyToId, threadId, cfg });
     // Send text first if provided
     if (text?.trim()) {
       await sendOutboundText({
