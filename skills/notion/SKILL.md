@@ -87,7 +87,7 @@ curl -X POST "https://api.notion.com/v1/databases" \
   }'
 ```
 
-The response includes a `data_sources` array. Use the returned `data_sources[0].id` value when creating pages or querying the database contents.
+The response is a [database object](https://developers.notion.com/reference/database) that includes a `data_sources` array. Use the returned `data_sources[0].id` value as the `data_source_id` when creating pages or querying the database contents. If the response is partial and `data_sources` is missing, retrieve the full object with `GET /v1/databases/{database_id}` to find the `data_source_id`.
 
 **Create page in a data source:**
 
@@ -163,8 +163,12 @@ Common property formats for database items:
 
 - **Databases → Data Sources:** Use `/data_sources/` endpoints for queries and retrieval.
 - **Database creation:** Use `POST /v1/databases` with `initial_data_source` to define the first schema.
-- **Create page parent:** Use `type: "data_source_id"` with a `data_source_id` when calling `POST /v1/pages`.
-- **Search results:** Databases can return `data_sources` arrays; capture the `data_source_id` you need for later writes and queries.
+- **Two IDs:** Each database now has both a `database_id` and a `data_source_id`.
+  - Use `data_source_id` when creating pages (`parent: {"type": "data_source_id", "data_source_id": "..."}`) and when querying (`POST /v1/data_sources/{id}/query`).
+  - The `database_id` is still accepted for backward compatibility in page parents, but `data_source_id` is the canonical approach in 2025-09-03.
+- **Finding the data_source_id:** Call `GET /v1/databases/{database_id}` — the response includes a `data_sources` array with each child's `id` and `name`. Alternatively, search results return databases with their `data_sources` array.
+- **Search results:** Databases return as `"object": "database"` with a `data_sources` array; capture the `data_source_id` you need for later writes and queries.
+- **Parent in responses:** Pages show `parent.data_source_id` alongside `parent.database_id`.
 
 ## Notes
 
