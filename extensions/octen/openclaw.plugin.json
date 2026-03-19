@@ -1,0 +1,29 @@
+{
+  "id": "octen",
+  "uiHints": {
+    "webSearch.apiKey": {
+      "label": "Octen API Key",
+      "help": "Octen API key for web search.",
+      "sensitive": true,
+      "placeholder": "octen-..."
+    },
+    "webSearch.baseUrl": {
+      "label": "Octen Base URL",
+      "help": "Optional Octen API base URL override."
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": { "type": ["string", "object"] },
+          "baseUrl": { "type": "string" }
+        }
+      }
+    }
+  }
+}

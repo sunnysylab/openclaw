@@ -147,6 +147,7 @@ describe("plugin contract registry", () => {
     expect(findWebSearchIdsForPlugin("moonshot")).toEqual(["kimi"]);
     expect(findWebSearchIdsForPlugin("perplexity")).toEqual(["perplexity"]);
     expect(findWebSearchIdsForPlugin("xai")).toEqual(["grok"]);
+    expect(findWebSearchIdsForPlugin("octen")).toEqual(["octen"]);
   });
 
   it("keeps bundled speech ownership explicit", () => {

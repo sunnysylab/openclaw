@@ -59,6 +59,13 @@ vi.mock("../plugins/web-search-providers.js", () => {
         getCredentialValue: getScoped("perplexity"),
         getConfiguredCredentialValue: getConfigured("perplexity"),
       },
+      {
+        id: "octen",
+        envVars: ["OCTEN_API_KEY"],
+        credentialPath: "plugins.entries.octen.config.webSearch.apiKey",
+        getCredentialValue: getScoped("octen"),
+        getConfiguredCredentialValue: getConfigured("octen"),
+      },
     ],
   };
 });
@@ -164,6 +171,7 @@ describe("web search provider auto-detection", () => {
     delete process.env.XAI_API_KEY;
     delete process.env.KIMI_API_KEY;
     delete process.env.MOONSHOT_API_KEY;
+    delete process.env.OCTEN_API_KEY;
   });
 
   afterEach(() => {
