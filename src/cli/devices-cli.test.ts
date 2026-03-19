@@ -300,6 +300,17 @@ describe("devices cli local fallback", () => {
     expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining("Approved"));
   });
 
+  it("does not use local approve fallback for generic loopback 1000 closes", async () => {
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+
+    await expect(runDevicesApprove(["req-1"])).rejects.toThrow(
+      "gateway closed (1000 normal closure): no close reason",
+    );
+    expect(approveDevicePairing).not.toHaveBeenCalled();
+  });
+
   it("does not use local fallback when an explicit --url is provided", async () => {
     callGateway.mockRejectedValueOnce(new Error("gateway closed (1008): pairing required"));
 

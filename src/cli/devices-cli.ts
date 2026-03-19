@@ -109,7 +109,7 @@ function isLoopbackPairingHandshakeTimeout(message: string): boolean {
 
 function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): boolean {
   const message = normalizeErrorMessage(error).toLowerCase();
-  if (!message.includes("pairing required") && !isLoopbackPairingHandshakeTimeout(message)) {
+  if (!message.includes("pairing required")) {
     return false;
   }
   if (typeof opts.url === "string" && opts.url.trim().length > 0) {
@@ -140,7 +140,11 @@ async function listPairingWithFallback(opts: DevicesRpcOpts): Promise<DevicePair
   try {
     return parseDevicePairingList(await callGatewayCli("device.pair.list", opts, {}));
   } catch (error) {
-    if (!shouldUseLocalPairingFallback(opts, error)) {
+    const message = normalizeErrorMessage(error).toLowerCase();
+    if (
+      !shouldUseLocalPairingFallback(opts, error) &&
+      !isLoopbackPairingHandshakeTimeout(message)
+    ) {
       throw error;
     }
     if (opts.json !== true) {
