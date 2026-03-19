@@ -138,11 +138,13 @@ export function loadDeviceIdentityIfPresent(
       typeof parsed.privateKeyPem === "string"
     ) {
       const derivedId = fingerprintPublicKey(parsed.publicKeyPem);
-      if (!derivedId || derivedId !== parsed.deviceId) {
+      if (!derivedId) {
         return null;
       }
       return {
-        deviceId: parsed.deviceId,
+        // Keep this probe read-only, but mirror the effective identity that the
+        // main gateway client will use after it repairs stale device IDs.
+        deviceId: derivedId,
         publicKeyPem: parsed.publicKeyPem,
         privateKeyPem: parsed.privateKeyPem,
       };
