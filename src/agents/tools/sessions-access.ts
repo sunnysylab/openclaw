@@ -22,8 +22,8 @@ export type AgentToAgentPolicy = {
   isAllowed: (requesterAgentId: string, targetAgentId: string) => boolean;
 };
 
-export type SessionAccessAction = "history" | "send" | "list";
-export type AgentToAgentAction = SessionAccessAction | "status";
+export type SessionAccessAction = "history" | "send" | "list" | "status";
+export type AgentToAgentAction = SessionAccessAction;
 
 export type SessionAccessResult =
   | { allowed: true }
@@ -163,6 +163,9 @@ function actionPrefix(action: SessionAccessAction): string {
   if (action === "send") {
     return "Session send";
   }
+  if (action === "status") {
+    return "Session status";
+  }
   return "Session list";
 }
 
@@ -215,6 +218,9 @@ function crossVisibilityMessage(action: SessionAccessAction): string {
   }
   if (action === "send") {
     return "Session send visibility is restricted. Set tools.sessions.visibility=all to allow cross-agent access.";
+  }
+  if (action === "status") {
+    return "Session status visibility is restricted. Set tools.sessions.visibility=all to allow cross-agent access.";
   }
   return "Session list visibility is restricted. Set tools.sessions.visibility=all to allow cross-agent access.";
 }

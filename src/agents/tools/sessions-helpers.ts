@@ -50,6 +50,8 @@ export type SessionListDeliveryContext = {
   accountId?: string;
 };
 
+export type SessionRunStatus = "running" | "done" | "failed" | "killed" | "timeout";
+
 export type SessionListRow = {
   key: string;
   kind: SessionKind;
@@ -62,6 +64,12 @@ export type SessionListRow = {
   model?: string;
   contextTokens?: number | null;
   totalTokens?: number | null;
+  estimatedCostUsd?: number;
+  status?: SessionRunStatus;
+  startedAt?: number;
+  endedAt?: number;
+  runtimeMs?: number;
+  childSessions?: string[];
   thinkingLevel?: string;
   verboseLevel?: string;
   systemSent?: boolean;
