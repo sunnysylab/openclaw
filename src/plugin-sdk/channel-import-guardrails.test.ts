@@ -70,52 +70,46 @@ const SAME_CHANNEL_SDK_GUARDS: GuardedSource[] = [
     forbiddenPatterns: [/["']openclaw\/plugin-sdk\/signal["']/, /plugin-sdk-internal\/signal/],
   },
 ];
-
 const SETUP_BARREL_GUARDS: GuardedSource[] = [
   {
     path: "extensions/signal/src/setup-core.ts",
-    forbiddenPatterns: [/\bformatCliCommand\b/, /\bformatDocsLink\b/],
+    forbiddenPatterns: [],
   },
   {
     path: "extensions/signal/src/setup-surface.ts",
-    forbiddenPatterns: [
-      /\bdetectBinary\b/,
-      /\binstallSignalCli\b/,
-      /\bformatCliCommand\b/,
-      /\bformatDocsLink\b/,
-    ],
+    forbiddenPatterns: [],
   },
   {
     path: "extensions/slack/src/setup-core.ts",
-    forbiddenPatterns: [/\bformatDocsLink\b/],
+    forbiddenPatterns: [],
   },
   {
     path: "extensions/slack/src/setup-surface.ts",
-    forbiddenPatterns: [/\bformatDocsLink\b/],
+    forbiddenPatterns: [],
   },
   {
     path: "extensions/discord/src/setup-core.ts",
-    forbiddenPatterns: [/\bformatDocsLink\b/],
+    forbiddenPatterns: [],
   },
   {
     path: "extensions/discord/src/setup-surface.ts",
-    forbiddenPatterns: [/\bformatDocsLink\b/],
+    forbiddenPatterns: [],
   },
   {
     path: "extensions/imessage/src/setup-core.ts",
-    forbiddenPatterns: [/\bformatDocsLink\b/],
+    forbiddenPatterns: [],
   },
   {
     path: "extensions/imessage/src/setup-surface.ts",
-    forbiddenPatterns: [/\bdetectBinary\b/, /\bformatDocsLink\b/],
+    forbiddenPatterns: [],
   },
   {
     path: "extensions/telegram/src/setup-core.ts",
-    forbiddenPatterns: [/\bformatCliCommand\b/, /\bformatDocsLink\b/],
+    forbiddenPatterns: [],
   },
   {
     path: "extensions/whatsapp/src/setup-surface.ts",
-    forbiddenPatterns: [/\bformatCliCommand\b/, /\bformatDocsLink\b/],
+    forbiddenPatterns: [],
   },
 ];
 

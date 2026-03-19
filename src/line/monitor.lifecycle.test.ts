@@ -126,7 +126,6 @@ describe("monitorLineProvider lifecycle", () => {
 
   it("returns immediately without abort signal and stop is idempotent", async () => {
     const { monitorLineProvider } = await import("./monitor.js");
-
     const monitor = await monitorLineProvider({
       channelAccessToken: "token",
       channelSecret: "secret", // pragma: allowlist secret

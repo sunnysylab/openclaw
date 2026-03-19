@@ -96,9 +96,26 @@ function shouldUseManifestCache(env: NodeJS.ProcessEnv): boolean {
   return resolveManifestCacheMs(env) > 0;
 }
 
+function stableInstallsKey(
+  installs: Record<string, { source?: string; installPath?: string; sourcePath?: string }> | undefined,
+): string {
+  if (!installs) {
+    return "";
+  }
+  const sorted = Object.keys(installs)
+    .sort()
+    .map((id) => {
+      const rec = installs[id]!;
+      // Only include fields that affect duplicate-warning decisions.
+      return `${id}=${rec.installPath ?? ""}|${rec.sourcePath ?? ""}`;
+    });
+  return sorted.join(";");
+}
+
 function buildCacheKey(params: {
   workspaceDir?: string;
   plugins: NormalizedPluginsConfig;
+  installs?: Record<string, { source?: string; installPath?: string; sourcePath?: string }>;
   env: NodeJS.ProcessEnv;
 }): string {
   const { roots, loadPaths } = resolvePluginCacheInputs({
@@ -109,9 +126,11 @@ function buildCacheKey(params: {
   const workspaceKey = roots.workspace ?? "";
   const configExtensionsRoot = roots.global;
   const bundledRoot = roots.stock ?? "";
-  // The manifest registry only depends on where plugins are discovered from (workspace + load paths).
+  const installsKey = stableInstallsKey(params.installs);
+  // The manifest registry depends on discovery roots, load paths, and install records
+  // (which affect duplicate-warning suppression decisions).
   // It does not depend on allow/deny/entries enable-state, so exclude those for higher cache hit rates.
-  return `${workspaceKey}::${configExtensionsRoot}::${bundledRoot}::${JSON.stringify(loadPaths)}`;
+  return `${workspaceKey}::${configExtensionsRoot}::${bundledRoot}::${JSON.stringify(loadPaths)}::${installsKey}`;
 }
 
 function safeStatMtimeMs(filePath: string): number | null {
@@ -274,6 +293,27 @@ function resolveDuplicatePrecedenceRank(params: {
   return 4;
 }
 
+function isIntentionalBundledInstallOverride(params: {
+  pluginId: string;
+  left: PluginCandidate;
+  right: PluginCandidate;
+  config?: OpenClawConfig;
+  env: NodeJS.ProcessEnv;
+}): boolean {
+  const pair: [PluginCandidate, PluginCandidate] = [params.left, params.right];
+  const bundled = pair.find((candidate) => candidate.origin === "bundled");
+  const globalCandidate = pair.find((candidate) => candidate.origin === "global");
+  if (!bundled || !globalCandidate) {
+    return false;
+  }
+  return matchesInstalledPluginRecord({
+    pluginId: params.pluginId,
+    candidate: globalCandidate,
+    config: params.config,
+    env: params.env,
+  });
+}
+
 export function loadPluginManifestRegistry(
   params: {
     config?: OpenClawConfig;
@@ -287,7 +327,12 @@ export function loadPluginManifestRegistry(
   const config = params.config ?? {};
   const normalized = normalizePluginsConfig(config.plugins);
   const env = params.env ?? process.env;
-  const cacheKey = buildCacheKey({ workspaceDir: params.workspaceDir, plugins: normalized, env });
+  const cacheKey = buildCacheKey({
+    workspaceDir: params.workspaceDir,
+    plugins: normalized,
+    installs: config.plugins?.installs,
+    env,
+  });
   const cacheEnabled = params.cache !== false && shouldUseManifestCache(env);
   if (cacheEnabled) {
     const cached = registryCache.get(cacheKey);
@@ -388,26 +433,36 @@ export function loadPluginManifestRegistry(
         }
         continue;
       }
-      diagnostics.push({
-        level: "warn",
-        pluginId: manifest.id,
-        source: candidate.source,
-        message:
-          resolveDuplicatePrecedenceRank({
-            pluginId: manifest.id,
-            candidate,
-            config,
-            env,
-          }) <
-          resolveDuplicatePrecedenceRank({
-            pluginId: manifest.id,
-            candidate: existing.candidate,
-            config,
-            env,
-          })
-            ? `duplicate plugin id detected; ${existing.candidate.origin} plugin will be overridden by ${candidate.origin} plugin (${candidate.source})`
-            : `duplicate plugin id detected; ${candidate.origin} plugin will be overridden by ${existing.candidate.origin} plugin (${candidate.source})`,
-      });
+      if (
+        !isIntentionalBundledInstallOverride({
+          pluginId: manifest.id,
+          left: existing.candidate,
+          right: candidate,
+          config,
+          env,
+        })
+      ) {
+        diagnostics.push({
+          level: "warn",
+          pluginId: manifest.id,
+          source: candidate.source,
+          message:
+            resolveDuplicatePrecedenceRank({
+              pluginId: manifest.id,
+              candidate,
+              config,
+              env,
+            }) <
+            resolveDuplicatePrecedenceRank({
+              pluginId: manifest.id,
+              candidate: existing.candidate,
+              config,
+              env,
+            })
+              ? `duplicate plugin id detected; ${existing.candidate.origin} plugin will be overridden by ${candidate.origin} plugin (${candidate.source})`
+              : `duplicate plugin id detected; ${candidate.origin} plugin will be overridden by ${existing.candidate.origin} plugin (${candidate.source})`,
+        });
+      }
     } else {
       seenIds.set(manifest.id, { candidate, recordIndex: records.length });
     }

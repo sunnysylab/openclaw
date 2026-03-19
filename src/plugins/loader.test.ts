@@ -2698,6 +2698,14 @@ module.exports = {
       expect(overridden?.origin, scenario.label).toBe(scenario.expectedDisabledOrigin);
       if ("expectedDisabledError" in scenario) {
         expect(overridden?.error, scenario.label).toContain(scenario.expectedDisabledError);
+        if (scenario.expectedDisabledError === "overridden by global plugin") {
+          expect(
+            registry.diagnostics.some((diag) =>
+              String(diag.message).includes("duplicate plugin id"),
+            ),
+            scenario.label,
+          ).toBe(false);
+        }
       }
     }
   });

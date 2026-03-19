@@ -159,7 +159,7 @@ describe("loadPluginManifestRegistry", () => {
     expect(countDuplicateWarnings(loadRegistry(candidates))).toBe(1);
   });
 
-  it("reports explicit installed globals as the effective duplicate winner", () => {
+  it("suppresses duplicate warning for explicit installed globals that override bundled plugins", () => {
     const bundledDir = makeTempDir();
     const globalDir = makeTempDir();
     const manifest = { id: "zalouser", configSchema: { type: "object" } };
@@ -192,10 +192,9 @@ describe("loadPluginManifestRegistry", () => {
       ],
     });
 
+    expect(countDuplicateWarnings(registry)).toBe(0);
     expect(
-      registry.diagnostics.some((diag) =>
-        diag.message.includes("bundled plugin will be overridden by global plugin"),
-      ),
+      registry.plugins.some((plugin) => plugin.id === "zalouser" && plugin.origin === "global"),
     ).toBe(true);
   });
 
@@ -666,6 +665,58 @@ describe("loadPluginManifestRegistry", () => {
     expect(
       fs.realpathSync(second.plugins.find((plugin) => plugin.id === "matrix")?.rootDir ?? ""),
     ).toBe(fs.realpathSync(matrixB));
+  });
+
+  it("invalidates cache when installs record changes (stale suppression regression)", () => {
+    const bundledDir = makeTempDir();
+    const globalDir = makeTempDir();
+    const manifest = { id: "stale-install", configSchema: { type: "object" } };
+    writeManifest(bundledDir, manifest);
+    writeManifest(globalDir, manifest);
+
+    const candidates: PluginCandidate[] = [
+      createPluginCandidate({
+        idHint: "stale-install",
+        rootDir: bundledDir,
+        origin: "bundled",
+      }),
+      createPluginCandidate({
+        idHint: "stale-install",
+        rootDir: globalDir,
+        origin: "global",
+      }),
+    ];
+
+    const env = {
+      ...process.env,
+      OPENCLAW_PLUGIN_MANIFEST_CACHE_MS: "60000",
+    };
+
+    // First call: no installs record → duplicate warning expected
+    const first = loadPluginManifestRegistry({
+      cache: true,
+      env,
+      candidates,
+    });
+    expect(countDuplicateWarnings(first)).toBe(1);
+
+    // Second call: installs record added → warning should be suppressed (cache must not be reused)
+    const second = loadPluginManifestRegistry({
+      cache: true,
+      env,
+      candidates,
+      config: {
+        plugins: {
+          installs: {
+            "stale-install": {
+              source: "npm",
+              installPath: globalDir,
+            },
+          },
+        },
+      },
+    });
+    expect(countDuplicateWarnings(second)).toBe(0);
   });
 
   it("does not reuse cached load-path manifests across env home changes", () => {

@@ -104,9 +104,10 @@ await build(${JSON.stringify({
       const packageDir = path.join(fixtureDir, "openclaw");
       const consumerDir = path.join(fixtureDir, "consumer");
       const consumerEntry = path.join(consumerDir, "import-plugin-sdk.mjs");
+      const packagePluginSdkDistDir = path.join(packageDir, "dist", "plugin-sdk");
 
       await fs.mkdir(path.join(packageDir, "dist"), { recursive: true });
-      await fs.symlink(outDir, path.join(packageDir, "dist", "plugin-sdk"), "dir");
+      await fs.cp(outDir, packagePluginSdkDistDir, { recursive: true });
       await fs.writeFile(
         path.join(packageDir, "package.json"),
         JSON.stringify(
@@ -121,7 +122,9 @@ await build(${JSON.stringify({
       );
 
       await fs.mkdir(path.join(consumerDir, "node_modules"), { recursive: true });
-      await fs.symlink(packageDir, path.join(consumerDir, "node_modules", "openclaw"), "dir");
+      await fs.cp(packageDir, path.join(consumerDir, "node_modules", "openclaw"), {
+        recursive: true,
+      });
       await fs.writeFile(
         consumerEntry,
         [

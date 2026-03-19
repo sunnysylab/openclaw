@@ -75,7 +75,6 @@ beforeEach(async () => {
   vi.doMock("https-proxy-agent", () => ({
     HttpsProxyAgent: httpsProxyAgentCtorMock,
   }));
-
   ({
     createFeishuClient,
     createFeishuWSClient,
@@ -85,7 +84,6 @@ beforeEach(async () => {
     FEISHU_HTTP_TIMEOUT_MAX_MS,
     FEISHU_HTTP_TIMEOUT_ENV_VAR,
   } = await import("./client.js"));
-
   priorProxyEnv = {};
   priorFeishuTimeoutEnv = process.env[FEISHU_HTTP_TIMEOUT_ENV_VAR];
   delete process.env[FEISHU_HTTP_TIMEOUT_ENV_VAR];
