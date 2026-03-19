@@ -1,10 +1,10 @@
 import type { Command } from "commander";
 import { loadConfig } from "../config/config.js";
+import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
 import { resolveGatewayCredentialsWithSecretInputs } from "../gateway/call.js";
 import { isLoopbackHost } from "../gateway/net.js";
-import { loadDeviceAuthToken } from "../infra/device-auth-store.js";
-import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
+import { loadStoredDeviceAuthTokenForRole } from "../infra/device-auth-store.js";
 import {
   approveDevicePairing,
   listDevicePairing,
@@ -124,12 +124,13 @@ async function hasResolvedGatewayAuth(opts: DevicesRpcOpts): Promise<boolean> {
 }
 
 function hasStoredDeviceGatewayAuth(): boolean {
-  const identity = loadOrCreateDeviceIdentity();
-  return !!loadDeviceAuthToken({ deviceId: identity.deviceId, role: "operator" })?.token;
+  return !!loadStoredDeviceAuthTokenForRole({ role: "operator" })?.token;
 }
 
 function hasPairingProtectedLoopbackGateway(): boolean {
-  const authMode = loadConfig().gateway?.auth?.mode;
+  const authMode = resolveGatewayAuth({
+    authConfig: loadConfig().gateway?.auth ?? {},
+  }).mode;
   return authMode === "token" || authMode === "password";
 }
 

@@ -14,8 +14,7 @@ const resolveGatewayCredentialsWithSecretInputs = vi.fn(
 const listDevicePairing = vi.fn();
 const approveDevicePairing = vi.fn();
 const summarizeDeviceTokens = vi.fn();
-const loadDeviceAuthToken = vi.fn(() => null);
-const loadOrCreateDeviceIdentity = vi.fn(() => ({ deviceId: "device-identity-1" }));
+const loadStoredDeviceAuthTokenForRole = vi.fn(() => null);
 const withProgress = vi.fn(async (_opts: unknown, fn: () => Promise<unknown>) => await fn());
 const loadConfig = vi.fn(() => ({}));
 const runtime = {
@@ -45,11 +44,7 @@ vi.mock("../infra/device-pairing.js", () => ({
 }));
 
 vi.mock("../infra/device-auth-store.js", () => ({
-  loadDeviceAuthToken,
-}));
-
-vi.mock("../infra/device-identity.js", () => ({
-  loadOrCreateDeviceIdentity,
+  loadStoredDeviceAuthTokenForRole,
 }));
 
 vi.mock("../runtime.js", () => ({
@@ -274,7 +269,7 @@ describe("devices cli local fallback", () => {
   it.each(["gateway closed (1000 normal closure): no close reason"])(
     "falls back to local pairing list for loopback handshake close variant %s",
     async (message) => {
-      loadConfig.mockReturnValueOnce({ gateway: { auth: { mode: "token" } } });
+      loadConfig.mockReturnValueOnce({ gateway: { auth: { token: "cfg-token" } } });
       callGateway.mockRejectedValueOnce(new Error(message));
       listDevicePairing.mockResolvedValueOnce({
         pending: [{ requestId: "req-1", deviceId: "device-1", publicKey: "pk", ts: 1 }],
@@ -402,12 +397,10 @@ describe("devices cli local fallback", () => {
     callGateway.mockRejectedValueOnce(
       new Error("gateway closed (1000 normal closure): no close reason"),
     );
-    loadDeviceAuthToken.mockReturnValueOnce({ token: "device-token" });
+    loadStoredDeviceAuthTokenForRole.mockReturnValueOnce({ token: "device-token" });
 
     await expect(runDevicesCommand(["list"])).rejects.toThrow("no close reason");
-    expect(loadOrCreateDeviceIdentity).toHaveBeenCalledTimes(1);
-    expect(loadDeviceAuthToken).toHaveBeenCalledWith({
-      deviceId: "device-identity-1",
+    expect(loadStoredDeviceAuthTokenForRole).toHaveBeenCalledWith({
       role: "operator",
     });
     expect(listDevicePairing).not.toHaveBeenCalled();
@@ -427,10 +420,8 @@ afterEach(() => {
     async (params?: { explicitAuth?: { token?: string; password?: string } }) =>
       params?.explicitAuth ?? {},
   );
-  loadDeviceAuthToken.mockClear();
-  loadDeviceAuthToken.mockReturnValue(null);
-  loadOrCreateDeviceIdentity.mockClear();
-  loadOrCreateDeviceIdentity.mockReturnValue({ deviceId: "device-identity-1" });
+  loadStoredDeviceAuthTokenForRole.mockClear();
+  loadStoredDeviceAuthTokenForRole.mockReturnValue(null);
   listDevicePairing.mockClear();
   listDevicePairing.mockResolvedValue({ pending: [], paired: [] });
   approveDevicePairing.mockClear();
@@ -439,7 +430,7 @@ afterEach(() => {
   summarizeDeviceTokens.mockReturnValue(undefined);
   withProgress.mockClear();
   loadConfig.mockClear();
-  loadConfig.mockReturnValue({ gateway: { auth: { mode: "token" } } });
+  loadConfig.mockReturnValue({ gateway: { auth: { token: "cfg-token" } } });
   runtime.log.mockClear();
   runtime.error.mockClear();
   runtime.exit.mockClear();
