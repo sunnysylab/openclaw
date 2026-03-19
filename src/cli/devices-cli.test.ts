@@ -274,6 +274,7 @@ describe("devices cli local fallback", () => {
   it.each(["gateway closed (1000 normal closure): no close reason"])(
     "falls back to local pairing list for loopback handshake close variant %s",
     async (message) => {
+      loadConfig.mockReturnValueOnce({ gateway: { auth: { mode: "token" } } });
       callGateway.mockRejectedValueOnce(new Error(message));
       listDevicePairing.mockResolvedValueOnce({
         pending: [{ requestId: "req-1", deviceId: "device-1", publicKey: "pk", ts: 1 }],
@@ -290,6 +291,16 @@ describe("devices cli local fallback", () => {
       expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining(fallbackNotice));
     },
   );
+
+  it("does not use loopback handshake fallback when gateway auth mode is none", async () => {
+    loadConfig.mockReturnValueOnce({ gateway: { auth: { mode: "none" } } });
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+
+    await expect(runDevicesCommand(["list"])).rejects.toThrow("no close reason");
+    expect(listDevicePairing).not.toHaveBeenCalled();
+  });
 
   it("does not use local list fallback for generic 1000 closes after connect", async () => {
     callGateway.mockRejectedValueOnce(new Error("gateway closed (1000): no close reason"));
@@ -428,7 +439,7 @@ afterEach(() => {
   summarizeDeviceTokens.mockReturnValue(undefined);
   withProgress.mockClear();
   loadConfig.mockClear();
-  loadConfig.mockReturnValue({});
+  loadConfig.mockReturnValue({ gateway: { auth: { mode: "token" } } });
   runtime.log.mockClear();
   runtime.error.mockClear();
   runtime.exit.mockClear();

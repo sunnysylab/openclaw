@@ -128,6 +128,11 @@ function hasStoredDeviceGatewayAuth(): boolean {
   return !!loadDeviceAuthToken({ deviceId: identity.deviceId, role: "operator" })?.token;
 }
 
+function hasPairingProtectedLoopbackGateway(): boolean {
+  const authMode = loadConfig().gateway?.auth?.mode;
+  return authMode === "token" || authMode === "password";
+}
+
 function shouldUseImplicitLoopbackPairingFallback(opts: DevicesRpcOpts): boolean {
   if (typeof opts.url === "string" && opts.url.trim().length > 0) {
     // Explicit --url might point at a remote/tunneled gateway; never silently
@@ -153,6 +158,12 @@ async function shouldUseLoopbackHandshakeListFallback(
     return false;
   }
   if (!isLoopbackPairingHandshakeTimeout(normalizeErrorMessage(error))) {
+    return false;
+  }
+  if (!hasPairingProtectedLoopbackGateway()) {
+    // Generic close-without-reason can also mean the local gateway is simply
+    // unhealthy; only treat it as a pairing regression on protected loopback
+    // gateways where the original bug was observed.
     return false;
   }
   if (await hasResolvedGatewayAuth(opts)) {
