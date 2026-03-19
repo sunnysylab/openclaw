@@ -14,6 +14,8 @@ const resolveGatewayCredentialsWithSecretInputs = vi.fn(
 const listDevicePairing = vi.fn();
 const approveDevicePairing = vi.fn();
 const summarizeDeviceTokens = vi.fn();
+const loadDeviceAuthToken = vi.fn(() => null);
+const loadOrCreateDeviceIdentity = vi.fn(() => ({ deviceId: "device-identity-1" }));
 const withProgress = vi.fn(async (_opts: unknown, fn: () => Promise<unknown>) => await fn());
 const loadConfig = vi.fn(() => ({}));
 const runtime = {
@@ -40,6 +42,14 @@ vi.mock("../infra/device-pairing.js", () => ({
   listDevicePairing,
   approveDevicePairing,
   summarizeDeviceTokens,
+}));
+
+vi.mock("../infra/device-auth-store.js", () => ({
+  loadDeviceAuthToken,
+}));
+
+vi.mock("../infra/device-identity.js", () => ({
+  loadOrCreateDeviceIdentity,
 }));
 
 vi.mock("../runtime.js", () => ({
@@ -327,6 +337,16 @@ describe("devices cli local fallback", () => {
     expect(approveDevicePairing).not.toHaveBeenCalled();
   });
 
+  it("does not use loopback handshake list fallback for approve --latest", async () => {
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+
+    await expect(runDevicesApprove(["--latest"])).rejects.toThrow("no close reason");
+    expect(listDevicePairing).not.toHaveBeenCalled();
+    expect(approveDevicePairing).not.toHaveBeenCalled();
+  });
+
   it.each([
     "gateway closed (1008): pairing required",
     "gateway closed (1000 normal closure): no close reason",
@@ -366,6 +386,21 @@ describe("devices cli local fallback", () => {
     expect(resolveGatewayCredentialsWithSecretInputs).toHaveBeenCalledTimes(1);
     expect(listDevicePairing).not.toHaveBeenCalled();
   });
+
+  it("does not use generic loopback handshake fallback when a stored device token exists", async () => {
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+    loadDeviceAuthToken.mockReturnValueOnce({ token: "device-token" });
+
+    await expect(runDevicesCommand(["list"])).rejects.toThrow("no close reason");
+    expect(loadOrCreateDeviceIdentity).toHaveBeenCalledTimes(1);
+    expect(loadDeviceAuthToken).toHaveBeenCalledWith({
+      deviceId: "device-identity-1",
+      role: "operator",
+    });
+    expect(listDevicePairing).not.toHaveBeenCalled();
+  });
 });
 
 afterEach(() => {
@@ -381,6 +416,10 @@ afterEach(() => {
     async (params?: { explicitAuth?: { token?: string; password?: string } }) =>
       params?.explicitAuth ?? {},
   );
+  loadDeviceAuthToken.mockClear();
+  loadDeviceAuthToken.mockReturnValue(null);
+  loadOrCreateDeviceIdentity.mockClear();
+  loadOrCreateDeviceIdentity.mockReturnValue({ deviceId: "device-identity-1" });
   listDevicePairing.mockClear();
   listDevicePairing.mockResolvedValue({ pending: [], paired: [] });
   approveDevicePairing.mockClear();

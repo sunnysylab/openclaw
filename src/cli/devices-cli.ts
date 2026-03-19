@@ -3,6 +3,8 @@ import { loadConfig } from "../config/config.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
 import { resolveGatewayCredentialsWithSecretInputs } from "../gateway/call.js";
 import { isLoopbackHost } from "../gateway/net.js";
+import { loadDeviceAuthToken } from "../infra/device-auth-store.js";
+import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
 import {
   approveDevicePairing,
   listDevicePairing,
@@ -121,6 +123,11 @@ async function hasResolvedGatewayAuth(opts: DevicesRpcOpts): Promise<boolean> {
   return !!(resolved.token || resolved.password);
 }
 
+function hasStoredDeviceGatewayAuth(): boolean {
+  const identity = loadOrCreateDeviceIdentity();
+  return !!loadDeviceAuthToken({ deviceId: identity.deviceId, role: "operator" })?.token;
+}
+
 function shouldUseImplicitLoopbackPairingFallback(opts: DevicesRpcOpts): boolean {
   if (typeof opts.url === "string" && opts.url.trim().length > 0) {
     // Explicit --url might point at a remote/tunneled gateway; never silently
@@ -154,6 +161,11 @@ async function shouldUseLoopbackHandshakeListFallback(
     // carrying any resolved gateway credentials.
     return false;
   }
+  if (hasStoredDeviceGatewayAuth()) {
+    // Stored device tokens also authenticate loopback operator sessions; do not
+    // hide generic authenticated gateway failures behind the local pairing file.
+    return false;
+  }
   return true;
 }
 
@@ -173,13 +185,19 @@ function redactLocalPairedDevice(device: InfraPairedDevice): PairedDevice {
   };
 }
 
-async function listPairingWithFallback(opts: DevicesRpcOpts): Promise<DevicePairingList> {
+async function listPairingWithFallback(
+  opts: DevicesRpcOpts,
+  params?: { allowHandshakeCloseFallback?: boolean },
+): Promise<DevicePairingList> {
   try {
     return parseDevicePairingList(await callGatewayCli("device.pair.list", opts, {}));
   } catch (error) {
     if (
       !shouldUseLocalPairingFallback(opts, error) &&
-      !(await shouldUseLoopbackHandshakeListFallback(opts, error))
+      !(
+        params?.allowHandshakeCloseFallback !== false &&
+        (await shouldUseLoopbackHandshakeListFallback(opts, error))
+      )
     ) {
       throw error;
     }
@@ -420,7 +438,9 @@ export function registerDevicesCli(program: Command) {
       .action(async (requestId: string | undefined, opts: DevicesRpcOpts) => {
         let resolvedRequestId = requestId?.trim();
         if (!resolvedRequestId || opts.latest) {
-          const latest = selectLatestPendingRequest((await listPairingWithFallback(opts)).pending);
+          const latest = selectLatestPendingRequest(
+            (await listPairingWithFallback(opts, { allowHandshakeCloseFallback: false })).pending,
+          );
           resolvedRequestId = latest?.requestId?.trim();
         }
         if (!resolvedRequestId) {
