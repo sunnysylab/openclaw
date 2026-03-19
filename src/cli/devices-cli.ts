@@ -97,9 +97,18 @@ function normalizeErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function isLoopbackPairingHandshakeTimeout(message: string): boolean {
+  // Local token-auth pairing can time out before the gateway sends a reason
+  // frame, which currently surfaces to the CLI as a plain 1000/no-reason close.
+  return (
+    message.includes("gateway closed (1000 normal closure): no close reason") ||
+    message.includes("gateway closed (1000): no close reason")
+  );
+}
+
 function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): boolean {
   const message = normalizeErrorMessage(error).toLowerCase();
-  if (!message.includes("pairing required")) {
+  if (!message.includes("pairing required") && !isLoopbackPairingHandshakeTimeout(message)) {
     return false;
   }
   if (typeof opts.url === "string" && opts.url.trim().length > 0) {
