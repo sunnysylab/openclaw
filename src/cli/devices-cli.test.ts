@@ -251,24 +251,28 @@ describe("devices cli local fallback", () => {
     expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining(fallbackNotice));
   });
 
-  it("falls back to local pairing list when loopback handshake closes without a reason", async () => {
-    callGateway.mockRejectedValueOnce(
-      new Error("gateway closed (1000 normal closure): no close reason"),
-    );
-    listDevicePairing.mockResolvedValueOnce({
-      pending: [{ requestId: "req-1", deviceId: "device-1", publicKey: "pk", ts: 1 }],
-      paired: [],
-    });
-    summarizeDeviceTokens.mockReturnValue(undefined);
+  it.each([
+    "gateway closed (1000 normal closure): no close reason",
+    "gateway closed (1000): no close reason",
+  ])(
+    "falls back to local pairing list for loopback handshake close variant %s",
+    async (message) => {
+      callGateway.mockRejectedValueOnce(new Error(message));
+      listDevicePairing.mockResolvedValueOnce({
+        pending: [{ requestId: "req-1", deviceId: "device-1", publicKey: "pk", ts: 1 }],
+        paired: [],
+      });
+      summarizeDeviceTokens.mockReturnValue(undefined);
 
-    await runDevicesCommand(["list"]);
+      await runDevicesCommand(["list"]);
 
-    expect(callGateway).toHaveBeenCalledWith(
-      expect.objectContaining({ method: "device.pair.list" }),
-    );
-    expect(listDevicePairing).toHaveBeenCalledTimes(1);
-    expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining(fallbackNotice));
-  });
+      expect(callGateway).toHaveBeenCalledWith(
+        expect.objectContaining({ method: "device.pair.list" }),
+      );
+      expect(listDevicePairing).toHaveBeenCalledTimes(1);
+      expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining(fallbackNotice));
+    },
+  );
 
   it("falls back to local approve when gateway returns pairing required on loopback", async () => {
     callGateway

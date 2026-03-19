@@ -100,9 +100,10 @@ function normalizeErrorMessage(error: unknown): string {
 function isLoopbackPairingHandshakeTimeout(message: string): boolean {
   // Local token-auth pairing can time out before the gateway sends a reason
   // frame, which currently surfaces to the CLI as a plain 1000/no-reason close.
+  const lower = message.toLowerCase();
   return (
-    message.includes("gateway closed (1000 normal closure): no close reason") ||
-    message.includes("gateway closed (1000): no close reason")
+    lower.includes("gateway closed (1000 normal closure): no close reason") ||
+    lower.includes("gateway closed (1000): no close reason")
   );
 }
 
