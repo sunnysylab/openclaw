@@ -311,12 +311,17 @@ describe("devices cli local fallback", () => {
     expect(approveDevicePairing).not.toHaveBeenCalled();
   });
 
-  it("does not use local fallback when an explicit --url is provided", async () => {
-    callGateway.mockRejectedValueOnce(new Error("gateway closed (1008): pairing required"));
+  it.each([
+    "gateway closed (1008): pairing required",
+    "gateway closed (1000 normal closure): no close reason",
+  ])("does not use local fallback when an explicit --url is provided (%s)", async (message) => {
+    callGateway.mockRejectedValueOnce(new Error(message));
 
     await expect(
       runDevicesCommand(["list", "--json", "--url", "ws://127.0.0.1:18789"]),
-    ).rejects.toThrow("pairing required");
+    ).rejects.toThrow(
+      message.includes("pairing required") ? "pairing required" : "no close reason",
+    );
     expect(listDevicePairing).not.toHaveBeenCalled();
   });
 });

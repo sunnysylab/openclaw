@@ -107,11 +107,7 @@ function isLoopbackPairingHandshakeTimeout(message: string): boolean {
   );
 }
 
-function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): boolean {
-  const message = normalizeErrorMessage(error).toLowerCase();
-  if (!message.includes("pairing required")) {
-    return false;
-  }
+function shouldUseImplicitLoopbackPairingFallback(opts: DevicesRpcOpts): boolean {
   if (typeof opts.url === "string" && opts.url.trim().length > 0) {
     // Explicit --url might point at a remote/tunneled gateway; never silently
     // switch to local pairing files in that case.
@@ -126,6 +122,14 @@ function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): bo
   } catch {
     return false;
   }
+}
+
+function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): boolean {
+  const message = normalizeErrorMessage(error).toLowerCase();
+  if (!message.includes("pairing required")) {
+    return false;
+  }
+  return shouldUseImplicitLoopbackPairingFallback(opts);
 }
 
 function redactLocalPairedDevice(device: InfraPairedDevice): PairedDevice {
@@ -143,7 +147,9 @@ async function listPairingWithFallback(opts: DevicesRpcOpts): Promise<DevicePair
     const message = normalizeErrorMessage(error).toLowerCase();
     if (
       !shouldUseLocalPairingFallback(opts, error) &&
-      !isLoopbackPairingHandshakeTimeout(message)
+      !(
+        shouldUseImplicitLoopbackPairingFallback(opts) && isLoopbackPairingHandshakeTimeout(message)
+      )
     ) {
       throw error;
     }
