@@ -569,6 +569,8 @@ export async function deliverReplies(params: {
   silent?: boolean;
   /** Optional quote text for Telegram reply_parameters. */
   replyQuoteText?: string;
+  /** Fallback reply-to message ID when reply.replyToId is absent (e.g. inbound message ID). */
+  defaultReplyToId?: number;
 }): Promise<{ delivered: boolean }> {
   const progress: DeliveryProgress = {
     hasReplied: false,
@@ -630,8 +632,16 @@ export async function deliverReplies(params: {
 
     try {
       const deliveredCountBeforeReply = progress.deliveredCount;
+      const explicitReplyToId = resolveTelegramReplyId(reply.replyToId);
       const replyToId =
-        params.replyToMode === "off" ? undefined : resolveTelegramReplyId(reply.replyToId);
+        params.replyToMode === "off"
+          ? undefined
+          : (explicitReplyToId ??
+            (params.replyToMode !== "all" ||
+            reply.replyToCurrent === false ||
+            (reply.replyToId != null && reply.replyToId.length > 0)
+              ? undefined
+              : params.defaultReplyToId));
       const telegramData = reply.channelData?.telegram as TelegramReplyChannelData | undefined;
       const shouldPinFirstMessage = telegramData?.pin === true;
       const replyMarkup = buildInlineKeyboard(telegramData?.buttons);

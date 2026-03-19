@@ -454,6 +454,7 @@ export const dispatchTelegramMessage = async ({
     bot,
     mediaLocalRoots,
     replyToMode,
+    defaultReplyToId: draftReplyToMessageId,
     textLimit,
     thread: threadSpec,
     tableMode,
