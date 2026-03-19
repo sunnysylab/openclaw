@@ -7,10 +7,15 @@ const buildGatewayConnectionDetails = vi.fn(() => ({
   urlSource: "local loopback",
   message: "",
 }));
+const resolveGatewayCredentialsWithSecretInputs = vi.fn(
+  async (params?: { explicitAuth?: { token?: string; password?: string } }) =>
+    params?.explicitAuth ?? {},
+);
 const listDevicePairing = vi.fn();
 const approveDevicePairing = vi.fn();
 const summarizeDeviceTokens = vi.fn();
 const withProgress = vi.fn(async (_opts: unknown, fn: () => Promise<unknown>) => await fn());
+const loadConfig = vi.fn(() => ({}));
 const runtime = {
   log: vi.fn(),
   error: vi.fn(),
@@ -20,10 +25,15 @@ const runtime = {
 vi.mock("../gateway/call.js", () => ({
   callGateway,
   buildGatewayConnectionDetails,
+  resolveGatewayCredentialsWithSecretInputs,
 }));
 
 vi.mock("./progress.js", () => ({
   withProgress,
+}));
+
+vi.mock("../config/config.js", () => ({
+  loadConfig,
 }));
 
 vi.mock("../infra/device-pairing.js", () => ({
@@ -251,10 +261,7 @@ describe("devices cli local fallback", () => {
     expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining(fallbackNotice));
   });
 
-  it.each([
-    "gateway closed (1000 normal closure): no close reason",
-    "gateway closed (1000): no close reason",
-  ])(
+  it.each(["gateway closed (1000 normal closure): no close reason"])(
     "falls back to local pairing list for loopback handshake close variant %s",
     async (message) => {
       callGateway.mockRejectedValueOnce(new Error(message));
@@ -273,6 +280,15 @@ describe("devices cli local fallback", () => {
       expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining(fallbackNotice));
     },
   );
+
+  it("does not use local list fallback for generic 1000 closes after connect", async () => {
+    callGateway.mockRejectedValueOnce(new Error("gateway closed (1000): no close reason"));
+
+    await expect(runDevicesCommand(["list"])).rejects.toThrow(
+      "gateway closed (1000): no close reason",
+    );
+    expect(listDevicePairing).not.toHaveBeenCalled();
+  });
 
   it("falls back to local approve when gateway returns pairing required on loopback", async () => {
     callGateway
@@ -339,6 +355,17 @@ describe("devices cli local fallback", () => {
       expect(listDevicePairing).not.toHaveBeenCalled();
     },
   );
+
+  it("does not use generic loopback handshake fallback when config/env auth is resolved", async () => {
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+    resolveGatewayCredentialsWithSecretInputs.mockResolvedValueOnce({ token: "config-token" });
+
+    await expect(runDevicesCommand(["list"])).rejects.toThrow("no close reason");
+    expect(resolveGatewayCredentialsWithSecretInputs).toHaveBeenCalledTimes(1);
+    expect(listDevicePairing).not.toHaveBeenCalled();
+  });
 });
 
 afterEach(() => {
@@ -349,6 +376,11 @@ afterEach(() => {
     urlSource: "local loopback",
     message: "",
   });
+  resolveGatewayCredentialsWithSecretInputs.mockClear();
+  resolveGatewayCredentialsWithSecretInputs.mockImplementation(
+    async (params?: { explicitAuth?: { token?: string; password?: string } }) =>
+      params?.explicitAuth ?? {},
+  );
   listDevicePairing.mockClear();
   listDevicePairing.mockResolvedValue({ pending: [], paired: [] });
   approveDevicePairing.mockClear();
@@ -356,6 +388,8 @@ afterEach(() => {
   summarizeDeviceTokens.mockClear();
   summarizeDeviceTokens.mockReturnValue(undefined);
   withProgress.mockClear();
+  loadConfig.mockClear();
+  loadConfig.mockReturnValue({});
   runtime.log.mockClear();
   runtime.error.mockClear();
   runtime.exit.mockClear();

@@ -1,5 +1,7 @@
 import type { Command } from "commander";
+import { loadConfig } from "../config/config.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
+import { resolveGatewayCredentialsWithSecretInputs } from "../gateway/call.js";
 import { isLoopbackHost } from "../gateway/net.js";
 import {
   approveDevicePairing,
@@ -101,17 +103,22 @@ function isLoopbackPairingHandshakeTimeout(message: string): boolean {
   // Local token-auth pairing can time out before the gateway sends a reason
   // frame, which currently surfaces to the CLI as a plain 1000/no-reason close.
   const lower = message.toLowerCase();
-  return (
-    lower.includes("gateway closed (1000 normal closure): no close reason") ||
-    lower.includes("gateway closed (1000): no close reason")
-  );
+  return lower.includes("gateway closed (1000 normal closure): no close reason");
 }
 
-function hasExplicitGatewayAuth(opts: DevicesRpcOpts): boolean {
-  return (
-    (typeof opts.token === "string" && opts.token.trim().length > 0) ||
-    (typeof opts.password === "string" && opts.password.trim().length > 0)
-  );
+async function hasResolvedGatewayAuth(opts: DevicesRpcOpts): Promise<boolean> {
+  const urlOverride =
+    typeof opts.url === "string" && opts.url.trim().length > 0 ? opts.url.trim() : undefined;
+  const resolved = await resolveGatewayCredentialsWithSecretInputs({
+    config: loadConfig(),
+    explicitAuth: {
+      token: opts.token,
+      password: opts.password,
+    },
+    urlOverride,
+    urlOverrideSource: urlOverride ? "cli" : undefined,
+  });
+  return !!(resolved.token || resolved.password);
 }
 
 function shouldUseImplicitLoopbackPairingFallback(opts: DevicesRpcOpts): boolean {
@@ -131,16 +138,23 @@ function shouldUseImplicitLoopbackPairingFallback(opts: DevicesRpcOpts): boolean
   }
 }
 
-function shouldUseLoopbackHandshakeListFallback(opts: DevicesRpcOpts, error: unknown): boolean {
-  if (hasExplicitGatewayAuth(opts)) {
-    // Explicit credentials should keep surfacing the gateway error so pairing
-    // scope and auth boundaries remain visible to the caller.
+async function shouldUseLoopbackHandshakeListFallback(
+  opts: DevicesRpcOpts,
+  error: unknown,
+): Promise<boolean> {
+  if (!shouldUseImplicitLoopbackPairingFallback(opts)) {
     return false;
   }
-  return (
-    shouldUseImplicitLoopbackPairingFallback(opts) &&
-    isLoopbackPairingHandshakeTimeout(normalizeErrorMessage(error))
-  );
+  if (!isLoopbackPairingHandshakeTimeout(normalizeErrorMessage(error))) {
+    return false;
+  }
+  if (await hasResolvedGatewayAuth(opts)) {
+    // Generic 1000/no-reason closes can also mask real authenticated gateway
+    // failures; only use the local fallback when the CLI was not already
+    // carrying any resolved gateway credentials.
+    return false;
+  }
+  return true;
 }
 
 function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): boolean {
@@ -165,7 +179,7 @@ async function listPairingWithFallback(opts: DevicesRpcOpts): Promise<DevicePair
   } catch (error) {
     if (
       !shouldUseLocalPairingFallback(opts, error) &&
-      !shouldUseLoopbackHandshakeListFallback(opts, error)
+      !(await shouldUseLoopbackHandshakeListFallback(opts, error))
     ) {
       throw error;
     }
