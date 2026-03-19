@@ -128,6 +128,8 @@ const hoisted = vi.hoisted(() => {
     },
   );
 
+  const setFallbackGatewayContext = vi.fn();
+
   return {
     CronService: CronServiceMock,
     cronInstances,
@@ -141,6 +143,7 @@ const hoisted = vi.hoisted(() => {
     providerManager,
     createChannelManager,
     startGatewayConfigReloader,
+    setFallbackGatewayContext,
     reloaderStop,
     getOnHotReload: () => onHotReload,
     getOnRestart: () => onRestart,
@@ -172,6 +175,14 @@ vi.mock("./config-reload.js", () => ({
   startGatewayConfigReloader: hoisted.startGatewayConfigReloader,
 }));
 
+vi.mock("./server-plugins.js", async () => {
+  const actual = await vi.importActual<typeof import("./server-plugins.js")>("./server-plugins.js");
+  return {
+    ...actual,
+    setFallbackGatewayContext: hoisted.setFallbackGatewayContext,
+  };
+});
+
 installGatewayTestHooks({ scope: "suite" });
 
 describe("gateway hot reload", () => {
@@ -182,6 +193,7 @@ describe("gateway hot reload", () => {
   let prevGeminiApiKey: string | undefined;
 
   beforeEach(() => {
+    hoisted.setFallbackGatewayContext.mockReset();
     prevSkipChannels = process.env.OPENCLAW_SKIP_CHANNELS;
     prevSkipGmail = process.env.OPENCLAW_SKIP_GMAIL_WATCHER;
     prevSkipProviders = process.env.OPENCLAW_SKIP_PROVIDERS;
@@ -554,6 +566,55 @@ describe("gateway hot reload", () => {
       await Promise.resolve(restartResult);
 
       expect(signalSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("replaces the fallback gateway context when hot reload swaps cron state", async () => {
+    await withGatewayServer(async () => {
+      const startupFallbackContext = hoisted.setFallbackGatewayContext.mock.calls.at(-1)?.[0] as
+        | { cron?: unknown; cronStorePath?: unknown }
+        | undefined;
+      expect(startupFallbackContext).toBeDefined();
+      const startupCronCount = hoisted.cronInstances.length;
+      const startupCron = hoisted.cronInstances.at(-1);
+      expect(startupCron).toBeDefined();
+
+      const onHotReload = hoisted.getOnHotReload();
+      expect(onHotReload).toBeTypeOf("function");
+
+      await onHotReload?.(
+        {
+          changedPaths: ["cron.enabled", "cron.store"],
+          restartGateway: false,
+          restartReasons: [],
+          hotReasons: ["cron.enabled", "cron.store"],
+          reloadHooks: false,
+          restartGmailWatcher: false,
+          restartBrowserControl: false,
+          restartCron: true,
+          restartHeartbeat: false,
+          restartChannels: new Set(),
+          noopPaths: [],
+        },
+        {
+          cron: { enabled: true, store: "/tmp/cron-hot-reload.json" },
+        },
+      );
+
+      expect(hoisted.cronInstances.length).toBe(startupCronCount + 1);
+      expect(hoisted.cronInstances.at(-1)).not.toBe(startupCron);
+      expect(hoisted.setFallbackGatewayContext).toHaveBeenCalledTimes(2);
+
+      const nextFallbackContext = hoisted.setFallbackGatewayContext.mock.calls.at(-1)?.[0] as
+        | { cron?: unknown; cronStorePath?: unknown }
+        | undefined;
+      expect(nextFallbackContext).toBeDefined();
+      expect(nextFallbackContext).not.toBe(startupFallbackContext);
+      expect(nextFallbackContext?.cron).toBe(hoisted.cronInstances.at(-1));
+      expect(nextFallbackContext?.cronStorePath).toBe("/tmp/cron-hot-reload.json");
+
+      expect(startupFallbackContext?.cron).toBe(startupCron);
+      expect(startupFallbackContext?.cronStorePath).not.toBe("/tmp/cron-hot-reload.json");
     });
   });
 
