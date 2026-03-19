@@ -107,6 +107,13 @@ function isLoopbackPairingHandshakeTimeout(message: string): boolean {
   );
 }
 
+function hasExplicitGatewayAuth(opts: DevicesRpcOpts): boolean {
+  return (
+    (typeof opts.token === "string" && opts.token.trim().length > 0) ||
+    (typeof opts.password === "string" && opts.password.trim().length > 0)
+  );
+}
+
 function shouldUseImplicitLoopbackPairingFallback(opts: DevicesRpcOpts): boolean {
   if (typeof opts.url === "string" && opts.url.trim().length > 0) {
     // Explicit --url might point at a remote/tunneled gateway; never silently
@@ -122,6 +129,18 @@ function shouldUseImplicitLoopbackPairingFallback(opts: DevicesRpcOpts): boolean
   } catch {
     return false;
   }
+}
+
+function shouldUseLoopbackHandshakeListFallback(opts: DevicesRpcOpts, error: unknown): boolean {
+  if (hasExplicitGatewayAuth(opts)) {
+    // Explicit credentials should keep surfacing the gateway error so pairing
+    // scope and auth boundaries remain visible to the caller.
+    return false;
+  }
+  return (
+    shouldUseImplicitLoopbackPairingFallback(opts) &&
+    isLoopbackPairingHandshakeTimeout(normalizeErrorMessage(error))
+  );
 }
 
 function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): boolean {
@@ -144,12 +163,9 @@ async function listPairingWithFallback(opts: DevicesRpcOpts): Promise<DevicePair
   try {
     return parseDevicePairingList(await callGatewayCli("device.pair.list", opts, {}));
   } catch (error) {
-    const message = normalizeErrorMessage(error).toLowerCase();
     if (
       !shouldUseLocalPairingFallback(opts, error) &&
-      !(
-        shouldUseImplicitLoopbackPairingFallback(opts) && isLoopbackPairingHandshakeTimeout(message)
-      )
+      !shouldUseLoopbackHandshakeListFallback(opts, error)
     ) {
       throw error;
     }

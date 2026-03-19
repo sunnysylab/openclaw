@@ -324,6 +324,21 @@ describe("devices cli local fallback", () => {
     );
     expect(listDevicePairing).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["--token", "test-token"],
+    ["--password", "test-password"],
+  ])(
+    "does not use generic loopback handshake fallback when explicit auth %s is provided",
+    async (flag, value) => {
+      callGateway.mockRejectedValueOnce(
+        new Error("gateway closed (1000 normal closure): no close reason"),
+      );
+
+      await expect(runDevicesCommand(["list", flag, value])).rejects.toThrow("no close reason");
+      expect(listDevicePairing).not.toHaveBeenCalled();
+    },
+  );
 });
 
 afterEach(() => {
