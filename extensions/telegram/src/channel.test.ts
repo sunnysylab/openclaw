@@ -154,6 +154,145 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("telegramPlugin threading", () => {
+  it("builds tool context and resolves auto thread ids for topic replies", () => {
+    const hasRepliedRef = { value: false };
+    const toolContext = telegramPlugin.threading?.buildToolContext?.({
+      cfg: createCfg(),
+      accountId: "ops",
+      context: {
+        Channel: "telegram",
+        From: "telegram:123",
+        To: "telegram:-1003841603622",
+        ChatType: "group",
+        CurrentMessageId: "2284",
+        MessageThreadId: 928,
+      },
+      hasRepliedRef,
+    });
+
+    expect(toolContext).toEqual({
+      currentChannelId: "telegram:-1003841603622",
+      currentThreadTs: "928",
+      hasRepliedRef,
+    });
+    expect(
+      telegramPlugin.threading?.resolveAutoThreadId?.({
+        cfg: createCfg(),
+        accountId: "ops",
+        to: "telegram:group:-1003841603622",
+        toolContext,
+        replyToId: undefined,
+      }),
+    ).toBe("928");
+  });
+
+  it("does not auto-resolve a thread when the target already includes a topic", () => {
+    const toolContext = telegramPlugin.threading?.buildToolContext?.({
+      cfg: createCfg(),
+      accountId: "ops",
+      context: {
+        Channel: "telegram",
+        From: "telegram:123",
+        To: "telegram:-1003841603622",
+        ChatType: "group",
+        CurrentMessageId: "2284",
+        MessageThreadId: 928,
+      },
+      hasRepliedRef: { value: false },
+    });
+
+    expect(
+      telegramPlugin.threading?.resolveAutoThreadId?.({
+        cfg: createCfg(),
+        accountId: "ops",
+        to: "telegram:group:-1003841603622:topic:111",
+        toolContext,
+        replyToId: undefined,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("does not auto-resolve a thread for an explicit bare chat target", () => {
+    const toolContext = telegramPlugin.threading?.buildToolContext?.({
+      cfg: createCfg(),
+      accountId: "ops",
+      context: {
+        Channel: "telegram",
+        From: "telegram:123",
+        To: "telegram:-1003841603622",
+        ChatType: "group",
+        CurrentMessageId: "2284",
+        MessageThreadId: 928,
+      },
+      hasRepliedRef: { value: false },
+    });
+
+    expect(
+      telegramPlugin.threading?.resolveAutoThreadId?.({
+        cfg: createCfg(),
+        accountId: "ops",
+        to: "telegram:group:-1003841603622",
+        toolContext,
+        targetExplicit: true,
+        replyToId: undefined,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("does not auto-resolve a thread when replying to a specific message", () => {
+    const toolContext = telegramPlugin.threading?.buildToolContext?.({
+      cfg: createCfg(),
+      accountId: "ops",
+      context: {
+        Channel: "telegram",
+        From: "telegram:123",
+        To: "telegram:-1003841603622",
+        ChatType: "group",
+        CurrentMessageId: "2284",
+        MessageThreadId: 928,
+      },
+      hasRepliedRef: { value: false },
+    });
+
+    expect(
+      telegramPlugin.threading?.resolveAutoThreadId?.({
+        cfg: createCfg(),
+        accountId: "ops",
+        to: "telegram:group:-1003841603622",
+        toolContext,
+        replyToId: "2284",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("does not auto-resolve a thread when the incoming message has no topic id", () => {
+    const toolContext = telegramPlugin.threading?.buildToolContext?.({
+      cfg: createCfg(),
+      accountId: "ops",
+      context: {
+        Channel: "telegram",
+        From: "telegram:123",
+        To: "telegram:-1003841603622",
+        ChatType: "group",
+        CurrentMessageId: "2284",
+      },
+      hasRepliedRef: { value: false },
+    });
+
+    expect(toolContext?.currentThreadTs).toBeUndefined();
+    expect(
+      telegramPlugin.threading?.resolveAutoThreadId?.({
+        cfg: createCfg(),
+        accountId: "ops",
+        to: "telegram:group:-1003841603622",
+        toolContext,
+        replyToId: undefined,
+      }),
+    ).toBeUndefined();
+  });
+});
+
 describe("telegramPlugin groups", () => {
   it("uses plugin-owned group policy resolvers", () => {
     const cfg = {

@@ -131,12 +131,19 @@ async function sendTelegramOutbound(params: {
 function resolveTelegramAutoThreadId(params: {
   to: string;
   toolContext?: { currentThreadTs?: string; currentChannelId?: string };
+  targetExplicit?: boolean;
 }): string | undefined {
   const context = params.toolContext;
   if (!context?.currentThreadTs || !context.currentChannelId) {
     return undefined;
   }
   const parsedTo = parseTelegramTarget(params.to);
+  if (parsedTo.messageThreadId != null) {
+    return undefined;
+  }
+  if (params.targetExplicit) {
+    return undefined;
+  }
   const parsedChannel = parseTelegramTarget(context.currentChannelId);
   if (parsedTo.chatId.toLowerCase() !== parsedChannel.chatId.toLowerCase()) {
     return undefined;
@@ -362,8 +369,14 @@ export const telegramPlugin: ChannelPlugin<ResolvedTelegramAccount, TelegramProb
   },
   threading: {
     resolveReplyToMode: createTopLevelChannelReplyToModeResolver("telegram"),
-    resolveAutoThreadId: ({ to, toolContext, replyToId }) =>
-      replyToId ? undefined : resolveTelegramAutoThreadId({ to, toolContext }),
+    buildToolContext: ({ context, hasRepliedRef }) => ({
+      currentChannelId: context.To?.trim() || undefined,
+      currentThreadTs:
+        context.MessageThreadId != null ? String(context.MessageThreadId) : undefined,
+      hasRepliedRef,
+    }),
+    resolveAutoThreadId: ({ to, toolContext, replyToId, targetExplicit }) =>
+      replyToId ? undefined : resolveTelegramAutoThreadId({ to, toolContext, targetExplicit }),
   },
   messaging: {
     normalizeTarget: normalizeTelegramMessagingTarget,
