@@ -4,7 +4,8 @@ import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
 import { resolveGatewayCredentialsWithSecretInputs } from "../gateway/call.js";
 import { isLoopbackHost } from "../gateway/net.js";
-import { loadStoredDeviceAuthTokenForRole } from "../infra/device-auth-store.js";
+import { loadDeviceAuthToken } from "../infra/device-auth-store.js";
+import { loadDeviceIdentityIfPresent } from "../infra/device-identity.js";
 import {
   approveDevicePairing,
   listDevicePairing,
@@ -124,14 +125,18 @@ async function hasResolvedGatewayAuth(opts: DevicesRpcOpts): Promise<boolean> {
 }
 
 function hasStoredDeviceGatewayAuth(): boolean {
-  return !!loadStoredDeviceAuthTokenForRole({ role: "operator" })?.token;
+  const identity = loadDeviceIdentityIfPresent();
+  if (!identity) {
+    return false;
+  }
+  return !!loadDeviceAuthToken({ deviceId: identity.deviceId, role: "operator" })?.token;
 }
 
 function hasPairingProtectedLoopbackGateway(): boolean {
-  const authMode = resolveGatewayAuth({
+  const auth = resolveGatewayAuth({
     authConfig: loadConfig().gateway?.auth ?? {},
-  }).mode;
-  return authMode === "token" || authMode === "password";
+  });
+  return (auth.mode === "token" || auth.mode === "password") && !!(auth.token || auth.password);
 }
 
 function shouldUseImplicitLoopbackPairingFallback(opts: DevicesRpcOpts): boolean {
