@@ -204,6 +204,124 @@ async function waitForMacrotasks(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+describe("gateway device.token.rotate/revoke ownership guard (IDOR)", () => {
+  test("rejects a device-token caller rotating another device's token", async () => {
+    const started = await startServerWithClient("secret");
+    const deviceA = await issuePairingScopedTokenForAdminApprovedDevice("idor-device-a");
+    const deviceB = await issuePairingScopedTokenForAdminApprovedDevice("idor-device-b");
+
+    let pairingWs: WebSocket | undefined;
+    try {
+      // Connect as device A
+      pairingWs = await connectPairingScopedOperator({
+        port: started.port,
+        identityPath: deviceA.identityPath,
+        deviceToken: deviceA.pairingToken,
+      });
+
+      // Try to rotate device B's token from device A's session
+      const rotate = await rpcReq(pairingWs, "device.token.rotate", {
+        deviceId: deviceB.deviceId,
+        role: "operator",
+        scopes: ["operator.pairing"],
+      });
+      expect(rotate.ok).toBe(false);
+      expect(rotate.error?.message).toBe("device token rotation denied");
+
+      // Verify device B's token was NOT rotated
+      const pairedB = await getPairedDevice(deviceB.deviceId);
+      expect(pairedB?.tokens?.operator?.token).toBe(deviceB.pairingToken);
+    } finally {
+      pairingWs?.close();
+      started.ws.close();
+      await started.server.close();
+      started.envSnapshot.restore();
+    }
+  });
+
+  test("allows a device-token caller to rotate its own token", async () => {
+    const started = await startServerWithClient("secret");
+    const device = await issuePairingScopedTokenForAdminApprovedDevice("idor-self-rotate");
+
+    let pairingWs: WebSocket | undefined;
+    try {
+      pairingWs = await connectPairingScopedOperator({
+        port: started.port,
+        identityPath: device.identityPath,
+        deviceToken: device.pairingToken,
+      });
+
+      // Rotate own token with same scopes — should succeed
+      const rotate = await rpcReq<{ token?: string }>(pairingWs, "device.token.rotate", {
+        deviceId: device.deviceId,
+        role: "operator",
+        scopes: ["operator.pairing"],
+      });
+      expect(rotate.ok).toBe(true);
+      expect(rotate.payload?.token).toBeTruthy();
+    } finally {
+      pairingWs?.close();
+      started.ws.close();
+      await started.server.close();
+      started.envSnapshot.restore();
+    }
+  });
+
+  test("allows a non-device-token (shared secret) caller to rotate any device's token", async () => {
+    const started = await startServerWithClient("secret");
+    const device = await issuePairingScopedTokenForAdminApprovedDevice("idor-admin-rotate");
+
+    try {
+      // Connect with shared secret (no device identity) — this is the admin path
+      await connectOk(started.ws);
+
+      const rotate = await rpcReq<{ token?: string }>(started.ws, "device.token.rotate", {
+        deviceId: device.deviceId,
+        role: "operator",
+        scopes: ["operator.pairing"],
+      });
+      expect(rotate.ok).toBe(true);
+      expect(rotate.payload?.token).toBeTruthy();
+    } finally {
+      started.ws.close();
+      await started.server.close();
+      started.envSnapshot.restore();
+    }
+  });
+
+  test("rejects a device-token caller revoking another device's token", async () => {
+    const started = await startServerWithClient("secret");
+    const deviceA = await issuePairingScopedTokenForAdminApprovedDevice("idor-revoke-a");
+    const deviceB = await issuePairingScopedTokenForAdminApprovedDevice("idor-revoke-b");
+
+    let pairingWs: WebSocket | undefined;
+    try {
+      pairingWs = await connectPairingScopedOperator({
+        port: started.port,
+        identityPath: deviceA.identityPath,
+        deviceToken: deviceA.pairingToken,
+      });
+
+      // Try to revoke device B's token from device A's session
+      const revoke = await rpcReq(pairingWs, "device.token.revoke", {
+        deviceId: deviceB.deviceId,
+        role: "operator",
+      });
+      expect(revoke.ok).toBe(false);
+      expect(revoke.error?.message).toBe("device token revocation denied");
+
+      // Verify device B's token was NOT revoked
+      const pairedB = await getPairedDevice(deviceB.deviceId);
+      expect(pairedB?.tokens?.operator?.revokedAtMs).toBeUndefined();
+    } finally {
+      pairingWs?.close();
+      started.ws.close();
+      await started.server.close();
+      started.envSnapshot.restore();
+    }
+  });
+});
+
 describe("gateway device.token.rotate caller scope guard", () => {
   test("rejects rotating an admin-approved device token above the caller session scopes", async () => {
     const started = await startServerWithClient("secret");
