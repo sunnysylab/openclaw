@@ -231,6 +231,6 @@ describe("runMessageAction threading auto-injection", () => {
 
     expect(call?.threadId).toBeUndefined();
     expect(call?.ctx?.params?.threadId).toBeUndefined();
-    expect(call?.ctx?.params?.message).toBe("hi");
+    expect(call?.ctx?.params?.message).toBe("[from C123] hi");
   });
 });
