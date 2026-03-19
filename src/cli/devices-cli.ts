@@ -166,12 +166,6 @@ async function shouldUseLoopbackHandshakeListFallback(
   if (!isLoopbackPairingHandshakeTimeout(normalizeErrorMessage(error))) {
     return false;
   }
-  if (!hasPairingProtectedLoopbackGateway()) {
-    // Generic close-without-reason can also mean the local gateway is simply
-    // unhealthy; only treat it as a pairing regression on protected loopback
-    // gateways where the original bug was observed.
-    return false;
-  }
   if (await hasResolvedGatewayAuth(opts)) {
     // Generic 1000/no-reason closes can also mask real authenticated gateway
     // failures; only use the local fallback when the CLI was not already
@@ -181,6 +175,12 @@ async function shouldUseLoopbackHandshakeListFallback(
   if (hasStoredDeviceGatewayAuth()) {
     // Stored device tokens also authenticate loopback operator sessions; do not
     // hide generic authenticated gateway failures behind the local pairing file.
+    return false;
+  }
+  if (!hasPairingProtectedLoopbackGateway()) {
+    // Generic close-without-reason can also mean the local gateway is simply
+    // unhealthy; only treat it as a pairing regression on protected loopback
+    // gateways where the original bug was observed.
     return false;
   }
   return true;

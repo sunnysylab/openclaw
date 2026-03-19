@@ -293,7 +293,7 @@ describe("devices cli local fallback", () => {
   );
 
   it("does not use loopback handshake fallback when gateway auth mode is none", async () => {
-    loadConfig.mockReturnValueOnce({ gateway: { auth: { mode: "none" } } });
+    loadConfig.mockReturnValue({ gateway: { auth: { mode: "none" } } });
     callGateway.mockRejectedValueOnce(
       new Error("gateway closed (1000 normal closure): no close reason"),
     );
@@ -387,11 +387,21 @@ describe("devices cli local fallback", () => {
     },
   );
 
-  it("does not use generic loopback handshake fallback when config/env auth is resolved", async () => {
+  it("does not use generic loopback handshake fallback when shared gateway auth resolves from config or SecretRef", async () => {
+    loadConfig.mockReturnValueOnce({
+      gateway: {
+        auth: {
+          mode: "token",
+          token: { ref: "secrets.gateway-token" } as unknown as string,
+        },
+      },
+    });
     callGateway.mockRejectedValueOnce(
       new Error("gateway closed (1000 normal closure): no close reason"),
     );
-    resolveGatewayCredentialsWithSecretInputs.mockResolvedValueOnce({ token: "config-token" });
+    resolveGatewayCredentialsWithSecretInputs.mockResolvedValueOnce({
+      token: "resolved-secret-token",
+    });
 
     await expect(runDevicesCommand(["list"])).rejects.toThrow("no close reason");
     expect(resolveGatewayCredentialsWithSecretInputs).toHaveBeenCalledTimes(1);
@@ -437,7 +447,7 @@ describe("devices cli local fallback", () => {
   });
 
   it("does not use loopback handshake fallback when auth mode is only defaulted", async () => {
-    loadConfig.mockReturnValueOnce({ gateway: { auth: { allowTailscale: true } } });
+    loadConfig.mockReturnValue({ gateway: { auth: { allowTailscale: true } } });
     callGateway.mockRejectedValueOnce(
       new Error("gateway closed (1000 normal closure): no close reason"),
     );
