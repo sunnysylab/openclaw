@@ -40,10 +40,7 @@ const CODE_EXTENSIONS = new Set([".js", ".ts", ".mjs", ".cjs", ".mts", ".cts", "
 
 const MARKDOWN_EXTENSIONS = new Set([".md"]);
 
-const SCANNABLE_EXTENSIONS = new Set([
-  ...Array.from(CODE_EXTENSIONS),
-  ...Array.from(MARKDOWN_EXTENSIONS),
-]);
+const SCANNABLE_EXTENSIONS = new Set([...CODE_EXTENSIONS, ...MARKDOWN_EXTENSIONS]);
 
 const DEFAULT_MAX_SCAN_FILES = 500;
 const DEFAULT_MAX_FILE_BYTES = 1024 * 1024;
@@ -214,9 +211,8 @@ const SOURCE_RULES: SourceRule[] = [
  * Unicode codepoints that are invisible or alter text rendering.
  * Used to hide malicious content from visual code review.
  */
-// eslint-disable-next-line no-misleading-character-class -- intentional detection of misleading chars
 const HIDDEN_UNICODE_RE =
-  /[\u200B\u200C\u200D\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2028\u2029\u2060\u2061\u2062\u2063\u2064\u2066\u2067\u2068\u2069\u206A\u206B\u206C\u206D\u206E\u206F\uFEFF\uFFF9\uFFFA\uFFFB]/;
+  /\u{200B}|\u{200C}|\u{200D}|\u{200E}|\u{200F}|\u{202A}|\u{202B}|\u{202C}|\u{202D}|\u{202E}|\u{2028}|\u{2029}|\u{2060}|\u{2061}|\u{2062}|\u{2063}|\u{2064}|\u{2066}|\u{2067}|\u{2068}|\u{2069}|\u{206A}|\u{206B}|\u{206C}|\u{206D}|\u{206E}|\u{206F}|\u{FEFF}|\u{FFF9}|\u{FFFA}|\u{FFFB}/u;
 
 const MARKDOWN_LINE_RULES: LineRule[] = [
   {
@@ -239,7 +235,8 @@ const MARKDOWN_SOURCE_RULES: SourceRule[] = [
     ruleId: "markdown-download-exec",
     severity: "critical",
     message: "Download-and-execute pattern detected in markdown content",
-    pattern: /(?:curl|wget)\s+[^\n|]*\|\s*(?:sh|bash|zsh|node|python|perl|ruby)\b/,
+    pattern:
+      /\b(?:curl|wget)\b(?:[^\n"'|\\]|\\.|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')*\|\s*(?:sh|bash|zsh|node|python|perl|ruby)\b/,
   },
   {
     ruleId: "markdown-encoded-payload",
