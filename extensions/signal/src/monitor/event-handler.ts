@@ -16,11 +16,16 @@ import {
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
 import { resolveControlCommandGate } from "openclaw/plugin-sdk/command-auth";
 import { hasControlCommand } from "openclaw/plugin-sdk/command-auth";
-import { resolveChannelGroupRequireMention } from "openclaw/plugin-sdk/config-runtime";
+import {
+  ALLOWED_INGEST_HOOKS,
+  resolveChannelGroupPolicy,
+  resolveChannelGroupRequireMention,
+} from "openclaw/plugin-sdk/config-runtime";
 import { readSessionUpdatedAt, resolveStorePath } from "openclaw/plugin-sdk/config-runtime";
 import { recordInboundSession } from "openclaw/plugin-sdk/conversation-runtime";
 import { enqueueSystemEvent } from "openclaw/plugin-sdk/infra-runtime";
 import { kindFromMime } from "openclaw/plugin-sdk/media-runtime";
+import { getGlobalHookRunner } from "openclaw/plugin-sdk/plugin-runtime";
 import {
   buildPendingHistoryContextFromMap,
   clearHistoryEntriesIfEnabled,
@@ -35,6 +40,7 @@ import {
   DM_GROUP_ACCESS_REASON,
   resolvePinnedMainDmOwnerFromAllowlist,
 } from "openclaw/plugin-sdk/security-runtime";
+import { sanitizeUserText } from "openclaw/plugin-sdk/text-runtime";
 import { normalizeE164 } from "openclaw/plugin-sdk/text-runtime";
 import {
   formatSignalPairingIdLine,
@@ -695,6 +701,74 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
             typeof envelope.timestamp === "number" ? String(envelope.timestamp) : undefined,
         },
       });
+
+      // Silent ingest: run hooks on non-mentioned group messages
+      const { groupConfig } = resolveChannelGroupPolicy({
+        cfg: deps.cfg,
+        channel: "signal",
+        groupId,
+        accountId: deps.accountId,
+      });
+      const ingestConfig = groupConfig?.ingest;
+      if (ingestConfig) {
+        const { enabled, hooks } = ingestConfig;
+        if (
+          enabled &&
+          hooks.length > 0 &&
+          groupId &&
+          pendingBodyText &&
+          pendingBodyText.trim().length > 0
+        ) {
+          const hookRunner = getGlobalHookRunner();
+          if (hookRunner) {
+            const validHooks = hooks.filter(
+              (h): h is string =>
+                typeof h === "string" &&
+                ALLOWED_INGEST_HOOKS.includes(h as (typeof ALLOWED_INGEST_HOOKS)[number]),
+            );
+            if (validHooks.length > 0) {
+              const timestamp =
+                typeof envelope.timestamp === "number" && envelope.timestamp > 0
+                  ? envelope.timestamp
+                  : undefined;
+              const messageIdForHook = timestamp ? String(timestamp) : undefined;
+              const sanitizedMetadata = {
+                to: groupId,
+                provider: "signal",
+                surface: "signal",
+                messageId: messageIdForHook,
+                originatingChannel: "signal",
+                originatingTo: groupId,
+                senderName: sanitizeUserText(senderDisplay),
+              };
+              const HOOK_TIMEOUT_MS = 5000;
+              const timeoutPromise = new Promise<void>((_, reject) => {
+                setTimeout(() => reject(new Error("Hook timeout")), HOOK_TIMEOUT_MS);
+              });
+              void Promise.race([
+                hookRunner.runMessageReceived(
+                  {
+                    from: senderDisplay,
+                    content: pendingBodyText,
+                    timestamp,
+                    metadata: sanitizedMetadata,
+                  },
+                  {
+                    channelId: "signal",
+                    accountId: deps.accountId,
+                    conversationId: groupId,
+                  },
+                ),
+                timeoutPromise,
+              ]).catch((err: unknown) => {
+                const errorMsg = err instanceof Error ? err.message : "Unknown error";
+                logVerbose(`signal: ingest hook failed: ${errorMsg}`);
+              });
+            }
+          }
+        }
+      }
+
       return;
     }
 
