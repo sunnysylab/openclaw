@@ -47,8 +47,10 @@ function isExternalProfileFresh(cred: AuthProfileCredential | undefined, now: nu
   ) {
     return false;
   }
+  // Treat missing or non-numeric expiry as stale so sync can repair the
+  // profile rather than leaving it permanently stuck with stale credentials.
   if (typeof cred.expires !== "number") {
-    return true;
+    return false;
   }
   return cred.expires > now + EXTERNAL_CLI_NEAR_EXPIRY_MS;
 }
