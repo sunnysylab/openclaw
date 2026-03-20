@@ -592,6 +592,17 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
   }
 
   /**
+   * Run message_ingest hook.
+   * Runs in parallel (fire-and-forget).
+   */
+  async function runMessageIngest(
+    event: PluginHookMessageReceivedEvent,
+    ctx: PluginHookMessageContext,
+  ): Promise<void> {
+    return runVoidHook("message_ingest", event, ctx);
+  }
+
+  /**
    * Run message_sending hook.
    * Allows plugins to modify or cancel outgoing messages.
    * Runs sequentially.
@@ -934,6 +945,7 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
     runInboundClaimForPlugin,
     runInboundClaimForPluginOutcome,
     runMessageReceived,
+    runMessageIngest,
     runMessageSending,
     runMessageSent,
     // Tool hooks

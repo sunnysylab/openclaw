@@ -8,6 +8,8 @@ export type SignalGroupConfig = {
   requireMention?: boolean;
   tools?: GroupToolPolicyConfig;
   toolsBySender?: GroupToolPolicyBySenderConfig;
+  /** Silent ingest: run hooks on non-mentioned messages in this group. */
+  ingest?: { enabled: boolean; hooks: string[] };
 };
 
 export type SignalAccountConfig = CommonChannelMessagingConfig & {

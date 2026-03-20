@@ -71,6 +71,13 @@ const SlackCapabilitiesSchema = z.union([
     .strict(),
 ]);
 
+const IngestConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    hooks: z.array(z.string()),
+  })
+  .strict();
+
 export const TelegramTopicSchema = z
   .object({
     requireMention: z.boolean().optional(),
@@ -81,6 +88,7 @@ export const TelegramTopicSchema = z
     allowFrom: z.array(z.union([z.string(), z.number()])).optional(),
     systemPrompt: z.string().optional(),
     agentId: z.string().optional(),
+    ingest: IngestConfigSchema.optional(),
   })
   .strict();
 
@@ -96,6 +104,7 @@ export const TelegramGroupSchema = z
     allowFrom: z.array(z.union([z.string(), z.number()])).optional(),
     systemPrompt: z.string().optional(),
     topics: z.record(z.string(), TelegramTopicSchema.optional()).optional(),
+    ingest: IngestConfigSchema.optional(),
   })
   .strict();
 
@@ -1009,6 +1018,7 @@ const SignalGroupEntrySchema = z
     requireMention: z.boolean().optional(),
     tools: ToolPolicySchema,
     toolsBySender: ToolPolicyBySenderSchema,
+    ingest: IngestConfigSchema.optional(),
   })
   .strict();
 
