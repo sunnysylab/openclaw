@@ -93,6 +93,24 @@ function getLogTransportGlobalState(): LogTransportGlobalState {
 // Keep a module-level alias for hot-path reads (avoids repeated globalThis lookup).
 const externalTransports = getLogTransportGlobalState().transports;
 
+// Publish the active logger to globalThis so plugins loaded via jiti can find it
+// when calling registerLogTransport after the logger is already built.
+// Only overwrite if the current module instance owns the active logger (i.e. it was
+// our previous cachedLogger) or no logger has been published yet. This prevents
+// plugin loggers loaded via jiti from overwriting the gateway's primary logger,
+// which would cause registerLogTransport to attach to the wrong logger instance.
+function publishActiveLogger(logger: TsLogger<LogObj>): void {
+  const globalState = getLogTransportGlobalState();
+  if (!globalState.activeLogger || globalState.activeLogger === loggingState.cachedLogger) {
+    globalState.activeLogger = logger;
+  }
+}
+
+function shouldSkipLoadConfigFallback(argv: string[] = process.argv): boolean {
+  const [primary, secondary] = getCommandPathWithRootOptions(argv, 2);
+  return primary === "config" && secondary === "validate";
+}
+
 function attachExternalTransport(logger: TsLogger<LogObj>, transport: LogTransport): void {
   logger.attachTransport((logObj: LogObj) => {
     if (!externalTransports.has(transport)) {
@@ -188,7 +206,7 @@ function buildLogger(settings: ResolvedSettings): TsLogger<LogObj> {
     for (const transport of externalTransports) {
       attachExternalTransport(logger, transport);
     }
-    getLogTransportGlobalState().activeLogger = logger;
+    publishActiveLogger(logger);
     return logger;
   }
 
@@ -234,9 +252,7 @@ function buildLogger(settings: ResolvedSettings): TsLogger<LogObj> {
     attachExternalTransport(logger, transport);
   }
 
-  // Publish the active logger to globalThis so plugins loaded via jiti can find it
-  // when calling registerLogTransport after the logger is already built.
-  getLogTransportGlobalState().activeLogger = logger;
+  publishActiveLogger(logger);
 
   return logger;
 }
