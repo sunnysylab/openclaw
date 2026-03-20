@@ -30,7 +30,7 @@ Create a `SKILL.md` file in that directory. This file uses YAML frontmatter for 
 
 ```markdown
 ---
-name: hello_world
+name: hello-world
 description: A simple skill that says hello.
 ---
 
@@ -38,6 +38,8 @@ description: A simple skill that says hello.
 
 When the user asks for a greeting, use the `echo` tool to say "Hello from your custom skill!".
 ```
+Use lowercase letters, digits, and hyphens for the skill `name`. Keep the folder name and frontmatter `name` aligned.
+
 
 ### 3. Add Tools (Optional)
 
