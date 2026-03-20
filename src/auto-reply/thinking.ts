@@ -66,6 +66,19 @@ export function supportsXHighThinking(provider?: string | null, model?: string |
   if (supportsBuiltInXHighThinking(provider, modelKey)) {
     return true;
   }
+  const trailingModelId = modelKey.includes("/") ? (modelKey.split("/").pop() ?? "") : modelKey;
+  if (trailingModelId) {
+    // Proxy or alias providers can expose the same upstream xhigh-capable model
+    // under a different provider prefix. Fall back to the trailing model id so
+    // built-in allowlists still work through compatible routing layers.
+    if (
+      supportsBuiltInXHighThinking("openai", trailingModelId) ||
+      supportsBuiltInXHighThinking("openai-codex", trailingModelId) ||
+      supportsBuiltInXHighThinking("github-copilot", trailingModelId)
+    ) {
+      return true;
+    }
+  }
   const providerKey = normalizeProviderId(provider);
   if (providerKey) {
     const pluginDecision = resolveProviderXHighThinking({

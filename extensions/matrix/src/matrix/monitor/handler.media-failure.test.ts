@@ -49,6 +49,16 @@ function createHandlerHarness() {
         resolveEnvelopeFormatOptions: vi.fn().mockReturnValue({}),
         formatAgentEnvelope: vi.fn().mockImplementation((params: { body: string }) => params.body),
         finalizeInboundContext: vi.fn().mockImplementation((ctx: Record<string, unknown>) => ctx),
+        withReplyDispatcher: vi.fn(
+          async (params: { run: () => Promise<unknown>; onSettled?: () => void }) => {
+            try {
+              const result = await params.run();
+              return result ?? { queuedFinal: false, counts: { final: 0, block: 0, tool: 0 } };
+            } finally {
+              params.onSettled?.();
+            }
+          },
+        ),
         createReplyDispatcherWithTyping: vi.fn().mockReturnValue({
           dispatcher: {},
           replyOptions: {},
@@ -59,13 +69,6 @@ function createHandlerHarness() {
         dispatchReplyFromConfig: vi
           .fn()
           .mockResolvedValue({ queuedFinal: false, counts: { final: 0, block: 0, tool: 0 } }),
-        withReplyDispatcher: vi.fn().mockImplementation(async ({ run, onSettled }) => {
-          try {
-            return await run();
-          } finally {
-            await onSettled?.();
-          }
-        }),
       },
       commands: {
         shouldHandleTextCommands: vi.fn().mockReturnValue(true),
