@@ -3,7 +3,7 @@ import type { OpenClawConfig } from "../../config/config.js";
 import { extractAssistantText } from "../pi-embedded-utils.js";
 import { coerceToolModelConfig, type ToolModelConfig } from "./model-config.helpers.js";
 
-export type ImageModelConfig = ToolModelConfig;
+export type ImageModelConfig = ToolModelConfig & { force?: boolean };
 
 export function decodeDataUrl(dataUrl: string): {
   buffer: Buffer;
@@ -52,7 +52,16 @@ export function coerceImageAssistantText(params: {
 }
 
 export function coerceImageModelConfig(cfg?: OpenClawConfig): ImageModelConfig {
-  return coerceToolModelConfig(cfg?.agents?.defaults?.imageModel);
+  const base = coerceToolModelConfig(cfg?.agents?.defaults?.imageModel);
+  const imageModel = cfg?.agents?.defaults?.imageModel;
+  const force =
+    typeof imageModel === "object" && imageModel !== null && "force" in imageModel
+      ? (imageModel as { force?: boolean }).force
+      : undefined;
+  return {
+    ...base,
+    ...(force != null ? { force } : {}),
+  };
 }
 
 export function resolveProviderVisionModelFromConfig(params: {

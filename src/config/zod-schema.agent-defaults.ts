@@ -17,7 +17,18 @@ import {
 export const AgentDefaultsSchema = z
   .object({
     model: AgentModelSchema.optional(),
-    imageModel: AgentModelSchema.optional(),
+    imageModel: z
+      .union([
+        z.string(),
+        z
+          .object({
+            primary: z.string().optional(),
+            fallbacks: z.array(z.string()).optional(),
+            force: z.boolean().optional(),
+          })
+          .strict(),
+      ])
+      .optional(),
     imageGenerationModel: AgentModelSchema.optional(),
     pdfModel: AgentModelSchema.optional(),
     pdfMaxBytesMb: z.number().positive().optional(),
