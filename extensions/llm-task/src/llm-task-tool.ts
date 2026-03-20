@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
-import Ajv from "ajv";
+import AjvPkg from "ajv";
 import {
   formatXHighModelHint,
   normalizeThinkLevel,
@@ -9,8 +9,6 @@ import {
   supportsXHighThinking,
 } from "../api.js";
 import type { OpenClawPluginApi } from "../api.js";
-
-const AjvCtor = Ajv as unknown as typeof import("ajv").default;
 
 function stripCodeFences(s: string): string {
   const trimmed = s.trim();
@@ -216,7 +214,8 @@ export function createLlmTaskTool(api: OpenClawPluginApi) {
         // oxlint-disable-next-line typescript/no-explicit-any
         const schema = (params as any).schema as unknown;
         if (schema && typeof schema === "object" && !Array.isArray(schema)) {
-          const ajv = new AjvCtor({ allErrors: true, strict: false });
+          const Ajv = AjvPkg as unknown as new (opts?: object) => import("ajv").default;
+          const ajv = new Ajv({ allErrors: true, strict: false });
           // oxlint-disable-next-line typescript/no-explicit-any
           const validate = ajv.compile(schema as any);
           const ok = validate(parsed);

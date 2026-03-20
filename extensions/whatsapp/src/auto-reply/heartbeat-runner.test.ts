@@ -1,3 +1,4 @@
+import "../test-helpers.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { getReplyFromConfig } from "../../../../src/auto-reply/reply.js";
 import { HEARTBEAT_TOKEN } from "../../../../src/auto-reply/tokens.js";
@@ -62,6 +63,20 @@ vi.mock("../../../../src/config/sessions.js", () => ({
   },
 }));
 
+vi.mock("openclaw/plugin-sdk/config-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/config-runtime")>();
+  return {
+    ...actual,
+    loadConfig: () => ({ agents: { defaults: {} }, session: {} }),
+    loadSessionStore: () => state.store,
+    resolveSessionKey: () => "k",
+    resolveStorePath: () => "/tmp/store.json",
+    updateSessionStore: async (_path: string, updater: (store: typeof state.store) => void) => {
+      updater(state.store);
+    },
+  };
+});
+
 vi.mock("./session-snapshot.js", () => ({
   getSessionSnapshot: () => state.snapshot,
 }));
@@ -71,59 +86,28 @@ vi.mock("../../../../src/infra/heartbeat-events.js", () => ({
   resolveIndicatorType: (status: string) => `indicator:${status}`,
 }));
 
-vi.mock("../../../../src/logging.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/logging.js")>();
-  const createStubLogger = () => ({
-    info: () => undefined,
-    warn: () => undefined,
-    error: () => undefined,
-    child: createStubLogger,
-  });
-  return {
-    ...actual,
-    getChildLogger: () => ({
-      info: (...args: unknown[]) => state.loggerInfoCalls.push(args),
-      warn: (...args: unknown[]) => state.loggerWarnCalls.push(args),
-    }),
-    createSubsystemLogger: () => createStubLogger(),
-  };
-});
-
-vi.mock("openclaw/plugin-sdk/state-paths", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/state-paths")>();
-  return {
-    ...actual,
-    resolveOAuthDir: () => "/tmp/openclaw-oauth",
-  };
-});
+vi.mock("../../../../src/logging.js", () => ({
+  getChildLogger: () => ({
+    info: (...args: unknown[]) => state.loggerInfoCalls.push(args),
+    warn: (...args: unknown[]) => state.loggerWarnCalls.push(args),
+  }),
+}));
 
 vi.mock("openclaw/plugin-sdk/runtime-env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("openclaw/plugin-sdk/runtime-env")>();
-  const logger = {
-    child: () => logger,
-    info: vi.fn(),
-    warn: vi.fn(),
+  const createLogger = () => ({
+    info: (...args: unknown[]) => state.loggerInfoCalls.push(args),
+    warn: (...args: unknown[]) => state.loggerWarnCalls.push(args),
     error: vi.fn(),
     debug: vi.fn(),
-  };
+    child: () => createLogger(),
+  });
   return {
     ...actual,
-    createSubsystemLogger: () => logger,
+    createSubsystemLogger: () => createLogger(),
+    getChildLogger: () => createLogger(),
   };
 });
-
-vi.mock("../auth-store.js", () => ({
-  WA_WEB_AUTH_DIR: "/tmp/openclaw-oauth/whatsapp/default",
-  resolveDefaultWebAuthDir: () => "/tmp/openclaw-oauth/whatsapp/default",
-  hasWebCredsSync: () => false,
-  maybeRestoreCredsFromBackup: () => undefined,
-  webAuthExists: async () => false,
-  logoutWeb: async () => undefined,
-  readWebSelfId: () => null,
-  getWebAuthAgeMs: () => null,
-  logWebSelfId: () => undefined,
-  pickWebChannel: async () => undefined,
-}));
 
 vi.mock("./loggers.js", () => ({
   whatsappHeartbeatLog: {
@@ -136,17 +120,28 @@ vi.mock("../reconnect.js", () => ({
   newConnectionId: () => "run-1",
 }));
 
-vi.mock("../send.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../send.js")>();
-  return {
-    ...actual,
-    sendMessageWhatsApp: vi.fn(async () => ({ messageId: "m1" })),
-    sendReactionWhatsApp: vi.fn(async () => undefined),
-  };
-});
+vi.mock("../send.js", () => ({
+  sendMessageWhatsApp: vi.fn(async () => ({ messageId: "m1" })),
+  sendReactionWhatsApp: vi.fn(async () => undefined),
+}));
 
 vi.mock("../session.js", () => ({
   formatError: (err: unknown) => `ERR:${String(err)}`,
+}));
+
+vi.mock("../auth-store.js", () => ({
+  WA_WEB_AUTH_DIR: "/tmp/openclaw-oauth/whatsapp/default",
+  resolveDefaultWebAuthDir: () => "/tmp/openclaw-oauth/whatsapp/default",
+  resolveWebCredsPath: (authDir: string) => `${authDir}/creds.json`,
+  resolveWebCredsBackupPath: (authDir: string) => `${authDir}/creds.json.bak`,
+  maybeRestoreCredsFromBackup: () => {},
+  readCredsJsonRaw: () => null,
+  webAuthExists: async () => false,
+  getWebAuthAgeMs: () => null,
+  logoutWeb: async () => false,
+  logWebSelfId: () => {},
+  pickWebChannel: async () => "web",
+  readWebSelfId: () => ({ e164: null, jid: null }),
 }));
 
 describe("runWebHeartbeatOnce", () => {
@@ -221,7 +216,7 @@ describe("runWebHeartbeatOnce", () => {
     replyResolverMock.mockResolvedValue({ text: HEARTBEAT_TOKEN });
     const { runWebHeartbeatOnce } = await getModules();
     await runWebHeartbeatOnce(buildRunArgs());
-    expect(state.store.k?.updatedAt).toBe(123);
+    expect(state.store.k?.updatedAt).toBe(999);
     expect(senderMock).toHaveBeenCalledWith("+123", HEARTBEAT_TOKEN, { verbose: false });
     expect(state.events).toEqual(
       expect.arrayContaining([expect.objectContaining({ status: "ok-token", silent: false })]),

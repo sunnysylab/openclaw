@@ -34,68 +34,66 @@ export function resetLoadConfigMock() {
 
 vi.mock("openclaw/plugin-sdk/config-runtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("openclaw/plugin-sdk/config-runtime")>();
-  const mockModule = Object.create(null) as Record<string, unknown>;
-  Object.defineProperties(mockModule, Object.getOwnPropertyDescriptors(actual));
-  Object.defineProperties(mockModule, {
-    loadConfig: {
-      configurable: true,
-      enumerable: true,
-      writable: true,
-      value: () => {
-        const getter = (globalThis as Record<symbol, unknown>)[CONFIG_KEY];
-        if (typeof getter === "function") {
-          return getter();
-        }
-        return DEFAULT_CONFIG;
-      },
+  return {
+    ...actual,
+    loadConfig: () => {
+      const getter = (globalThis as Record<symbol, unknown>)[CONFIG_KEY];
+      if (typeof getter === "function") {
+        return getter();
+      }
+      return DEFAULT_CONFIG;
     },
-    updateLastRoute: {
-      configurable: true,
-      enumerable: true,
-      writable: true,
-      value: async (params: {
+    loadSessionStore: (storePath: string) => {
+      try {
+        const raw = fsSync.readFileSync(storePath, "utf8");
+        return JSON.parse(raw || "{}");
+      } catch {
+        return {};
+      }
+    },
+    recordSessionMetaFromInbound: vi.fn(async () => undefined),
+    updateLastRoute: vi.fn(
+      async (params: {
         storePath: string;
         sessionKey: string;
-        deliveryContext: { channel: string; to: string; accountId?: string };
+        deliveryContext?: {
+          channel?: string;
+          to?: string;
+          accountId?: string;
+          threadId?: string | number;
+        };
       }) => {
         const raw = await fs.readFile(params.storePath, "utf8").catch(() => "{}");
-        const store = JSON.parse(raw) as Record<string, Record<string, unknown>>;
-        const current = store[params.sessionKey] ?? {};
+        const store = JSON.parse(raw || "{}") as Record<
+          string,
+          {
+            lastChannel?: string;
+            lastTo?: string;
+            lastAccountId?: string;
+            lastThreadId?: string | number;
+          }
+        >;
+        const entry = store[params.sessionKey] ?? {};
         store[params.sessionKey] = {
-          ...current,
-          lastChannel: params.deliveryContext.channel,
-          lastTo: params.deliveryContext.to,
-          lastAccountId: params.deliveryContext.accountId,
+          ...entry,
+          lastChannel: params.deliveryContext?.channel ?? entry.lastChannel,
+          lastTo: params.deliveryContext?.to ?? entry.lastTo,
+          lastAccountId: params.deliveryContext?.accountId ?? entry.lastAccountId,
+          lastThreadId: params.deliveryContext?.threadId ?? entry.lastThreadId,
         };
         await fs.writeFile(params.storePath, JSON.stringify(store));
+        return store[params.sessionKey];
       },
-    },
-    loadSessionStore: {
-      configurable: true,
-      enumerable: true,
-      writable: true,
-      value: (storePath: string) => {
-        try {
-          return JSON.parse(fsSync.readFileSync(storePath, "utf8")) as Record<string, unknown>;
-        } catch {
-          return {};
-        }
-      },
-    },
-    recordSessionMetaFromInbound: {
-      configurable: true,
-      enumerable: true,
-      writable: true,
-      value: async () => undefined,
-    },
-    resolveStorePath: {
-      configurable: true,
-      enumerable: true,
-      writable: true,
-      value: actual.resolveStorePath,
-    },
-  });
-  return mockModule;
+    ),
+  };
+});
+
+vi.mock("openclaw/plugin-sdk/state-paths", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/state-paths")>();
+  return {
+    ...actual,
+    resolveOAuthDir: () => "/tmp/openclaw-oauth",
+  };
 });
 
 // Some web modules live under `src/web/auto-reply/*` and import config via a different
@@ -106,21 +104,16 @@ vi.mock("../../config/config.js", async (importOriginal) => {
   // For typing in this file (which lives in `src/web/*`), refer to the same module
   // via the local relative path.
   const actual = await importOriginal<typeof import("openclaw/plugin-sdk/config-runtime")>();
-  const mockModule = Object.create(null) as Record<string, unknown>;
-  Object.defineProperties(mockModule, Object.getOwnPropertyDescriptors(actual));
-  Object.defineProperty(mockModule, "loadConfig", {
-    configurable: true,
-    enumerable: true,
-    writable: true,
-    value: () => {
+  return {
+    ...actual,
+    loadConfig: () => {
       const getter = (globalThis as Record<symbol, unknown>)[CONFIG_KEY];
       if (typeof getter === "function") {
         return getter();
       }
       return DEFAULT_CONFIG;
     },
-  });
-  return mockModule;
+  };
 });
 
 vi.mock("openclaw/plugin-sdk/media-runtime", async (importOriginal) => {
@@ -139,14 +132,6 @@ vi.mock("openclaw/plugin-sdk/media-runtime", async (importOriginal) => {
     })),
   });
   return mockModule;
-});
-
-vi.mock("openclaw/plugin-sdk/state-paths", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/state-paths")>();
-  return {
-    ...actual,
-    resolveOAuthDir: () => "/tmp/openclaw-oauth",
-  };
 });
 
 vi.mock("@whiskeysockets/baileys", () => {
