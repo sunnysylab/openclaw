@@ -19,10 +19,8 @@ function resolveTestAuthDir() {
 
 const authDir = resolveTestAuthDir();
 
-vi.mock("openclaw/plugin-sdk/config-runtime", async () => {
-  const actual = await vi.importActual<typeof import("openclaw/plugin-sdk/config-runtime")>(
-    "openclaw/plugin-sdk/config-runtime",
-  );
+vi.mock("openclaw/plugin-sdk/config-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/config-runtime")>();
   return {
     ...actual,
     loadConfig: () =>
@@ -42,7 +40,8 @@ vi.mock("./session.js", () => {
   const authDir = resolveTestAuthDir();
   const sockA = { ws: { close: vi.fn() } };
   const sockB = { ws: { close: vi.fn() } };
-  const createWaSocket = vi.fn(async () => (createWaSocket.mock.calls.length <= 1 ? sockA : sockB));
+  let call = 0;
+  const createWaSocket = vi.fn(async () => (call++ === 0 ? sockA : sockB));
   const waitForWaConnection = vi.fn();
   const formatError = vi.fn((err: unknown) => `formatted:${String(err)}`);
   const getStatusCode = vi.fn(
@@ -83,10 +82,6 @@ describe("loginWeb coverage", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    createWaSocketMock.mockClear();
-    waitForWaConnectionMock.mockReset().mockResolvedValue(undefined);
-    waitForCredsSaveQueueWithTimeoutMock.mockReset().mockResolvedValue(undefined);
-    formatErrorMock.mockReset().mockImplementation((err: unknown) => `formatted:${String(err)}`);
     rmMock.mockClear();
   });
   afterEach(() => {
