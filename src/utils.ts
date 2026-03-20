@@ -282,24 +282,32 @@ export function resolveUserPath(
   return resolveHomeRelativePath(input, { env, homedir });
 }
 
+let _cachedConfigDir: string | undefined;
+
 export function resolveConfigDir(
   env: NodeJS.ProcessEnv = process.env,
   homedir: () => string = os.homedir,
 ): string {
+  // When called with default args (production path), cache the result so that
+  // later calls are not affected by process.chdir() changing the cwd
+  // (relevant when OPENCLAW_STATE_DIR is a relative path).
+  const useCache = env === process.env && homedir === os.homedir;
+  if (useCache && _cachedConfigDir !== undefined) {
+    return _cachedConfigDir;
+  }
+
   const override = env.OPENCLAW_STATE_DIR?.trim() || env.CLAWDBOT_STATE_DIR?.trim();
+  let result: string;
   if (override) {
-    return resolveUserPath(override, env, homedir);
+    result = resolveUserPath(override, env, homedir);
+  } else {
+    result = path.join(resolveRequiredHomeDir(env, homedir), ".openclaw");
   }
-  const newDir = path.join(resolveRequiredHomeDir(env, homedir), ".openclaw");
-  try {
-    const hasNew = fs.existsSync(newDir);
-    if (hasNew) {
-      return newDir;
-    }
-  } catch {
-    // best-effort
+
+  if (useCache) {
+    _cachedConfigDir = result;
   }
-  return newDir;
+  return result;
 }
 
 export function resolveHomeDir(): string | undefined {
