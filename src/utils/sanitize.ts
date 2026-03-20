@@ -2,6 +2,21 @@
  * Sanitize user-provided text to prevent log injection and other attacks.
  * Removes control characters, limits length, prevents log forgery.
  */
+function truncateWithoutSplittingSurrogatePair(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  let cutAt = maxLength;
+  const code = value.charCodeAt(cutAt - 1);
+  // If we would cut right after a high surrogate, step back one code unit.
+  if (code >= 0xd800 && code <= 0xdbff) {
+    cutAt -= 1;
+  }
+
+  return value.substring(0, cutAt);
+}
+
 export function sanitizeUserText(text: string | undefined, maxLength = 256): string | undefined {
   if (!text) {
     return undefined;
@@ -15,17 +30,9 @@ export function sanitizeUserText(text: string | undefined, maxLength = 256): str
   // Trim whitespace
   sanitized = sanitized.trim();
 
-  // Limit length to prevent memory exhaustion.
-  // Use Intl.Segmenter for grapheme-aware truncation so multi-codepoint
-  // characters (emoji, combining marks) are never split mid-character.
-  const segmenter = new Intl.Segmenter();
-  const segments = Array.from(segmenter.segment(sanitized));
-  if (segments.length > maxLength) {
-    sanitized =
-      segments
-        .slice(0, maxLength)
-        .map((s) => s.segment)
-        .join("") + "...";
+  // Limit length to prevent memory exhaustion and avoid splitting UTF-16 surrogate pairs.
+  if (sanitized.length > maxLength) {
+    sanitized = truncateWithoutSplittingSurrogatePair(sanitized, maxLength) + "...";
   }
 
   return sanitized.length > 0 ? sanitized : undefined;
