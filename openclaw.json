@@ -20,7 +20,7 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "openrouter/minimax/minimax-m2.5"
+        "primary": "openrouter/minimax/minimax-m2.7"
       },
     "sandbox": {
             "mode": "non-main",
@@ -38,11 +38,11 @@
         "openrouter/auto": {
           "alias": "OpenRouter"
         },
+        "openrouter/minimax/minimax-m2.7": {},
         "openrouter/minimax/minimax-m2.5": {},
-        "openrouter/minimax/minimax-m2.1": {},
         "openrouter/moonshotai/kimi-k2.5": {},
         "openrouter/deepseek/deepseek-v3.2": {},
-        "openrouter/z-ai/glm-4.7": {}
+        "openrouter/z-ai/glm-5": {}
       },
       "workspace": "/home/node/.openclaw/workspace",
       "compaction": {
