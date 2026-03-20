@@ -21,6 +21,7 @@ import type {
   TelegramAccountConfig,
 } from "openclaw/plugin-sdk/config-runtime";
 import { getAgentScopedMediaLocalRoots } from "openclaw/plugin-sdk/media-runtime";
+import { getGlobalHookRunner } from "openclaw/plugin-sdk/plugin-runtime";
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
 import { resolveChunkMode } from "openclaw/plugin-sdk/reply-runtime";
 import { clearHistoryEntriesIfEnabled } from "openclaw/plugin-sdk/reply-runtime";
@@ -31,6 +32,7 @@ import { defaultTelegramBotDeps, type TelegramBotDeps } from "./bot-deps.js";
 import type { TelegramMessageContext } from "./bot-message-context.js";
 import type { TelegramBotOptions } from "./bot.js";
 import { deliverReplies } from "./bot/delivery.js";
+import { emitMessageSentHooks } from "./bot/delivery.replies.js";
 import type { TelegramStreamMode } from "./bot/types.js";
 import type { TelegramInlineButtons } from "./button-types.js";
 import { createTelegramDraftStream } from "./draft-stream.js";
@@ -205,7 +207,11 @@ export const dispatchTelegramMessage = async ({
   const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, route.agentId);
   const archivedAnswerPreviews: ArchivedPreview[] = [];
   const archivedReasoningPreviewIds: number[] = [];
-  const createDraftLane = (laneName: LaneName, enabled: boolean): DraftLaneState => {
+  const createDraftLane = (
+    laneName: LaneName,
+    enabled: boolean,
+    onMessageSent?: (messageId: number, renderedText: string, rawText: string) => void,
+  ): DraftLaneState => {
     const stream = enabled
       ? createTelegramDraftStream({
           api: bot.api,
@@ -234,6 +240,7 @@ export const dispatchTelegramMessage = async ({
               : undefined,
           log: logVerbose,
           warn: logVerbose,
+          onMessageSent,
         })
       : undefined;
     return {
@@ -242,9 +249,29 @@ export const dispatchTelegramMessage = async ({
       hasStreamedMessage: false,
     };
   };
+
+  // Emit message:sent hook when streaming reply is delivered via draft stream.
+  const sessionKeyForStreamHooks = ctxPayload.SessionKey ?? route.sessionKey;
+  const streamOnMessageSent = (messageId: number, renderedText: string, rawText: string) => {
+    const hookRunner = getGlobalHookRunner();
+    const hasMessageSentHooks = hookRunner?.hasHooks("message_sent") ?? false;
+    emitMessageSentHooks({
+      hookRunner,
+      enabled: hasMessageSentHooks,
+      sessionKeyForInternalHooks: sessionKeyForStreamHooks,
+      chatId: String(chatId),
+      accountId: route.accountId,
+      content: rawText,
+      success: true,
+      messageId,
+      isGroup,
+      groupId: isGroup ? String(chatId) : undefined,
+    });
+  };
+
   const lanes: Record<LaneName, DraftLaneState> = {
-    answer: createDraftLane("answer", canStreamAnswerDraft),
-    reasoning: createDraftLane("reasoning", canStreamReasoningDraft),
+    answer: createDraftLane("answer", canStreamAnswerDraft, streamOnMessageSent),
+    reasoning: createDraftLane("reasoning", canStreamReasoningDraft, streamOnMessageSent),
   };
   // Active preview lifecycle answers "can this current preview still be
   // finalized?" Cleanup retention is separate so archived-preview decisions do
