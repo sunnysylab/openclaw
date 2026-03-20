@@ -37,6 +37,7 @@ const BASE_METHODS = [
   "talk.speak",
   "talk.mode",
   "models.list",
+  "models.local-gguf.unload",
   "tools.catalog",
   "agents.list",
   "agents.create",
