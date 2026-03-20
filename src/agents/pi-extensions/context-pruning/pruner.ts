@@ -15,6 +15,7 @@ function asText(text: string): TextContent {
 function collectTextSegments(content: ReadonlyArray<TextContent | ImageContent>): string[] {
   const parts: string[] = [];
   for (const block of content) {
+    if (!block) continue; // guard against null/undefined entries in malformed sessions
     if (block.type === "text" && typeof block.text === "string") {
       parts.push(block.text);
     }
@@ -27,6 +28,7 @@ function collectPrunableToolResultSegments(
 ): string[] {
   const parts: string[] = [];
   for (const block of content) {
+    if (!block) continue; // guard against null/undefined entries in malformed sessions
     if (block.type === "text" && typeof block.text === "string") {
       parts.push(block.text);
       continue;
@@ -104,6 +106,7 @@ function takeTailFromJoinedText(parts: string[], maxChars: number): string {
 
 function hasImageBlocks(content: ReadonlyArray<TextContent | ImageContent>): boolean {
   for (const block of content) {
+    if (!block) continue;
     if (block.type === "image") {
       return true;
     }
@@ -114,6 +117,7 @@ function hasImageBlocks(content: ReadonlyArray<TextContent | ImageContent>): boo
 function estimateTextAndImageChars(content: ReadonlyArray<TextContent | ImageContent>): number {
   let chars = 0;
   for (const block of content) {
+    if (!block) continue; // guard against null/undefined entries in malformed sessions
     if (block.type === "text" && typeof block.text === "string") {
       chars += block.text.length;
     }
