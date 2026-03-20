@@ -445,6 +445,19 @@ export const TtsConfigSchema = z
       })
       .strict()
       .optional(),
+    xai: z
+      .object({
+        apiKey: SecretInputSchema.optional().register(sensitive),
+        baseUrl: z.string().optional(),
+        model: z.string().optional(),
+        voice: z.string().optional(),
+        speed: z.number().min(0.25).max(4).optional(),
+        language: z.string().optional(),
+        outputFormat: z.enum(["mp3", "wav", "pcm", "g711_alaw", "g711_ulaw"]).optional(),
+        sampleRate: z.number().int().min(8000).max(48000).optional(),
+      })
+      .strict()
+      .optional(),
     edge: TtsMicrosoftConfigSchema,
     microsoft: TtsMicrosoftConfigSchema,
     prefsPath: z.string().optional(),
