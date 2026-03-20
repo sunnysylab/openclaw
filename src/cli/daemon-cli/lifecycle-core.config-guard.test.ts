@@ -193,7 +193,8 @@ describe("config-guard gates repairNotLoaded (#43602 + #35862)", () => {
     });
 
     expect(repairNotLoaded).toHaveBeenCalledTimes(1);
-    expect(service.restart).toHaveBeenCalledTimes(1);
+    // Repair already started the service; service.restart() is NOT called
+    expect(service.restart).not.toHaveBeenCalled();
   });
 
   it("restart: aborts before repairNotLoaded when config is invalid", async () => {

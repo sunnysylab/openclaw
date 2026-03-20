@@ -219,12 +219,20 @@ export async function runServiceStart(params: {
     try {
       const repair = await params.service.repairNotLoaded({ env: process.env });
       if (repair.ok) {
-        loaded = true;
+        // repairLaunchAgentBootstrap already started the service (enable →
+        // bootstrap → kickstart).  Emit success and return — calling
+        // service.restart() here would be a redundant kill+restart cycle.
+        const message = `${params.serviceNoun} was not loaded — re-registered from existing service definition.`;
+        emit({
+          ok: true,
+          result: "started",
+          message,
+          service: buildDaemonServiceSnapshot(params.service, true),
+        });
         if (!json) {
-          defaultRuntime.log(
-            `${params.serviceNoun} was not loaded — re-registered from existing service definition.`,
-          );
+          defaultRuntime.log(message);
         }
+        return;
       }
     } catch {
       // Best-effort repair; fall through to normal not-loaded handling.
@@ -416,17 +424,20 @@ export async function runServiceRestart(params: {
       // No running process to signal, but the service definition may still
       // exist on disk (e.g. macOS LaunchAgent unloaded after sleep/idle).
       // Re-register it so `restart` can proceed normally.  See #43602.
+      //
+      // repairLaunchAgentBootstrap already starts the service (enable →
+      // bootstrap → kickstart), so we do NOT set `loaded = true` here —
+      // that would cause the `if (loaded)` branch below to call
+      // `service.restart()`, issuing a redundant kill+restart cycle.
+      // Instead we record the result via `handledNotLoaded` and let the
+      // end-of-function emit path handle messaging.
       try {
         const repair = await params.service.repairNotLoaded({ env: process.env });
         if (repair.ok) {
-          loaded = true;
           handledNotLoaded = {
             result: "restarted",
             message: `${params.serviceNoun} was not loaded — re-registered from existing service definition.`,
           };
-          if (!json) {
-            defaultRuntime.log(handledNotLoaded.message);
-          }
         }
       } catch {
         // Best-effort repair; fall through to normal not-loaded handling.

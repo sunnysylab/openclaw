@@ -205,8 +205,9 @@ describe("runServiceRestart token drift", () => {
       });
 
       expect(repairNotLoaded).toHaveBeenCalledTimes(1);
-      // After successful repair, start should proceed to restart the service.
-      expect(service.restart).toHaveBeenCalledTimes(1);
+      // Repair already started the service (bootstrap → kickstart), so
+      // service.restart() should NOT be called — avoids double-kickstart.
+      expect(service.restart).not.toHaveBeenCalled();
       const jsonLine = runtimeLogs.find((line) => line.trim().startsWith("{"));
       const payload = JSON.parse(jsonLine ?? "{}") as { result?: string };
       expect(payload.result).toBe("started");
@@ -305,6 +306,44 @@ describe("runServiceRestart token drift", () => {
 
       expect(result).toBe(true);
       expect(repairNotLoaded).not.toHaveBeenCalled();
+    });
+
+    it("restart: does not double-log repair message in non-JSON mode", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: true });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      const result = await runServiceRestart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => [],
+        opts: { json: false },
+        onNotLoaded: async () => null,
+      });
+
+      expect(result).toBe(true);
+      expect(repairNotLoaded).toHaveBeenCalledTimes(1);
+      // The re-registered message should appear exactly once in non-JSON output
+      const reRegisterLogs = runtimeLogs.filter((line) => line.includes("re-registered"));
+      expect(reRegisterLogs).toHaveLength(1);
+    });
+
+    it("restart: does not call service.restart after successful repair (no double-kickstart)", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: true });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      await runServiceRestart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => [],
+        opts: { json: true },
+        onNotLoaded: async () => null,
+      });
+
+      // repairLaunchAgentBootstrap already kickstarted the service.
+      // service.restart() should NOT be called — avoids redundant kill+restart.
+      expect(service.restart).not.toHaveBeenCalled();
     });
 
     it("restart: falls through to hints when repair returns ok:false", async () => {
