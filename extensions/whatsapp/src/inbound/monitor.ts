@@ -7,6 +7,7 @@ import { logVerbose, shouldLogVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/runtime-env";
 import { getChildLogger } from "openclaw/plugin-sdk/text-runtime";
 import { jidToE164, resolveJidToE164 } from "openclaw/plugin-sdk/text-runtime";
+import { toWhatsappJid } from "openclaw/plugin-sdk/text-runtime";
 import { createWaSocket, getStatusCode, waitForWaConnection } from "../session.js";
 import { checkInboundAccessControl } from "./access-control.js";
 import { isRecentInboundMessage } from "./dedupe.js";
@@ -18,6 +19,7 @@ import {
   extractText,
 } from "./extract.js";
 import { downloadInboundMedia } from "./media.js";
+import { createQuotedMessageCache } from "./quoted-message-cache.js";
 import { createWebSendApi } from "./send-api.js";
 import type { WebInboundMessage, WebListenerCloseReason } from "./types.js";
 
@@ -117,6 +119,16 @@ export async function monitorWebInbox(options: {
   >();
   const GROUP_META_TTL_MS = 5 * 60 * 1000; // 5 minutes
   const lidLookup = sock.signalRepository?.lidMapping;
+  const quotedMessageCache = createQuotedMessageCache();
+  const sendApi = createWebSendApi({
+    sock: {
+      sendMessage: (jid: string, content: AnyMessageContent, options?: { quoted?: WAMessage }) =>
+        options ? sock.sendMessage(jid, content, options) : sock.sendMessage(jid, content),
+      sendPresenceUpdate: (presence, jid?: string) => sock.sendPresenceUpdate(presence, jid),
+    },
+    defaultAccountId: options.accountId,
+    resolveQuotedMessage: quotedMessageCache.resolve,
+  });
 
   const resolveInboundJid = async (jid: string | null | undefined): Promise<string | null> =>
     resolveJidToE164(jid, { authDir: options.authDir, lidLookup });
@@ -319,6 +331,32 @@ export async function monitorWebInbox(options: {
     enriched: EnrichedInboundMessage,
   ) => {
     const chatJid = inbound.remoteJid;
+    const quotedLookupJid = toWhatsappJid(chatJid);
+    const createAutoReplySendOptions = (replyToId?: string) => {
+      const normalizedReplyToId = replyToId?.trim();
+      return normalizedReplyToId
+        ? { replyToId: normalizedReplyToId, recordActivity: false }
+        : { recordActivity: false };
+    };
+    const resolveRawQuotedSendOptions = (replyToId?: string) => {
+      const normalizedReplyToId = replyToId?.trim();
+      if (!normalizedReplyToId) {
+        return undefined;
+      }
+      // Keep quote-cache lookups aligned with sendApi.sendMessage(), while still
+      // preserving jid-shaped inputs like @lid/@g.us unchanged.
+      const quoted = quotedMessageCache.resolve({
+        jid: quotedLookupJid,
+        replyToId: normalizedReplyToId,
+      });
+      return quoted ? { quoted } : undefined;
+    };
+    const sendRawMessage = async (payload: AnyMessageContent, options?: { replyToId?: string }) => {
+      const quotedOptions = resolveRawQuotedSendOptions(options?.replyToId);
+      await (quotedOptions
+        ? sock.sendMessage(chatJid, payload, quotedOptions)
+        : sock.sendMessage(chatJid, payload));
+    };
     const sendComposing = async () => {
       try {
         await sock.sendPresenceUpdate("composing", chatJid);
@@ -326,12 +364,18 @@ export async function monitorWebInbox(options: {
         logVerbose(`Presence update failed: ${String(err)}`);
       }
     };
-    const reply = async (text: string) => {
-      await sock.sendMessage(chatJid, { text });
+    const reply = async (text: string, options?: { replyToId?: string }) => {
+      await sendApi.sendMessage(
+        chatJid,
+        text,
+        undefined,
+        undefined,
+        createAutoReplySendOptions(options?.replyToId),
+      );
     };
-    const sendMedia = async (payload: AnyMessageContent) => {
-      await sock.sendMessage(chatJid, payload);
-    };
+    // Preserve the caller's Baileys payload; inbox media helpers only add quote context.
+    const sendMedia = async (payload: AnyMessageContent, options?: { replyToId?: string }) =>
+      sendRawMessage(payload, options);
     const timestamp = inbound.messageTimestampMs;
     const mentionedJids = extractMentionedJids(msg.message as proto.IMessage | undefined);
     const senderName = msg.pushName ?? undefined;
@@ -366,7 +410,7 @@ export async function monitorWebInbox(options: {
       replyToBody: enriched.replyContext?.body,
       replyToSender: enriched.replyContext?.sender,
       replyToSenderJid: enriched.replyContext?.senderJid,
-      replyToSenderE164: enriched.replyContext?.senderE164,
+      replyToSenderE164: enriched.replyContext?.senderE164 ?? undefined,
       groupSubject: inbound.groupSubject,
       groupParticipants: inbound.groupParticipants,
       mentionedJids: mentionedJids ?? undefined,
@@ -423,8 +467,21 @@ export async function monitorWebInbox(options: {
 
       const enriched = await enrichInboundMessage(msg);
       if (!enriched) {
+        // Only messages that produced body/media content are cached as quote
+        // targets; unsupported message shapes are intentionally skipped.
         continue;
       }
+
+      quotedMessageCache.remember({
+        message: msg,
+        messageId: inbound.id,
+        remoteJid: inbound.remoteJid,
+        // normalizedJid is the outbound JID shape used by the send path; both
+        // forms are stored as aliases so either can resolve the same entry.
+        normalizedJid: inbound.group ? inbound.remoteJid : toWhatsappJid(inbound.from),
+        participantJid: msg.key?.participant ?? undefined,
+        isGroup: inbound.group,
+      });
 
       await enqueueInboundMessage(msg, inbound, enriched);
     }
@@ -449,14 +506,6 @@ export async function monitorWebInbox(options: {
     }
   };
   sock.ev.on("connection.update", handleConnectionUpdate);
-
-  const sendApi = createWebSendApi({
-    sock: {
-      sendMessage: (jid: string, content: AnyMessageContent) => sock.sendMessage(jid, content),
-      sendPresenceUpdate: (presence, jid?: string) => sock.sendPresenceUpdate(presence, jid),
-    },
-    defaultAccountId: options.accountId,
-  });
 
   return {
     close: async () => {

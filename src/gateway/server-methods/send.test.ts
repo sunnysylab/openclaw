@@ -178,6 +178,31 @@ describe("gateway send mirroring", () => {
     );
   });
 
+  it("accepts replyTo fields and forwards a normalized reply target", async () => {
+    mockDeliverySuccess("m-reply");
+
+    const { respond } = await runSend({
+      to: "channel:C1",
+      message: "reply body",
+      channel: "slack",
+      replyTo: " msg-123 ",
+      replyToId: "ignored-legacy-value",
+      idempotencyKey: "idem-reply",
+    });
+
+    expect(mocks.deliverOutboundPayloads).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyToId: "msg-123",
+      }),
+    );
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ messageId: "m-reply" }),
+      undefined,
+      expect.objectContaining({ channel: "slack" }),
+    );
+  });
+
   it("rejects empty sends when neither text nor media is present", async () => {
     const { respond } = await runSend({
       to: "channel:C1",
@@ -392,13 +417,39 @@ describe("gateway send mirroring", () => {
       idempotencyKey: "idem-4",
     });
 
-    expect(mocks.recordSessionMetaFromInbound).toHaveBeenCalled();
+    const call = mocks.deliverOutboundPayloads.mock.calls[0]?.[0] as {
+      session?: { key?: string; agentId?: string };
+      mirror?: { sessionKey?: string; agentId?: string };
+    };
+    expect(call.session?.agentId).toBe("main");
+    expect(call.mirror?.agentId).toBe("main");
+    expect(call.mirror?.sessionKey).toBe(call.session?.key);
+  });
+
+  it("derives a threaded session key from replyTo when threadId is omitted", async () => {
+    mockDeliverySuccess("m-reply-thread");
+    vi.mocked(resolveOutboundTarget).mockReturnValue({
+      ok: true,
+      to: "channel:C123",
+    });
+
+    await runSend({
+      to: "channel:C1",
+      message: "hello",
+      channel: "slack",
+      replyTo: "1710000000.9999",
+      idempotencyKey: "idem-reply-thread",
+    });
+
     expect(mocks.deliverOutboundPayloads).toHaveBeenCalledWith(
       expect.objectContaining({
-        mirror: expect.objectContaining({
-          sessionKey: "agent:main:slack:channel:resolved",
-          agentId: "main",
+        session: expect.objectContaining({
+          key: "agent:main:slack:channel:c123:thread:1710000000.9999",
         }),
+        mirror: expect.objectContaining({
+          sessionKey: "agent:main:slack:channel:c123:thread:1710000000.9999",
+        }),
+        replyToId: "1710000000.9999",
       }),
     );
   });

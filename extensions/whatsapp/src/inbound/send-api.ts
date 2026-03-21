@@ -1,5 +1,6 @@
-import type { AnyMessageContent, WAPresence } from "@whiskeysockets/baileys";
+import type { AnyMessageContent, WAMessage, WAPresence } from "@whiskeysockets/baileys";
 import { recordChannelActivity } from "openclaw/plugin-sdk/infra-runtime";
+import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { toWhatsappJid } from "openclaw/plugin-sdk/text-runtime";
 import type { ActiveWebSendOptions } from "../active-listener.js";
 
@@ -11,6 +12,10 @@ function recordWhatsAppOutbound(accountId: string) {
   });
 }
 
+function shouldRecordOutboundActivity(sendOptions?: ActiveWebSendOptions): boolean {
+  return sendOptions?.recordActivity !== false;
+}
+
 function resolveOutboundMessageId(result: unknown): string {
   return typeof result === "object" && result && "key" in result
     ? String((result as { key?: { id?: string } }).key?.id ?? "unknown")
@@ -19,10 +24,15 @@ function resolveOutboundMessageId(result: unknown): string {
 
 export function createWebSendApi(params: {
   sock: {
-    sendMessage: (jid: string, content: AnyMessageContent) => Promise<unknown>;
+    sendMessage: (
+      jid: string,
+      content: AnyMessageContent,
+      options?: { quoted?: WAMessage },
+    ) => Promise<unknown>;
     sendPresenceUpdate: (presence: WAPresence, jid?: string) => Promise<unknown>;
   };
   defaultAccountId: string;
+  resolveQuotedMessage?: (params: { jid: string; replyToId: string }) => WAMessage | undefined;
 }) {
   return {
     sendMessage: async (
@@ -33,6 +43,16 @@ export function createWebSendApi(params: {
       sendOptions?: ActiveWebSendOptions,
     ): Promise<{ messageId: string }> => {
       const jid = toWhatsappJid(to);
+      const replyToId = sendOptions?.replyToId?.trim() || undefined;
+      const quoted = replyToId
+        ? params.resolveQuotedMessage?.({
+            jid,
+            replyToId,
+          })
+        : undefined;
+      if (replyToId && !quoted) {
+        logVerbose(`WhatsApp quoted reply target ${replyToId} was not found for ${jid}`);
+      }
       let payload: AnyMessageContent;
       if (mediaBuffer && mediaType) {
         if (mediaType.startsWith("image/")) {
@@ -63,9 +83,13 @@ export function createWebSendApi(params: {
       } else {
         payload = { text };
       }
-      const result = await params.sock.sendMessage(jid, payload);
-      const accountId = sendOptions?.accountId ?? params.defaultAccountId;
-      recordWhatsAppOutbound(accountId);
+      const result = quoted
+        ? await params.sock.sendMessage(jid, payload, { quoted })
+        : await params.sock.sendMessage(jid, payload);
+      if (shouldRecordOutboundActivity(sendOptions)) {
+        const accountId = sendOptions?.accountId ?? params.defaultAccountId;
+        recordWhatsAppOutbound(accountId);
+      }
       const messageId = resolveOutboundMessageId(result);
       return { messageId };
     },
