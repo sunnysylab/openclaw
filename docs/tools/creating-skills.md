@@ -37,14 +37,12 @@ For how skills are loaded and prioritized, see [Skills](/tools/skills).
 
     # Hello World Skill
 
-```markdown
----
-name: hello-world
-description: A simple skill that says hello.
----
     When the user asks for a greeting, use the `echo` tool to say
     "Hello from your custom skill!".
     ```
+
+    Use lowercase letters, digits, and hyphens for the skill `name`. Keep the
+    folder name and frontmatter `name` aligned.
 
   </Step>
 
@@ -86,16 +84,13 @@ description: A simple skill that says hello.
   </Step>
 </Steps>
 
-When the user asks for a greeting, use the `echo` tool to say "Hello from your custom skill!".
-```
-
 ## Skill metadata reference
 
 The YAML frontmatter supports these fields:
 
 | Field                               | Required | Description                                 |
 | ----------------------------------- | -------- | ------------------------------------------- |
-| `name`                              | Yes      | Unique identifier (snake_case)              |
+| `name`                              | Yes      | Unique identifier (hyphen-case)             |
 | `description`                       | Yes      | One-line description shown to the agent     |
 | `metadata.openclaw.os`              | No       | OS filter (`["darwin"]`, `["linux"]`, etc.) |
 | `metadata.openclaw.requires.bins`   | No       | Required binaries on PATH                   |
