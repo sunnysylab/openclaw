@@ -232,6 +232,103 @@ function resolveExplicitModelWithRegistry(params: {
   return undefined;
 }
 
+function preferResolvedModel(
+  discoveredModel: Model<Api> | undefined,
+  dynamicModel: Model<Api> | undefined,
+): Model<Api> | undefined {
+  if (!dynamicModel) {
+    return discoveredModel;
+  }
+  if (!discoveredModel) {
+    return dynamicModel;
+  }
+  const dynamicContextWindow = dynamicModel.contextWindow ?? 0;
+  const discoveredContextWindow = discoveredModel.contextWindow ?? 0;
+  if (dynamicContextWindow > discoveredContextWindow) {
+    return dynamicModel;
+  }
+  if (dynamicContextWindow < discoveredContextWindow) {
+    return discoveredModel;
+  }
+  return dynamicModel;
+}
+
+const OPENAI_CODEX_DYNAMIC_OVERRIDE_MODELS = new Set(["gpt-5.4"]);
+const OPENAI_CODEX_DYNAMIC_OVERRIDE_TEMPLATES: Record<string, readonly string[]> = {
+  "gpt-5.4": ["gpt-5.3-codex", "gpt-5.2-codex"],
+};
+
+function shouldPreferDynamicModelOverride(params: { provider: string; modelId: string }): boolean {
+  return (
+    normalizeProviderId(params.provider) === "openai-codex" &&
+    OPENAI_CODEX_DYNAMIC_OVERRIDE_MODELS.has(params.modelId)
+  );
+}
+
+function hasDynamicOverrideTemplate(params: {
+  provider: string;
+  modelId: string;
+  modelRegistry: ModelRegistry;
+}): boolean {
+  if (!shouldPreferDynamicModelOverride(params)) {
+    return false;
+  }
+  const templateIds = OPENAI_CODEX_DYNAMIC_OVERRIDE_TEMPLATES[params.modelId];
+  if (!templateIds?.length) {
+    return false;
+  }
+  return templateIds.some((templateId) => params.modelRegistry.find(params.provider, templateId));
+}
+
+function preserveDiscoveredTransportMetadata(params: {
+  discoveredModel: Model<Api> | undefined;
+  dynamicModel: Model<Api> | undefined;
+  providerConfig?: InlineProviderConfig;
+  modelId: string;
+}): Model<Api> | undefined {
+  const { discoveredModel, dynamicModel, providerConfig, modelId } = params;
+  if (!discoveredModel || !dynamicModel) {
+    return dynamicModel;
+  }
+  const configuredModel = providerConfig?.models?.find((candidate) => candidate.id === modelId);
+  const discoveredHeaders = sanitizeModelHeaders(discoveredModel.headers, {
+    stripSecretRefMarkers: true,
+  });
+  const dynamicHeaders = sanitizeModelHeaders(dynamicModel.headers, {
+    stripSecretRefMarkers: true,
+  });
+  // Headers use a 3-way merge: dynamic template < discovered < configured.
+  // dynamicModel.headers already includes configured overrides from
+  // applyConfiguredProviderOverrides, so we extract configured headers separately
+  // and apply them last to ensure they win over stale discovered headers.
+  const providerHeaders = sanitizeModelHeaders(providerConfig?.headers, {
+    stripSecretRefMarkers: true,
+  });
+  const configuredModelHeaders = sanitizeModelHeaders(configuredModel?.headers, {
+    stripSecretRefMarkers: true,
+  });
+  const mergedHeaders =
+    dynamicHeaders || discoveredHeaders || providerHeaders || configuredModelHeaders
+      ? {
+          ...dynamicHeaders,
+          ...discoveredHeaders,
+          ...providerHeaders,
+          ...configuredModelHeaders,
+        }
+      : undefined;
+  return {
+    ...dynamicModel,
+    api: configuredModel?.api ?? providerConfig?.api ?? discoveredModel.api ?? dynamicModel.api,
+    baseUrl: providerConfig?.baseUrl ?? discoveredModel.baseUrl ?? dynamicModel.baseUrl,
+    input: configuredModel?.input ?? discoveredModel.input ?? dynamicModel.input,
+    compat: configuredModel?.compat ?? discoveredModel.compat ?? dynamicModel.compat,
+    maxTokens: configuredModel?.maxTokens ?? discoveredModel.maxTokens ?? dynamicModel.maxTokens,
+    reasoning: configuredModel?.reasoning ?? discoveredModel.reasoning ?? dynamicModel.reasoning,
+    cost: discoveredModel.cost ?? dynamicModel.cost,
+    headers: mergedHeaders,
+  };
+}
+
 export function resolveModelWithRegistry(params: {
   provider: string;
   modelId: string;
@@ -243,7 +340,9 @@ export function resolveModelWithRegistry(params: {
   if (explicitModel?.kind === "suppressed") {
     return undefined;
   }
-  if (explicitModel?.kind === "resolved") {
+  const shouldCompareDynamicOverride =
+    shouldPreferDynamicModelOverride(params) && hasDynamicOverrideTemplate(params);
+  if (explicitModel?.kind === "resolved" && !shouldCompareDynamicOverride) {
     return explicitModel.model;
   }
 
@@ -261,12 +360,33 @@ export function resolveModelWithRegistry(params: {
       providerConfig,
     },
   });
-  if (pluginDynamicModel) {
+  const configuredDynamicModel = pluginDynamicModel
+    ? applyConfiguredProviderOverrides({
+        discoveredModel: pluginDynamicModel,
+        providerConfig,
+        modelId,
+      })
+    : undefined;
+  const discoveredResolvedModel =
+    explicitModel?.kind === "resolved" ? explicitModel.model : undefined;
+  const dynamicModelForComparison = shouldCompareDynamicOverride
+    ? preserveDiscoveredTransportMetadata({
+        discoveredModel: discoveredResolvedModel,
+        dynamicModel: configuredDynamicModel,
+        providerConfig,
+        modelId,
+      })
+    : configuredDynamicModel;
+  const preferredModel = preferResolvedModel(discoveredResolvedModel, dynamicModelForComparison);
+  if (preferredModel) {
+    if (preferredModel === explicitModel?.model) {
+      return preferredModel;
+    }
     return normalizeResolvedModel({
       provider,
       cfg,
       agentDir,
-      model: pluginDynamicModel,
+      model: preferredModel,
     });
   }
 
@@ -368,7 +488,7 @@ export async function resolveModelAsync(
       modelRegistry,
     };
   }
-  if (!explicitModel) {
+  const maybePrepareDynamicModel = async () => {
     const providerPlugin = resolveProviderRuntimePlugin({
       provider,
       config: cfg,
@@ -387,17 +507,21 @@ export async function resolveModelAsync(
         },
       });
     }
+  };
+  if (
+    !explicitModel ||
+    (explicitModel.kind === "resolved" &&
+      hasDynamicOverrideTemplate({ provider, modelId, modelRegistry }))
+  ) {
+    await maybePrepareDynamicModel();
   }
-  const model =
-    explicitModel?.kind === "resolved"
-      ? explicitModel.model
-      : resolveModelWithRegistry({
-          provider,
-          modelId,
-          modelRegistry,
-          cfg,
-          agentDir: resolvedAgentDir,
-        });
+  const model = resolveModelWithRegistry({
+    provider,
+    modelId,
+    modelRegistry,
+    cfg,
+    agentDir: resolvedAgentDir,
+  });
   if (model) {
     return { model, authStorage, modelRegistry };
   }
