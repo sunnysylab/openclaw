@@ -255,7 +255,10 @@ function renderContextNotice(
   session: GatewaySessionRow | undefined,
   defaultContextTokens: number | null,
 ) {
-  const used = session?.inputTokens ?? 0;
+  // Use totalTokens for context utilization display. inputTokens accumulates
+  // all API calls in a run (tool loops, compaction retries), overstating
+  // actual context size. totalTokens reflects the final API call's context.
+  const used = session?.totalTokens ?? session?.inputTokens ?? 0;
   const limit = session?.contextTokens ?? defaultContextTokens ?? 0;
   if (!used || !limit) {
     return nothing;
