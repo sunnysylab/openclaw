@@ -530,7 +530,7 @@ export async function loadWorkspaceBootstrapFiles(dir: string): Promise<Workspac
   // Check onboarding state once so we can suppress missing BOOTSTRAP.md noise.
   let onboardingCompleted = false;
   try {
-    onboardingCompleted = await isWorkspaceOnboardingCompleted(resolvedDir);
+    onboardingCompleted = await isWorkspaceSetupCompleted(resolvedDir);
   } catch {
     // If state cannot be read, default to showing BOOTSTRAP.md as before.
   }
