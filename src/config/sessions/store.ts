@@ -264,8 +264,14 @@ export function loadSessionStore(
 
   applySessionStoreMigrations(store);
 
-  // Cache the result if caching is enabled
-  if (!opts.skipCache && isSessionStoreCacheEnabled()) {
+  // Only keep the parsed object cache for stores still under the configured size limit.
+  if (
+    !opts.skipCache &&
+    isSessionStoreObjectCacheEligible({
+      storePath,
+      sizeBytes: fileStat?.sizeBytes,
+    })
+  ) {
     writeSessionStoreCache({
       storePath,
       store,
@@ -273,6 +279,8 @@ export function loadSessionStore(
       sizeBytes: fileStat?.sizeBytes,
       serialized: serializedFromDisk,
     });
+  } else if (!opts.skipCache) {
+    dropSessionStoreObjectCache(storePath);
   }
 
   return structuredClone(store);
@@ -339,7 +347,12 @@ function updateSessionStoreWriteCaches(params: {
 }): void {
   const fileStat = getFileStatSnapshot(params.storePath);
   setSerializedSessionStore(params.storePath, params.serialized);
-  if (!isSessionStoreCacheEnabled()) {
+  if (
+    !isSessionStoreObjectCacheEligible({
+      storePath: params.storePath,
+      sizeBytes: fileStat?.sizeBytes,
+    })
+  ) {
     dropSessionStoreObjectCache(params.storePath);
     return;
   }
