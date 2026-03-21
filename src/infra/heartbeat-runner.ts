@@ -908,11 +908,6 @@ export async function runHeartbeatOnce(opts: {
       const store = loadSessionStore(storePath);
       const current = store[sessionKey];
       if (current) {
-        store[sessionKey] = {
-          ...current,
-          lastHeartbeatText: normalized.text,
-          lastHeartbeatSentAt: startedAt,
-        };
         await updateSessionStore(
           storePath,
           (nextStore) => {
