@@ -3,8 +3,6 @@ import {
   resolveDefaultAgentId,
   resolveSessionAgentId,
 } from "../../agents/agent-scope.js";
-import { lookupContextTokens } from "../../agents/context.js";
-import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import {
   buildModelAliasIndex,
   type ModelAliasIndex,
@@ -19,6 +17,7 @@ import { resolveModelSelectionFromDirective } from "./directive-handling.model.j
 import type { InlineDirectives } from "./directive-handling.parse.js";
 import { enqueueModeSwitchEvents } from "./directive-handling.shared.js";
 import type { ElevatedLevel, ReasoningLevel } from "./directives.js";
+import { resolveContextTokens } from "./model-selection.js";
 
 export async function persistInlineDirectives(params: {
   directives: InlineDirectives;
@@ -202,7 +201,11 @@ export async function persistInlineDirectives(params: {
   return {
     provider,
     model,
-    contextTokens: agentCfg?.contextTokens ?? lookupContextTokens(model) ?? DEFAULT_CONTEXT_TOKENS,
+    contextTokens: resolveContextTokens({
+      agentCfg,
+      provider,
+      model,
+    }),
   };
 }
 
