@@ -18,7 +18,10 @@ import {
 import { getFileStatSnapshot } from "../cache-utils.js";
 import { enforceSessionDiskBudget, type SessionDiskBudgetSweepResult } from "./disk-budget.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
-import { resolveSessionObjectCacheMaxBytes } from "./store-cache-limit.js";
+import {
+  resolveSessionObjectCacheMaxBytes,
+  SESSION_OBJECT_CACHE_MAX_BYTES_ENV,
+} from "./store-cache-limit.js";
 import {
   clearSessionStoreCaches,
   dropSessionStoreObjectCache,
@@ -47,10 +50,27 @@ import {
 
 const log = createSubsystemLogger("sessions/store");
 
+const WARNED_SESSION_OBJECT_CACHE_LIMIT_PATHS = new Set<string>();
 function isSessionStoreRecord(value: unknown): value is Record<string, SessionEntry> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function warnSessionObjectCacheLimitHit(params: {
+  storePath: string;
+  sizeBytes: number;
+  limitBytes: number;
+}): void {
+  if (WARNED_SESSION_OBJECT_CACHE_LIMIT_PATHS.has(params.storePath)) {
+    return;
+  }
+  WARNED_SESSION_OBJECT_CACHE_LIMIT_PATHS.add(params.storePath);
+  log.warn("session object cache disabled for large store", {
+    storePath: params.storePath,
+    sizeBytes: params.sizeBytes,
+    limitBytes: params.limitBytes,
+    envVar: SESSION_OBJECT_CACHE_MAX_BYTES_ENV,
+  });
+}
 function isSessionStoreObjectCacheEligible(params: {
   storePath: string;
   sizeBytes?: number;
@@ -64,6 +84,11 @@ function isSessionStoreObjectCacheEligible(params: {
     return false;
   }
   if (params.sizeBytes !== undefined && params.sizeBytes > maxBytes) {
+    warnSessionObjectCacheLimitHit({
+      storePath: params.storePath,
+      sizeBytes: params.sizeBytes,
+      limitBytes: maxBytes,
+    });
     dropSessionStoreObjectCache(params.storePath);
     return false;
   }
@@ -170,6 +195,7 @@ function normalizeSessionStore(store: Record<string, SessionEntry>): void {
 
 export function clearSessionStoreCacheForTest(): void {
   clearSessionStoreCaches();
+  WARNED_SESSION_OBJECT_CACHE_LIMIT_PATHS.clear();
   for (const queue of LOCK_QUEUES.values()) {
     for (const task of queue.pending) {
       task.reject(new Error("session store queue cleared for test"));
