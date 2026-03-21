@@ -26,6 +26,7 @@ import {
   clearSessionStoreCaches,
   dropSessionStoreObjectCache,
   getSerializedSessionStore,
+  getSessionStoreTtl,
   isSessionStoreCacheEnabled,
   readSessionStoreCache,
   setSerializedSessionStore,
@@ -93,6 +94,35 @@ function isSessionStoreObjectCacheEligible(params: {
     return false;
   }
   return true;
+}
+
+function shouldRetainSessionStoreSerializedCache(sizeBytes?: number): boolean {
+  if (!isSessionStoreCacheEnabled()) {
+    return false;
+  }
+  const maxBytes = resolveSessionObjectCacheMaxBytes();
+  if (maxBytes === 0) {
+    return false;
+  }
+  return sizeBytes === undefined || sizeBytes <= maxBytes;
+}
+
+function isSessionStoreSerializedSnapshotEqual(params: {
+  storePath: string;
+  serialized: string;
+}): boolean {
+  const cached = getSerializedSessionStore({
+    storePath: params.storePath,
+    ttlMs: getSessionStoreTtl(),
+  });
+  if (cached !== undefined) {
+    return cached === params.serialized;
+  }
+  try {
+    return fs.readFileSync(params.storePath, "utf-8") === params.serialized;
+  } catch {
+    return false;
+  }
 }
 function normalizeSessionEntryDelivery(entry: SessionEntry): SessionEntry {
   const normalized = normalizeSessionDeliveryFields({
@@ -282,7 +312,10 @@ export function loadSessionStore(
       // Final attempt failed; proceed with an empty store.
     }
   }
-  if (serializedFromDisk !== undefined) {
+  if (
+    serializedFromDisk !== undefined &&
+    shouldRetainSessionStoreSerializedCache(fileStat?.sizeBytes)
+  ) {
     setSerializedSessionStore(storePath, serializedFromDisk);
   } else {
     setSerializedSessionStore(storePath, undefined);
@@ -372,7 +405,11 @@ function updateSessionStoreWriteCaches(params: {
   serialized: string;
 }): void {
   const fileStat = getFileStatSnapshot(params.storePath);
-  setSerializedSessionStore(params.storePath, params.serialized);
+  if (shouldRetainSessionStoreSerializedCache(fileStat?.sizeBytes)) {
+    setSerializedSessionStore(params.storePath, params.serialized);
+  } else {
+    setSerializedSessionStore(params.storePath, undefined);
+  }
   if (
     !isSessionStoreObjectCacheEligible({
       storePath: params.storePath,
@@ -568,7 +605,7 @@ async function saveSessionStoreUnlocked(
 
   await fs.promises.mkdir(path.dirname(storePath), { recursive: true });
   const json = JSON.stringify(store, null, 2);
-  if (getSerializedSessionStore(storePath) === json) {
+  if (isSessionStoreSerializedSnapshotEqual({ storePath, serialized: json })) {
     updateSessionStoreWriteCaches({ storePath, store, serialized: json });
     return;
   }
