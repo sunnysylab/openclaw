@@ -22,9 +22,13 @@ async function persistSessionEntryUpdate(params: {
   if (!params.storePath) {
     return;
   }
-  await updateSessionStore(params.storePath, (store) => {
-    store[params.sessionKey!] = { ...store[params.sessionKey!], ...params.nextEntry };
-  });
+  await updateSessionStore(
+    params.storePath,
+    (store) => {
+      store[params.sessionKey!] = { ...store[params.sessionKey!], ...params.nextEntry };
+    },
+    { baseStore: params.sessionStore },
+  );
 }
 
 export async function ensureSkillSnapshot(params: {

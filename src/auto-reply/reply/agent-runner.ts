@@ -326,9 +326,13 @@ export async function runReplyAgent(params: {
     activeSessionStore[sessionKey] = nextEntry;
     try {
       const { updateSessionStore } = await loadSessionStoreRuntime();
-      await updateSessionStore(storePath, (store) => {
-        store[sessionKey] = nextEntry;
-      });
+      await updateSessionStore(
+        storePath,
+        (store) => {
+          store[sessionKey] = nextEntry;
+        },
+        { baseStore: activeSessionStore },
+      );
     } catch (err) {
       defaultRuntime.error(
         `Failed to persist session reset after ${failureLabel} (${sessionKey}): ${String(err)}`,

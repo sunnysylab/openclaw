@@ -398,7 +398,7 @@ export async function createModelSelectionState(params: {
               await loadSessionStoreRuntime()
             ).updateSessionStore(storePath, (store) => {
               store[sessionKey] = sessionEntry;
-            });
+            }, { baseStore: sessionStore });
           }
         }
         resetModelOverride = updated;

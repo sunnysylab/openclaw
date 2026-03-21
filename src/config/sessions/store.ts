@@ -52,10 +52,31 @@ import {
 const log = createSubsystemLogger("sessions/store");
 
 const WARNED_SESSION_OBJECT_CACHE_LIMIT_PATHS = new Set<string>();
+let loadedSessionStoreSnapshots = new WeakMap<
+  Record<string, SessionEntry>,
+  { serializedFromDisk?: string }
+>();
 function isSessionStoreRecord(value: unknown): value is Record<string, SessionEntry> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function rememberLoadedSessionStoreSnapshot(params: {
+  store: Record<string, SessionEntry>;
+  serializedFromDisk?: string;
+}): void {
+  loadedSessionStoreSnapshots.set(params.store, {
+    serializedFromDisk: params.serializedFromDisk,
+  });
+}
+
+function getLoadedSessionStoreSnapshot(
+  store: Record<string, SessionEntry> | undefined,
+): { serializedFromDisk?: string } | undefined {
+  if (!store) {
+    return undefined;
+  }
+  return loadedSessionStoreSnapshots.get(store);
+}
 function warnSessionObjectCacheLimitHit(params: {
   storePath: string;
   sizeBytes: number;
@@ -226,6 +247,7 @@ function normalizeSessionStore(store: Record<string, SessionEntry>): void {
 export function clearSessionStoreCacheForTest(): void {
   clearSessionStoreCaches();
   WARNED_SESSION_OBJECT_CACHE_LIMIT_PATHS.clear();
+  loadedSessionStoreSnapshots = new WeakMap();
   for (const queue of LOCK_QUEUES.values()) {
     for (const task of queue.pending) {
       task.reject(new Error("session store queue cleared for test"));
@@ -270,6 +292,13 @@ export function loadSessionStore(
         sizeBytes: currentFileStat?.sizeBytes,
       });
       if (cached) {
+        rememberLoadedSessionStoreSnapshot({
+          store: cached,
+          serializedFromDisk: getSerializedSessionStore({
+            storePath,
+            ttlMs: getSessionStoreTtl(),
+          }),
+        });
         return cached;
       }
     }
@@ -342,7 +371,12 @@ export function loadSessionStore(
     dropSessionStoreObjectCache(storePath);
   }
 
-  return structuredClone(store);
+  const clonedStore = structuredClone(store);
+  rememberLoadedSessionStoreSnapshot({
+    store: clonedStore,
+    serializedFromDisk,
+  });
+  return clonedStore;
 }
 
 export function readSessionUpdatedAt(params: {
@@ -399,6 +433,14 @@ type SaveSessionStoreOptions = {
   maintenanceOverride?: Partial<ResolvedSessionMaintenanceConfig>;
 };
 
+type UpdateSessionStoreOptions = SaveSessionStoreOptions & {
+  /**
+   * Previously loaded store snapshot for the same path. If the on-disk file still
+   * matches that snapshot while we hold the write lock, we can skip the second parse.
+   */
+  baseStore?: Record<string, SessionEntry>;
+};
+
 function updateSessionStoreWriteCaches(params: {
   storePath: string;
   store: Record<string, SessionEntry>;
@@ -426,6 +468,28 @@ function updateSessionStoreWriteCaches(params: {
     sizeBytes: fileStat?.sizeBytes,
     serialized: params.serialized,
   });
+  rememberLoadedSessionStoreSnapshot({
+    store: params.store,
+    serializedFromDisk: params.serialized,
+  });
+}
+
+function tryReuseLoadedSessionStoreSnapshot(params: {
+  storePath: string;
+  baseStore?: Record<string, SessionEntry>;
+}): Record<string, SessionEntry> | undefined {
+  const snapshot = getLoadedSessionStoreSnapshot(params.baseStore);
+  if (!params.baseStore || snapshot?.serializedFromDisk === undefined) {
+    return undefined;
+  }
+  try {
+    if (fs.readFileSync(params.storePath, "utf-8") !== snapshot.serializedFromDisk) {
+      return undefined;
+    }
+    return params.baseStore;
+  } catch {
+    return undefined;
+  }
 }
 
 function resolveMutableSessionStoreKey(
@@ -670,11 +734,15 @@ export async function saveSessionStore(
 export async function updateSessionStore<T>(
   storePath: string,
   mutator: (store: Record<string, SessionEntry>) => Promise<T> | T,
-  opts?: SaveSessionStoreOptions,
+  opts?: UpdateSessionStoreOptions,
 ): Promise<T> {
   return await withSessionStoreLock(storePath, async () => {
-    // Always re-read inside the lock to avoid clobbering concurrent writers.
-    const store = loadSessionStore(storePath, { skipCache: true });
+    // Reuse the caller's already-loaded store snapshot when it still matches the
+    // on-disk file inside the lock. This avoids a second whole-file parse on the
+    // common single-process hot path without weakening write-order safety.
+    const store =
+      tryReuseLoadedSessionStoreSnapshot({ storePath, baseStore: opts?.baseStore }) ??
+      loadSessionStore(storePath, { skipCache: true });
     const previousAcpByKey = collectAcpMetadataSnapshot(store);
     const result = await mutator(store);
     preserveExistingAcpMetadata({
