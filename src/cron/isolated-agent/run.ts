@@ -32,7 +32,7 @@ import {
   listDescendantRunsForRequester,
 } from "../../agents/subagent-registry.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
-import { deriveSessionTotalTokens, hasNonzeroUsage } from "../../agents/usage.js";
+import { deriveSessionTotalTokens, hasExplicitUsage } from "../../agents/usage.js";
 import { ensureAgentWorkspace } from "../../agents/workspace.js";
 import {
   normalizeThinkLevel,
@@ -735,6 +735,7 @@ export async function runCronIsolatedAgentTurn(params: {
   }
   const finalRunResult = runResult;
   const payloads = finalRunResult.payloads ?? [];
+  const preRunTotalTokens = cronSession.sessionEntry.totalTokens;
 
   // Update token+model fields in the session store.
   // Also collect best-effort telemetry for the cron run log.
@@ -752,10 +753,27 @@ export async function runCronIsolatedAgentTurn(params: {
       lookupContextTokens(modelUsed, { allowAsyncLoad: false }) ??
       DEFAULT_CONTEXT_TOKENS;
 
+    const lastModel = cronSession.sessionEntry.model;
+    const lastProvider = cronSession.sessionEntry.modelProvider;
+    const modelChanged =
+      (lastModel !== undefined && lastModel !== modelUsed) ||
+      (lastProvider !== undefined && lastProvider !== providerUsed);
+
     setSessionRuntimeModel(cronSession.sessionEntry, {
       provider: providerUsed,
       model: modelUsed,
     });
+
+    if (modelChanged) {
+      cronSession.sessionEntry.totalTokens = undefined;
+      cronSession.sessionEntry.totalTokensFresh = false;
+      cronSession.sessionEntry.totalTokensEstimate = undefined;
+    } else if (preRunTotalTokens !== undefined && cronSession.sessionEntry.totalTokensFresh !== false) {
+      // Refresh or backfill estimate baseline from the last known fresh total.
+      // (Note: totalTokensFresh was already true on cronSession.sessionEntry if it was true on entry)
+      cronSession.sessionEntry.totalTokensEstimate = preRunTotalTokens;
+    }
+
     cronSession.sessionEntry.contextTokens = contextTokens;
     if (isCliProvider(providerUsed, cfgWithAgentDefaults)) {
       const cliSessionId = finalRunResult.meta?.agentMeta?.sessionId?.trim();
@@ -763,9 +781,9 @@ export async function runCronIsolatedAgentTurn(params: {
         setCliSessionId(cronSession.sessionEntry, providerUsed, cliSessionId);
       }
     }
-    if (hasNonzeroUsage(usage)) {
-      const input = usage.input ?? 0;
-      const output = usage.output ?? 0;
+    if (hasExplicitUsage(usage) || (typeof promptTokens === "number" && promptTokens >= 0)) {
+      const input = usage?.input ?? 0;
+      const output = usage?.output ?? 0;
       const totalTokens = deriveSessionTotalTokens({
         usage,
         contextTokens,
@@ -773,7 +791,7 @@ export async function runCronIsolatedAgentTurn(params: {
       });
       const runEstimatedCostUsd = resolveNonNegativeNumber(
         estimateUsageCost({
-          usage,
+          usage: usage ?? {},
           cost: resolveModelCostConfig({
             provider: providerUsed,
             model: modelUsed,
@@ -787,16 +805,17 @@ export async function runCronIsolatedAgentTurn(params: {
         input_tokens: input,
         output_tokens: output,
       };
-      if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
+      if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
         cronSession.sessionEntry.totalTokensFresh = true;
+        cronSession.sessionEntry.totalTokensEstimate = totalTokens;
         telemetryUsage.total_tokens = totalTokens;
       } else {
         cronSession.sessionEntry.totalTokens = undefined;
         cronSession.sessionEntry.totalTokensFresh = false;
       }
-      cronSession.sessionEntry.cacheRead = usage.cacheRead ?? 0;
-      cronSession.sessionEntry.cacheWrite = usage.cacheWrite ?? 0;
+      cronSession.sessionEntry.cacheRead = usage?.cacheRead ?? 0;
+      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite ?? 0;
       if (runEstimatedCostUsd !== undefined) {
         cronSession.sessionEntry.estimatedCostUsd =
           (resolveNonNegativeNumber(cronSession.sessionEntry.estimatedCostUsd) ?? 0) +
@@ -809,6 +828,12 @@ export async function runCronIsolatedAgentTurn(params: {
         usage: telemetryUsage,
       };
     } else {
+      cronSession.sessionEntry.inputTokens = undefined;
+      cronSession.sessionEntry.outputTokens = undefined;
+      cronSession.sessionEntry.totalTokens = undefined;
+      cronSession.sessionEntry.totalTokensFresh = false;
+      cronSession.sessionEntry.cacheRead = undefined;
+      cronSession.sessionEntry.cacheWrite = undefined;
       telemetry = {
         model: modelUsed,
         provider: providerUsed,

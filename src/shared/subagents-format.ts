@@ -42,6 +42,8 @@ export function truncateLine(value: string, maxLength: number) {
 
 export type TokenUsageLike = {
   totalTokens?: unknown;
+  totalTokensFresh?: unknown;
+  totalTokensEstimate?: unknown;
   inputTokens?: unknown;
   outputTokens?: unknown;
 };
@@ -50,13 +52,24 @@ export function resolveTotalTokens(entry?: TokenUsageLike) {
   if (!entry || typeof entry !== "object") {
     return undefined;
   }
-  if (typeof entry.totalTokens === "number" && Number.isFinite(entry.totalTokens)) {
+  if (
+    entry.totalTokensFresh !== false &&
+    typeof entry.totalTokens === "number" &&
+    Number.isFinite(entry.totalTokens)
+  ) {
     return entry.totalTokens;
   }
-  const input = typeof entry.inputTokens === "number" ? entry.inputTokens : 0;
-  const output = typeof entry.outputTokens === "number" ? entry.outputTokens : 0;
-  const total = input + output;
-  return total > 0 ? total : undefined;
+  const hasInput = typeof entry.inputTokens === "number";
+  const hasOutput = typeof entry.outputTokens === "number";
+  if (hasInput || hasOutput) {
+    const input = hasInput ? (entry.inputTokens as number) : 0;
+    const output = hasOutput ? (entry.outputTokens as number) : 0;
+    return input + output;
+  }
+  if (typeof entry.totalTokensEstimate === "number" && Number.isFinite(entry.totalTokensEstimate)) {
+    return entry.totalTokensEstimate;
+  }
+  return undefined;
 }
 
 export function resolveIoTokens(entry?: TokenUsageLike) {

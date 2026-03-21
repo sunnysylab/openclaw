@@ -286,6 +286,7 @@ export async function incrementCompactionCount(params: {
   if (tokensAfter != null && tokensAfter > 0) {
     updates.totalTokens = tokensAfter;
     updates.totalTokensFresh = true;
+    updates.totalTokensEstimate = tokensAfter;
     // Clear input/output breakdown since we only have the total estimate after compaction
     updates.inputTokens = undefined;
     updates.outputTokens = undefined;

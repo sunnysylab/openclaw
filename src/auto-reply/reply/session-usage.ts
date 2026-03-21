@@ -1,7 +1,7 @@
 import { setCliSessionId } from "../../agents/cli-session.js";
 import {
   deriveSessionTotalTokens,
-  hasNonzeroUsage,
+  hasExplicitUsage,
   type NormalizedUsage,
 } from "../../agents/usage.js";
 import type { OpenClawConfig } from "../../config/config.js";
@@ -45,7 +45,7 @@ function estimateSessionRunCostUsd(params: {
   providerUsed?: string;
   modelUsed?: string;
 }): number | undefined {
-  if (!hasNonzeroUsage(params.usage)) {
+  if (!hasExplicitUsage(params.usage)) {
     return undefined;
   }
   const cost = resolveModelCostConfig({
@@ -83,11 +83,11 @@ export async function persistSessionUsageUpdate(params: {
 
   const label = params.logLabel ? `${params.logLabel} ` : "";
   const cfg = params.cfg ?? loadConfig();
-  const hasUsage = hasNonzeroUsage(params.usage);
+  const hasUsage = hasExplicitUsage(params.usage);
   const hasPromptTokens =
     typeof params.promptTokens === "number" &&
     Number.isFinite(params.promptTokens) &&
-    params.promptTokens > 0;
+    params.promptTokens >= 0;
   const hasFreshContextSnapshot = Boolean(params.lastCallUsage) || hasPromptTokens;
 
   if (hasUsage || hasFreshContextSnapshot) {
@@ -116,13 +116,25 @@ export async function persistSessionUsageUpdate(params: {
             modelUsed: params.modelUsed ?? entry.model,
           });
           const existingEstimatedCostUsd = resolveNonNegativeNumber(entry.estimatedCostUsd) ?? 0;
+
+          const modelUsed = params.modelUsed ?? entry.model;
+          const providerUsed = params.providerUsed ?? entry.modelProvider;
+          const modelChanged =
+            (entry.model !== undefined && entry.model !== modelUsed) ||
+            (entry.modelProvider !== undefined && entry.modelProvider !== providerUsed);
+
           const patch: Partial<SessionEntry> = {
-            modelProvider: params.providerUsed ?? entry.modelProvider,
-            model: params.modelUsed ?? entry.model,
+            modelProvider: providerUsed,
+            model: modelUsed,
             contextTokens: resolvedContextTokens,
             systemPromptReport: params.systemPromptReport ?? entry.systemPromptReport,
             updatedAt: Date.now(),
           };
+
+          if (modelChanged) {
+            patch.totalTokensEstimate = undefined;
+          }
+
           if (hasUsage) {
             patch.inputTokens = params.usage?.input ?? 0;
             patch.outputTokens = params.usage?.output ?? 0;
@@ -137,10 +149,19 @@ export async function persistSessionUsageUpdate(params: {
           } else if (entry.estimatedCostUsd !== undefined) {
             patch.estimatedCostUsd = entry.estimatedCostUsd;
           }
+
           // Missing a last-call snapshot (and promptTokens fallback) means
           // context utilization is stale/unknown.
           patch.totalTokens = totalTokens;
           patch.totalTokensFresh = typeof totalTokens === "number";
+
+          if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
+            patch.totalTokensEstimate = totalTokens;
+          } else if (!modelChanged && entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+            // Refresh or backfill estimate baseline from the last known fresh total.
+            patch.totalTokensEstimate = entry.totalTokens;
+          }
+
           return applyCliSessionIdToSessionPatch(params, entry, patch);
         },
       });
@@ -150,24 +171,48 @@ export async function persistSessionUsageUpdate(params: {
     return;
   }
 
-  if (params.modelUsed || params.contextTokensUsed) {
-    try {
-      await updateSessionStoreEntry({
-        storePath,
-        sessionKey,
-        update: async (entry) => {
-          const patch: Partial<SessionEntry> = {
-            modelProvider: params.providerUsed ?? entry.modelProvider,
-            model: params.modelUsed ?? entry.model,
-            contextTokens: params.contextTokensUsed ?? entry.contextTokens,
-            systemPromptReport: params.systemPromptReport ?? entry.systemPromptReport,
-            updatedAt: Date.now(),
-          };
-          return applyCliSessionIdToSessionPatch(params, entry, patch);
-        },
-      });
-    } catch (err) {
-      logVerbose(`failed to persist ${label}model/context update: ${String(err)}`);
-    }
+  if (!params.modelUsed && !params.contextTokensUsed) {
+    return;
+  }
+
+  // Clear usage if explicitly missing (e.g. zero-usage fallback)
+  // Also update model/context if provided.
+  try {
+    await updateSessionStoreEntry({
+      storePath,
+      sessionKey,
+      update: async (entry) => {
+        const modelUsed = params.modelUsed ?? entry.model;
+        const providerUsed = params.providerUsed ?? entry.modelProvider;
+        const modelChanged =
+          (entry.model !== undefined && entry.model !== modelUsed) ||
+          (entry.modelProvider !== undefined && entry.modelProvider !== providerUsed);
+
+        const patch: Partial<SessionEntry> = {
+          modelProvider: providerUsed,
+          model: modelUsed,
+          contextTokens: params.contextTokensUsed ?? entry.contextTokens,
+          systemPromptReport: params.systemPromptReport ?? entry.systemPromptReport,
+          inputTokens: undefined,
+          outputTokens: undefined,
+          totalTokens: undefined,
+          totalTokensFresh: false,
+          cacheRead: undefined,
+          cacheWrite: undefined,
+          updatedAt: Date.now(),
+        };
+
+        if (modelChanged) {
+          patch.totalTokensEstimate = undefined;
+        } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+          // Refresh or backfill estimate baseline from the last known fresh total.
+          patch.totalTokensEstimate = entry.totalTokens;
+        }
+
+        return applyCliSessionIdToSessionPatch(params, entry, patch);
+      },
+    });
+  } catch (err) {
+    logVerbose(`failed to clear ${label}usage update: ${String(err)}`);
   }
 }
