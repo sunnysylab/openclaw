@@ -1,9 +1,10 @@
 /**
  * Whitelist of hook names allowed for silent message ingestion.
  *
- * NOTE: This validates config-level hook names only. The actual hooks that run
- * are determined by what plugins are installed and registered in the hook registry.
- * This whitelist prevents config-based attacks but doesn't control plugin installation.
+ * NOTE: `ingest.hooks` values are treated as plugin IDs to target in the
+ * `message_ingest` pipeline. Entries are first validated against this allowlist,
+ * then dispatched only to matching plugin IDs (when installed + registered).
+ * This prevents config-based escalation and avoids running unrelated ingest handlers.
  *
  * SECURITY: Only add hooks that are safe to run on untrusted/public messages.
  * Hooks listed here will process messages without user mention or LLM oversight.

@@ -749,39 +749,49 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
                 senderId: senderRecipient,
                 senderName: sanitizeUserText(senderName),
               };
+              const ingestEvent = {
+                from: canonicalGroupTarget,
+                content: pendingBodyText,
+                timestamp,
+                metadata: sanitizedMetadata,
+              };
+              const ingestCtx = {
+                channelId: "signal",
+                accountId: deps.accountId,
+                conversationId: canonicalGroupTarget,
+              };
+              // Dispatch to each configured plugin id specifically.
+              // ingest.hooks items are plugin ids validated against ALLOWED_INGEST_HOOKS.
               const HOOK_TIMEOUT_MS = 5000;
-              let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-              const timeoutPromise = new Promise<void>((_, reject) => {
-                timeoutHandle = setTimeout(
-                  () => reject(new Error("Hook timeout")),
-                  HOOK_TIMEOUT_MS,
+              for (const pluginId of validHooks) {
+                if (!hookRunner.hasHooksForPlugin("message_ingest", pluginId)) {
+                  logVerbose(`signal: ingest plugin "${pluginId}" not registered, skipping`);
+                  continue;
+                }
+                logVerbose(
+                  `signal: ingest dispatching to "${pluginId}" for ${canonicalGroupTarget}`,
                 );
-              });
-              void Promise.race([
-                hookRunner.runMessageIngest(
-                  {
-                    from: canonicalGroupTarget,
-                    content: pendingBodyText,
-                    timestamp,
-                    metadata: sanitizedMetadata,
-                  },
-                  {
-                    channelId: "signal",
-                    accountId: deps.accountId,
-                    conversationId: canonicalGroupTarget,
-                  },
-                ),
-                timeoutPromise,
-              ])
-                .catch((err: unknown) => {
-                  const errorMsg = err instanceof Error ? err.message : "Unknown error";
-                  logVerbose(`signal: ingest hook failed: ${errorMsg}`);
-                })
-                .finally(() => {
-                  if (timeoutHandle !== undefined) {
-                    clearTimeout(timeoutHandle);
-                  }
+                let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+                const timeoutPromise = new Promise<void>((_, reject) => {
+                  timeoutHandle = setTimeout(
+                    () => reject(new Error("Hook timeout")),
+                    HOOK_TIMEOUT_MS,
+                  );
                 });
+                void Promise.race([
+                  hookRunner.runMessageIngestForPlugin(pluginId, ingestEvent, ingestCtx),
+                  timeoutPromise,
+                ])
+                  .catch((err: unknown) => {
+                    const errorMsg = err instanceof Error ? err.message : "Unknown error";
+                    logVerbose(`signal: ingest hook "${pluginId}" failed: ${errorMsg}`);
+                  })
+                  .finally(() => {
+                    if (timeoutHandle !== undefined) {
+                      clearTimeout(timeoutHandle);
+                    }
+                  });
+              }
             }
           }
         }

@@ -322,36 +322,50 @@ export async function resolveTelegramInboundBody(params: {
               senderName: sanitizeUserText(buildSenderName(msg)),
               senderUsername: sanitizeUserText(senderUsername),
             };
+            const ingestEvent = {
+              from: canonicalFrom,
+              content: rawBody,
+              timestamp: msg.date ? msg.date * 1000 : undefined,
+              metadata: sanitizedMetadata,
+            };
+            const ingestCtx = {
+              channelId: "telegram",
+              accountId: accountId,
+              conversationId: ingestConversationId,
+            };
+            // Dispatch to each configured plugin id specifically.
+            // ingest.hooks items are plugin ids validated against ALLOWED_INGEST_HOOKS.
+            // Only plugins that are installed + registered for message_ingest receive the event.
             const HOOK_TIMEOUT_MS = 5000;
-            let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-            const timeoutPromise = new Promise<void>((_, reject) => {
-              timeoutHandle = setTimeout(() => reject(new Error("Hook timeout")), HOOK_TIMEOUT_MS);
-            });
-            void Promise.race([
-              hookRunner.runMessageIngest(
-                {
-                  from: canonicalFrom,
-                  content: rawBody,
-                  timestamp: msg.date ? msg.date * 1000 : undefined,
-                  metadata: sanitizedMetadata,
-                },
-                {
-                  channelId: "telegram",
-                  accountId: accountId,
-                  conversationId: ingestConversationId,
-                },
-              ),
-              timeoutPromise,
-            ])
-              .catch((err: unknown) => {
-                const errorMsg = err instanceof Error ? err.message : "Unknown error";
-                logVerbose(`telegram: ingest hook failed: ${errorMsg}`);
-              })
-              .finally(() => {
-                if (timeoutHandle !== undefined) {
-                  clearTimeout(timeoutHandle);
-                }
+            for (const pluginId of validHooks) {
+              if (!hookRunner.hasHooksForPlugin("message_ingest", pluginId)) {
+                logVerbose(`telegram: ingest plugin "${pluginId}" not registered, skipping`);
+                continue;
+              }
+              logVerbose(
+                `telegram: ingest dispatching to "${pluginId}" for ${ingestConversationId}`,
+              );
+              let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+              const timeoutPromise = new Promise<void>((_, reject) => {
+                timeoutHandle = setTimeout(
+                  () => reject(new Error("Hook timeout")),
+                  HOOK_TIMEOUT_MS,
+                );
               });
+              void Promise.race([
+                hookRunner.runMessageIngestForPlugin(pluginId, ingestEvent, ingestCtx),
+                timeoutPromise,
+              ])
+                .catch((err: unknown) => {
+                  const errorMsg = err instanceof Error ? err.message : "Unknown error";
+                  logVerbose(`telegram: ingest hook "${pluginId}" failed: ${errorMsg}`);
+                })
+                .finally(() => {
+                  if (timeoutHandle !== undefined) {
+                    clearTimeout(timeoutHandle);
+                  }
+                });
+            }
           }
         }
       }
