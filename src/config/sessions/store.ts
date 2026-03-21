@@ -18,6 +18,7 @@ import {
 import { getFileStatSnapshot } from "../cache-utils.js";
 import { enforceSessionDiskBudget, type SessionDiskBudgetSweepResult } from "./disk-budget.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
+import { resolveSessionObjectCacheMaxBytes } from "./store-cache-limit.js";
 import {
   clearSessionStoreCaches,
   dropSessionStoreObjectCache,
@@ -50,6 +51,24 @@ function isSessionStoreRecord(value: unknown): value is Record<string, SessionEn
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function isSessionStoreObjectCacheEligible(params: {
+  storePath: string;
+  sizeBytes?: number;
+}): boolean {
+  if (!isSessionStoreCacheEnabled()) {
+    return false;
+  }
+  const maxBytes = resolveSessionObjectCacheMaxBytes();
+  if (maxBytes === 0) {
+    dropSessionStoreObjectCache(params.storePath);
+    return false;
+  }
+  if (params.sizeBytes !== undefined && params.sizeBytes > maxBytes) {
+    dropSessionStoreObjectCache(params.storePath);
+    return false;
+  }
+  return true;
+}
 function normalizeSessionEntryDelivery(entry: SessionEntry): SessionEntry {
   const normalized = normalizeSessionDeliveryFields({
     channel: entry.channel,
@@ -180,16 +199,23 @@ export function loadSessionStore(
   storePath: string,
   opts: LoadSessionStoreOptions = {},
 ): Record<string, SessionEntry> {
-  // Check cache first if enabled
-  if (!opts.skipCache && isSessionStoreCacheEnabled()) {
+  // Check cache first if the object cache is still allowed for this store size.
+  if (!opts.skipCache) {
     const currentFileStat = getFileStatSnapshot(storePath);
-    const cached = readSessionStoreCache({
-      storePath,
-      mtimeMs: currentFileStat?.mtimeMs,
-      sizeBytes: currentFileStat?.sizeBytes,
-    });
-    if (cached) {
-      return cached;
+    if (
+      isSessionStoreObjectCacheEligible({
+        storePath,
+        sizeBytes: currentFileStat?.sizeBytes,
+      })
+    ) {
+      const cached = readSessionStoreCache({
+        storePath,
+        mtimeMs: currentFileStat?.mtimeMs,
+        sizeBytes: currentFileStat?.sizeBytes,
+      });
+      if (cached) {
+        return cached;
+      }
     }
   }
 
