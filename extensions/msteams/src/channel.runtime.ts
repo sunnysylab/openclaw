@@ -20,6 +20,10 @@ import {
   sendAdaptiveCardMSTeams as sendAdaptiveCardMSTeamsImpl,
   sendMessageMSTeams as sendMessageMSTeamsImpl,
 } from "./send.js";
+import {
+  reactMessageMSTeams as reactMessageMSTeamsImpl,
+  removeReactionMSTeams as removeReactionMSTeamsImpl,
+} from "./send.reactions.js";
 export const msTeamsChannelRuntime = {
   deleteMessageMSTeams: deleteMessageMSTeamsImpl,
   editMessageMSTeams: editMessageMSTeamsImpl,
@@ -37,4 +41,6 @@ export const msTeamsChannelRuntime = {
   probeMSTeams: probeMSTeamsImpl,
   sendAdaptiveCardMSTeams: sendAdaptiveCardMSTeamsImpl,
   sendMessageMSTeams: sendMessageMSTeamsImpl,
+  reactMessageMSTeams: reactMessageMSTeamsImpl,
+  removeReactionMSTeams: removeReactionMSTeamsImpl,
 };
