@@ -21,6 +21,9 @@ export const __setMaxChatHistoryMessagesBytesForTest = (value?: number) => {
     maxChatHistoryMessagesBytes = value;
   }
 };
+// Allow sufficient time for CLI to load device identity, sign the connect payload,
+// and complete the handshake on slow systems (cold start, disk I/O). Too short causes
+// premature close with "gateway closed (1000 normal closure)" before connect completes.
 export const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
 export const getHandshakeTimeoutMs = () => {
   // User-facing env var (works in all environments); test-only var gated behind VITEST

@@ -52,9 +52,20 @@ export async function probeGateway(opts: {
   const disableDeviceIdentity = (() => {
     try {
       const hostname = new URL(opts.url).hostname;
-      // Local authenticated probes should stay device-bound so read/detail RPCs
-      // are not scope-limited by the shared-auth scope stripping hardening.
-      return isLoopbackHost(hostname) && !(opts.auth?.token || opts.auth?.password);
+      // Probes should stay device-bound whenever possible so read/detail RPCs
+      // are not scope-limited by shared-auth/anonymous scope stripping hardening.
+      // We used to disable identity for all local probes without token/password,
+      // but that breaks authenticated status checks when hardening is enabled.
+      //
+      // Disable device identity for loopback probes that are effectively
+      // unauthenticated: opts.auth undefined OR an auth object with no
+      // credentials. Callers like status/probe pass { token, password } from
+      // resolveGatewayProbeAuth even when both are missing; treat that as
+      // anonymous to preserve legacy "no-setup" local status behavior.
+      const hasCredentials =
+        (typeof opts.auth?.token === "string" && opts.auth.token.trim().length > 0) ||
+        (typeof opts.auth?.password === "string" && opts.auth.password.trim().length > 0);
+      return isLoopbackHost(hostname) && !hasCredentials;
     } catch {
       return false;
     }
