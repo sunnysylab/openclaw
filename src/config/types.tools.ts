@@ -319,15 +319,6 @@ export type MemorySearchConfig = {
   sources?: Array<"memory" | "sessions">;
   /** Extra paths to include in memory search (directories or .md files). */
   extraPaths?: string[];
-  /** Optional multimodal file indexing for selected extra paths. */
-  multimodal?: {
-    /** Enable image/audio embeddings from extraPaths. */
-    enabled?: boolean;
-    /** Which non-text file types to index. */
-    modalities?: Array<"image" | "audio" | "all">;
-    /** Max bytes allowed per multimodal file before it is skipped. */
-    maxFileBytes?: number;
-  };
   /** Experimental memory search settings. */
   experimental?: {
     /** Enable session transcript indexing (experimental, default: false). */
@@ -356,11 +347,14 @@ export type MemorySearchConfig = {
   fallback?: "openai" | "gemini" | "local" | "voyage" | "mistral" | "ollama" | "none";
   /** Embedding model id (remote) or alias (local). */
   model?: string;
-  /**
-   * Gemini embedding-2 models only: output vector dimensions.
-   * Supported values today are 768, 1536, and 3072.
-   */
+  /** Optional embedding output dimensionality override (for providers that support it). */
   outputDimensionality?: number;
+  /** Optional multimodal indexing for image/audio files in extra paths. */
+  multimodal?: {
+    enabled?: boolean;
+    modalities?: Array<"image" | "audio" | "all">;
+    maxFileBytes?: number;
+  };
   /** Local embedding settings (node-llama-cpp). */
   local?: {
     /** GGUF model path or hf: URI. */
@@ -402,7 +396,7 @@ export type MemorySearchConfig = {
       deltaBytes?: number;
       /** Minimum appended JSONL lines before session transcripts are reindexed. */
       deltaMessages?: number;
-      /** Force session reindex after compaction-triggered transcript updates (default: true). */
+      /** Force session-memory sync after compaction even if deltas are below threshold (default: true). */
       postCompactionForce?: boolean;
     };
   };
@@ -475,6 +469,7 @@ export type ToolsConfig = {
       timeoutSeconds?: number;
       /** Cache TTL in minutes for search results. */
       cacheTtlMinutes?: number;
+      /** Provider-specific configuration (used when provider="brave"). */
       /** @deprecated Legacy Brave scoped config. */
       brave?: WebSearchLegacyProviderConfig;
       /** @deprecated Legacy Firecrawl scoped config. */
@@ -509,7 +504,7 @@ export type ToolsConfig = {
         /** Enable Firecrawl fallback (default: true when apiKey is set). */
         enabled?: boolean;
         /** Firecrawl API key (optional; defaults to FIRECRAWL_API_KEY env var). */
-        apiKey?: SecretInput;
+        apiKey?: string;
         /** Firecrawl base URL (default: https://api.firecrawl.dev). */
         baseUrl?: string;
         /** Whether to keep only main content (default: true). */

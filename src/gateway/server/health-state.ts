@@ -1,7 +1,16 @@
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import {
+  getCachedLatestCortexCaptureHistoryEntry,
+  getLatestCortexCaptureHistoryEntry,
+} from "../../agents/cortex-history.js";
+import { resolveAgentCortexModeStatus, resolveCortexChannelTarget } from "../../agents/cortex.js";
 import { getHealthSnapshot, type HealthSummary } from "../../commands/health.js";
 import { STATE_DIR, createConfigIO, loadConfig } from "../../config/config.js";
-import { resolveMainSessionKey } from "../../config/sessions.js";
+import {
+  loadSessionStore,
+  resolveMainSessionKey,
+  resolveStorePath,
+} from "../../config/sessions.js";
 import { listSystemPresence } from "../../infra/system-presence.js";
 import { getUpdateAvailable } from "../../infra/update-startup.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
@@ -14,12 +23,39 @@ let healthCache: HealthSummary | null = null;
 let healthRefresh: Promise<HealthSummary> | null = null;
 let broadcastHealthUpdate: ((snap: HealthSummary) => void) | null = null;
 
-export function buildGatewaySnapshot(): Snapshot {
+export async function buildGatewaySnapshot(): Promise<Snapshot> {
   const cfg = loadConfig();
   const configPath = createConfigIO().configPath;
   const defaultAgentId = resolveDefaultAgentId(cfg);
   const mainKey = normalizeMainKey(cfg.session?.mainKey);
   const mainSessionKey = resolveMainSessionKey(cfg);
+  const sessionStorePath = resolveStorePath(cfg.session?.store, { agentId: defaultAgentId });
+  const mainSessionEntry = loadSessionStore(sessionStorePath)[mainSessionKey];
+  const channelId = resolveCortexChannelTarget({
+    channel: mainSessionEntry?.lastChannel,
+    originatingChannel: mainSessionEntry?.deliveryContext?.channel,
+    originatingTo: mainSessionEntry?.deliveryContext?.to,
+    nativeChannelId: mainSessionEntry?.deliveryContext?.to,
+    to: mainSessionEntry?.lastTo,
+  });
+  const cortex = await resolveAgentCortexModeStatus({
+    cfg,
+    agentId: defaultAgentId,
+    sessionId: mainSessionEntry?.sessionId,
+    channelId,
+  });
+  // Prefer the in-memory cache to avoid reading the full JSONL during
+  // WebSocket connect handshakes.  Fall back to async read only when
+  // the cache is cold (first snapshot after restart).
+  const cortexHistoryParams = {
+    agentId: defaultAgentId,
+    sessionId: mainSessionEntry?.sessionId,
+    channelId,
+  };
+  const latestCortexCapture = cortex
+    ? (getCachedLatestCortexCaptureHistoryEntry(cortexHistoryParams) ??
+      (await getLatestCortexCaptureHistoryEntry(cortexHistoryParams).catch(() => null)))
+    : null;
   const scope = cfg.session?.scope ?? "per-sender";
   const presence = listSystemPresence();
   const uptimeMs = Math.round(process.uptime() * 1000);
@@ -43,6 +79,17 @@ export function buildGatewaySnapshot(): Snapshot {
     },
     authMode: auth.mode,
     updateAvailable,
+    cortex: cortex
+      ? {
+          enabled: true,
+          mode: cortex.mode,
+          graphPath: cortex.graphPath,
+          lastCaptureAtMs: latestCortexCapture?.timestamp,
+          lastCaptureReason: latestCortexCapture?.reason,
+          lastCaptureStored: latestCortexCapture?.captured,
+          lastSyncPlatforms: latestCortexCapture?.syncPlatforms,
+        }
+      : undefined,
   };
 }
 

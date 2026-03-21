@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPluginRuntimeMock } from "../../../test/helpers/extensions/plugin-runtime-mock.js";
 import type { ClawdbotConfig, PluginRuntime, RuntimeEnv } from "../runtime-api.js";
-import { monitorSingleAccount } from "./monitor.account.js";
-import { setFeishuRuntime } from "./runtime.js";
 import type { ResolvedFeishuAccount } from "./types.js";
+
+type MonitorSingleAccount = typeof import("./monitor.account.js").monitorSingleAccount;
+type SetFeishuRuntime = typeof import("./runtime.js").setFeishuRuntime;
 
 type BoundConversation = {
   bindingId: string;
@@ -34,6 +35,8 @@ const sendMessageFeishuMock = vi.hoisted(() =>
 
 let handlers: Record<string, (data: unknown) => Promise<void>> = {};
 let lastRuntime: RuntimeEnv | null = null;
+let monitorSingleAccount: MonitorSingleAccount;
+let setFeishuRuntime: SetFeishuRuntime;
 const originalStateDir = process.env.OPENCLAW_STATE_DIR;
 
 vi.mock("./client.js", async () => {
@@ -167,6 +170,7 @@ async function setupLifecycleMonitor() {
     cfg: createLifecycleConfig(),
     account: createLifecycleAccount(),
     runtime: lastRuntime,
+    fireAndForget: false,
     botOpenIdSource: {
       kind: "prefetched",
       botOpenId: "ou_bot_1",
@@ -182,8 +186,15 @@ async function setupLifecycleMonitor() {
 }
 
 describe("Feishu bot-menu lifecycle", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useRealTimers();
+    vi.resetModules();
+    vi.doUnmock("./bot.js");
+    vi.doUnmock("./card-action.js");
+    vi.doUnmock("./monitor.account.js");
+    vi.doUnmock("./runtime.js");
+    ({ monitorSingleAccount } = await import("./monitor.account.js"));
+    ({ setFeishuRuntime } = await import("./runtime.js"));
     vi.clearAllMocks();
     handlers = {};
     lastRuntime = null;
@@ -287,6 +298,11 @@ describe("Feishu bot-menu lifecycle", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.resetModules();
+    vi.doUnmock("./bot.js");
+    vi.doUnmock("./card-action.js");
+    vi.doUnmock("./monitor.account.js");
+    vi.doUnmock("./runtime.js");
     if (originalStateDir === undefined) {
       delete process.env.OPENCLAW_STATE_DIR;
       return;

@@ -317,7 +317,7 @@ describe("resolveCommandSecretRefsViaGateway", () => {
               },
             },
           },
-        } as OpenClawConfig,
+        } as unknown as OpenClawConfig,
         commandName: "agent",
         targetIds: new Set(["tools.web.fetch.firecrawl.apiKey"]),
       });

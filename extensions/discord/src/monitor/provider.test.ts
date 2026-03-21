@@ -103,7 +103,6 @@ describe("monitorDiscordProvider", () => {
       }) ?? {}
     );
   };
-
   const getHealthProbe = () => {
     expect(reconcileAcpThreadBindingsOnStartupMock).toHaveBeenCalledTimes(1);
     const firstCall = reconcileAcpThreadBindingsOnStartupMock.mock.calls.at(0) as
@@ -561,7 +560,6 @@ describe("monitorDiscordProvider", () => {
     expect(clientHandleDeployRequestMock).toHaveBeenCalledTimes(1);
     expect(getConstructedClientOptions().eventQueue?.listenerTimeout).toBe(120_000);
   });
-
   it("reports connected status on startup and shutdown", async () => {
     const { monitorDiscordProvider } = await import("./provider.js");
     const setStatus = vi.fn();

@@ -1,5 +1,6 @@
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { vi } from "vitest";
 import type { MockBaileysSocket } from "../../../test/mocks/baileys.js";
@@ -33,11 +34,26 @@ export function resetLoadConfigMock() {
   (globalThis as Record<symbol, unknown>)[CONFIG_KEY] = () => DEFAULT_CONFIG;
 }
 
-function resolveStorePathFallback(store?: string, opts?: { agentId?: string }) {
+function normalizeAgentIdForStorePath(value: string | undefined): string {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) {
+    return "main";
+  }
+  return (
+    trimmed
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+/, "")
+      .replace(/-+$/, "")
+      .slice(0, 64) || "main"
+  );
+}
+
+function resolveStorePathFallback(store?: string, opts?: { agentId?: string }): string {
+  const agentId = normalizeAgentIdForStorePath(opts?.agentId);
   if (!store) {
-    const agentId = (opts?.agentId?.trim() || "main").toLowerCase();
-    return path.join(
-      process.env.HOME ?? "/tmp",
+    return path.resolve(
+      process.env.HOME ?? os.homedir(),
       ".openclaw",
       "agents",
       agentId,
@@ -45,7 +61,13 @@ function resolveStorePathFallback(store?: string, opts?: { agentId?: string }) {
       "sessions.json",
     );
   }
-  return path.resolve(store.replaceAll("{agentId}", opts?.agentId?.trim() || "main"));
+  if (store.includes("{agentId}")) {
+    return path.resolve(store.replaceAll("{agentId}", agentId));
+  }
+  if (store.startsWith("~")) {
+    return path.resolve(path.join(process.env.HOME ?? os.homedir(), store.slice(1)));
+  }
+  return path.resolve(store);
 }
 
 vi.mock("openclaw/plugin-sdk/config-runtime", async (importOriginal) => {
@@ -108,10 +130,7 @@ vi.mock("openclaw/plugin-sdk/config-runtime", async (importOriginal) => {
       configurable: true,
       enumerable: true,
       writable: true,
-      value:
-        typeof actual.resolveStorePath === "function"
-          ? actual.resolveStorePath
-          : resolveStorePathFallback,
+      value: actual.resolveStorePath ?? resolveStorePathFallback,
     },
   });
   return mockModule;

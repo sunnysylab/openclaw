@@ -3,7 +3,6 @@
 
 export * from "../../src/plugin-sdk/line.js";
 export {
-  DEFAULT_ACCOUNT_ID,
   formatDocsLink,
   resolveExactLineGroupConfigKey,
   setSetupChannelEnabled,
