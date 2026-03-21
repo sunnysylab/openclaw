@@ -5,6 +5,7 @@ import {
   extractLeadingHttpStatus,
   formatRawAssistantErrorForUi,
   isCloudflareOrHtmlErrorPage,
+  parseApiErrorInfo,
   parseApiErrorPayload,
 } from "../../shared/assistant-error-format.js";
 export {
@@ -866,6 +867,12 @@ export function classifyFailoverReason(raw: string): FailoverReason | null {
     return "session_expired";
   }
   if (isModelNotFoundErrorMessage(raw)) {
+    return "model_not_found";
+  }
+  const apiInfo = parseApiErrorInfo(raw);
+  if (apiInfo?.httpCode === "404" && isRawApiErrorPayload(raw)) {
+    // Some providers, including OpenRouter, wrap model-not-found responses in
+    // JSON error payloads that only expose a numeric 404 code.
     return "model_not_found";
   }
   const reasonFrom402Text = classifyFailoverReasonFrom402Text(raw);
