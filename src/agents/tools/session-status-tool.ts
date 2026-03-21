@@ -10,7 +10,10 @@ import {
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
-import { loadCombinedSessionStoreForGateway } from "../../gateway/session-utils.js";
+import {
+  loadCombinedSessionStoreForGateway,
+  resolveSessionModelIdentityRef,
+} from "../../gateway/session-utils.js";
 import {
   formatUsageWindowSummary,
   loadProviderUsageSummary,
@@ -365,7 +368,20 @@ export function createSessionStatusTool(opts?: {
       }
 
       const agentDir = resolveAgentDir(cfg, agentId);
-      const providerForCard = resolved.entry.providerOverride?.trim() || configured.provider;
+      const storedModelOverride = resolved.entry.modelOverride?.trim();
+      const resolvedCardModel = storedModelOverride
+        ? {
+            provider: resolved.entry.providerOverride?.trim() || configured.provider,
+            model: storedModelOverride,
+          }
+        : resolveSessionModelIdentityRef(
+            cfg,
+            resolved.entry,
+            agentId,
+            `${configured.provider}/${configured.model}`,
+          );
+      const providerForCard = resolvedCardModel.provider?.trim() || configured.provider;
+      const modelForCard = resolvedCardModel.model.trim();
       const usageProvider = resolveUsageProviderId(providerForCard);
       let usageLine: string | undefined;
       if (usageProvider) {
@@ -419,7 +435,7 @@ export function createSessionStatusTool(opts?: {
         : `🕒 Time zone: ${userTimezone}`;
 
       const agentDefaults = cfg.agents?.defaults ?? {};
-      const defaultLabel = `${configured.provider}/${configured.model}`;
+      const defaultLabel = `${providerForCard}/${modelForCard}`;
       const agentModel =
         typeof agentDefaults.model === "object" && agentDefaults.model
           ? { ...agentDefaults.model, primary: defaultLabel }
