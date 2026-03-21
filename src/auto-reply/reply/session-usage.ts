@@ -157,12 +157,20 @@ export async function persistSessionUsageUpdate(params: {
 
           if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
             patch.totalTokensEstimate = totalTokens;
-            if (totalTokens === 0 && !modelChanged && entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+            if (totalTokens === 0 && !modelChanged) {
+              if (entry.totalTokensEstimate !== undefined) {
+                patch.totalTokensEstimate = entry.totalTokensEstimate;
+              } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+                patch.totalTokensEstimate = entry.totalTokens;
+              }
+            }
+          } else if (!modelChanged) {
+            if (entry.totalTokensEstimate !== undefined) {
+              patch.totalTokensEstimate = entry.totalTokensEstimate;
+            } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+              // Refresh or backfill estimate baseline from the last known fresh total.
               patch.totalTokensEstimate = entry.totalTokens;
             }
-          } else if (!modelChanged && entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
-            // Refresh or backfill estimate baseline from the last known fresh total.
-            patch.totalTokensEstimate = entry.totalTokens;
           }
 
           return applyCliSessionIdToSessionPatch(params, entry, patch);
@@ -207,6 +215,8 @@ export async function persistSessionUsageUpdate(params: {
 
         if (modelChanged) {
           patch.totalTokensEstimate = undefined;
+        } else if (entry.totalTokensEstimate !== undefined) {
+          patch.totalTokensEstimate = entry.totalTokensEstimate;
         } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
           // Refresh or backfill estimate baseline from the last known fresh total.
           patch.totalTokensEstimate = entry.totalTokens;

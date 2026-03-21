@@ -768,7 +768,7 @@ export async function runCronIsolatedAgentTurn(params: {
       cronSession.sessionEntry.totalTokens = undefined;
       cronSession.sessionEntry.totalTokensFresh = false;
       cronSession.sessionEntry.totalTokensEstimate = undefined;
-    } else if (preRunTotalTokens !== undefined && cronSession.sessionEntry.totalTokensFresh !== false) {
+    } else if (cronSession.sessionEntry.totalTokensEstimate === undefined && preRunTotalTokens !== undefined && cronSession.sessionEntry.totalTokensFresh !== false) {
       // Refresh or backfill estimate baseline from the last known fresh total.
       // (Note: totalTokensFresh was already true on cronSession.sessionEntry if it was true on entry)
       cronSession.sessionEntry.totalTokensEstimate = preRunTotalTokens;
