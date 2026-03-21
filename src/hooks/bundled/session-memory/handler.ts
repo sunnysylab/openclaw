@@ -14,6 +14,7 @@ import {
 } from "../../../agents/agent-scope.js";
 import type { OpenClawConfig } from "../../../config/config.js";
 import { resolveStateDir } from "../../../config/paths.js";
+import { parseSessionArchiveTimestamp } from "../../../config/sessions/artifacts.js";
 import { writeFileWithinRoot } from "../../../infra/fs-safe.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import {
@@ -27,6 +28,13 @@ import type { HookHandler } from "../../hooks.js";
 import { generateSlugViaLLM } from "../../llm-slug-generator.js";
 
 const log = createSubsystemLogger("hooks/session-memory");
+const RESET_RECOVERY_MAX_AGE_MS = 30_000;
+const RESET_RECOVERY_AMBIGUITY_GAP_MS = 30_000;
+
+type ResetTranscriptCandidate = {
+  name: string;
+  archivedAtMs: number;
+};
 
 function resolveDisplaySessionKey(params: {
   cfg?: OpenClawConfig;
@@ -139,6 +147,30 @@ function stripResetSuffix(fileName: string): string {
   return resetIndex === -1 ? fileName : fileName.slice(0, resetIndex);
 }
 
+function listResetTranscriptCandidates(files: string[]): ResetTranscriptCandidate[] {
+  return files
+    .filter((name) => name.includes(".jsonl.reset."))
+    .map((name) => ({
+      name,
+      archivedAtMs: parseSessionArchiveTimestamp(name, "reset") ?? Number.NaN,
+    }))
+    .filter((candidate) => Number.isFinite(candidate.archivedAtMs))
+    .toSorted((a, b) => b.archivedAtMs - a.archivedAtMs);
+}
+
+function findLatestResetForSessionId(
+  candidates: ResetTranscriptCandidate[],
+  sessionId: string,
+): ResetTranscriptCandidate | undefined {
+  return candidates.find((candidate) => {
+    const name = candidate.name;
+    return (
+      name.startsWith(`${sessionId}.jsonl.reset.`) ||
+      (name.startsWith(`${sessionId}-topic-`) && name.includes(".jsonl.reset."))
+    );
+  });
+}
+
 async function findPreviousSessionFile(params: {
   sessionsDir: string;
   currentSessionFile?: string;
@@ -147,6 +179,7 @@ async function findPreviousSessionFile(params: {
   try {
     const files = await fs.readdir(params.sessionsDir);
     const fileSet = new Set(files);
+    const resetCandidates = listResetTranscriptCandidates(files);
 
     const baseFromReset = params.currentSessionFile
       ? stripResetSuffix(path.basename(params.currentSessionFile))
@@ -174,6 +207,11 @@ async function findPreviousSessionFile(params: {
       if (topicVariants.length > 0) {
         return path.join(params.sessionsDir, topicVariants[0]);
       }
+
+      const latestResetForSession = findLatestResetForSessionId(resetCandidates, trimmedSessionId);
+      if (latestResetForSession) {
+        return path.join(params.sessionsDir, latestResetForSession.name);
+      }
     }
 
     if (!params.currentSessionFile) {
@@ -193,6 +231,40 @@ async function findPreviousSessionFile(params: {
   return undefined;
 }
 
+async function findRecentResetTranscriptFile(params: {
+  sessionsDir: string;
+  eventTimestampMs: number;
+}): Promise<string | undefined> {
+  try {
+    const candidates = listResetTranscriptCandidates(await fs.readdir(params.sessionsDir));
+    const latest = candidates[0];
+    if (!latest) {
+      return undefined;
+    }
+
+    const ageMs = params.eventTimestampMs - latest.archivedAtMs;
+    if (ageMs < 0 || ageMs > RESET_RECOVERY_MAX_AGE_MS) {
+      return undefined;
+    }
+
+    const nextLatest = candidates[1];
+    if (
+      nextLatest &&
+      latest.archivedAtMs - nextLatest.archivedAtMs < RESET_RECOVERY_AMBIGUITY_GAP_MS
+    ) {
+      log.debug("Skipping timed-out /new reset recovery because the latest archive is ambiguous", {
+        latest: latest.name,
+        nextLatest: nextLatest.name,
+      });
+      return undefined;
+    }
+
+    return path.join(params.sessionsDir, latest.name);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Save session context to memory when /new or /reset command is triggered
  */
@@ -207,6 +279,7 @@ const saveSessionToMemory: HookHandler = async (event) => {
     log.debug("Hook triggered for reset/new command", { action: event.action });
 
     const context = event.context || {};
+    const hasPreviousSessionEntry = Boolean(context.previousSessionEntry);
     const cfg = context.cfg as OpenClawConfig | undefined;
     const contextWorkspaceDir =
       typeof context.workspaceDir === "string" && context.workspaceDir.trim().length > 0
@@ -236,7 +309,7 @@ const saveSessionToMemory: HookHandler = async (event) => {
       string,
       unknown
     >;
-    const currentSessionId = sessionEntry.sessionId as string;
+    let currentSessionId = sessionEntry.sessionId as string;
     let currentSessionFile = (sessionEntry.sessionFile as string) || undefined;
 
     // If sessionFile is empty or looks like a new/reset file, try to find the previous session file.
@@ -253,12 +326,34 @@ const saveSessionToMemory: HookHandler = async (event) => {
           currentSessionFile,
           sessionId: currentSessionId,
         });
-        if (!recoveredSessionFile) {
-          continue;
+        if (recoveredSessionFile) {
+          currentSessionFile = recoveredSessionFile;
+          log.debug("Found previous session file", { file: currentSessionFile });
+          break;
         }
-        currentSessionFile = recoveredSessionFile;
-        log.debug("Found previous session file", { file: currentSessionFile });
-        break;
+
+        // Special case: for `/new` triggered after a timed-out session, `previousSessionEntry` can be missing.
+        // In that case, the "current" session points to an ephemeral session without a matching transcript file,
+        // while the old transcript is already rotated into a freshly archived `*.jsonl.reset.*` in `sessions/`.
+        if (event.action === "new" && !hasPreviousSessionEntry) {
+          const latestReset = await findRecentResetTranscriptFile({
+            sessionsDir,
+            eventTimestampMs: event.timestamp.getTime(),
+          });
+          if (latestReset) {
+            currentSessionFile = latestReset;
+            const baseName = path.basename(latestReset);
+            const match = baseName.match(/^(.+)\.jsonl\.reset\./);
+            if (match?.[1]) {
+              currentSessionId = match[1];
+            }
+            log.debug("Recovered session content from latest reset transcript", {
+              file: currentSessionFile,
+              recoveredSessionId: currentSessionId,
+            });
+            break;
+          }
+        }
       }
     }
 
@@ -323,7 +418,7 @@ const saveSessionToMemory: HookHandler = async (event) => {
     const timeStr = now.toISOString().split("T")[1].split(".")[0];
 
     // Extract context details
-    const sessionId = (sessionEntry.sessionId as string) || "unknown";
+    const sessionId = currentSessionId || "unknown";
     const source = (context.commandSource as string) || "unknown";
 
     // Build Markdown entry

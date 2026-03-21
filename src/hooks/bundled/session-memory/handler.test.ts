@@ -92,6 +92,38 @@ async function runNewWithPreviousSessionEntry(params: {
   return { files, memoryContent };
 }
 
+async function runNewWithSessionEntryOnly(params: {
+  tempDir: string;
+  sessionEntry: { sessionId: string; sessionFile?: string };
+  cfg?: OpenClawConfig;
+  action?: "new" | "reset";
+  sessionKey?: string;
+  workspaceDirOverride?: string;
+}): Promise<{ files: string[]; memoryContent: string }> {
+  const event = createHookEvent(
+    "command",
+    params.action ?? "new",
+    params.sessionKey ?? "agent:main:main",
+    {
+      cfg:
+        params.cfg ??
+        ({
+          agents: { defaults: { workspace: params.tempDir } },
+        } satisfies OpenClawConfig),
+      sessionEntry: params.sessionEntry,
+      ...(params.workspaceDirOverride ? { workspaceDir: params.workspaceDirOverride } : {}),
+    },
+  );
+
+  await handler(event);
+
+  const memoryDir = path.join(params.tempDir, "memory");
+  const files = await fs.readdir(memoryDir);
+  const memoryContent =
+    files.length > 0 ? await fs.readFile(path.join(memoryDir, files[0]), "utf-8") : "";
+  return { files, memoryContent };
+}
+
 async function runNewWithPreviousSession(params: {
   sessionContent: string;
   cfg?: (tempDir: string) => OpenClawConfig;
@@ -484,6 +516,86 @@ describe("session-memory hook", () => {
 
     expect(memoryContent).toContain("user: Recovered with missing sessionFile pointer");
     expect(memoryContent).toContain("assistant: Recovered by sessionId fallback");
+  });
+
+  it("recovers the newest recent reset transcript when previousSessionEntry is missing", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-02-16T22:26:35.000Z"));
+
+      const { tempDir, sessionsDir } = await createSessionMemoryWorkspace();
+      const newEphemeralSessionId = "new-ephemeral-session";
+
+      await writeWorkspaceFile({
+        dir: sessionsDir,
+        name: "zzz-older-session.jsonl.reset.2026-02-16T22-25-20.000Z",
+        content: createMockSessionContent([
+          { role: "user", content: "Older reset transcript" },
+          { role: "assistant", content: "Should not be selected by file name" },
+        ]),
+      });
+      await writeWorkspaceFile({
+        dir: sessionsDir,
+        name: "aaa-fresh-session.jsonl.reset.2026-02-16T22-26-34.000Z",
+        content: createMockSessionContent([
+          { role: "user", content: "Recovered after timed-out /new (recent reset)" },
+          { role: "assistant", content: "Recovered summary" },
+        ]),
+      });
+
+      const { memoryContent } = await runNewWithSessionEntryOnly({
+        tempDir,
+        cfg: makeSessionMemoryConfig(tempDir),
+        sessionEntry: { sessionId: newEphemeralSessionId },
+        action: "new",
+      });
+
+      expect(memoryContent).toContain("user: Recovered after timed-out /new (recent reset)");
+      expect(memoryContent).toContain("assistant: Recovered summary");
+      expect(memoryContent).not.toContain("Older reset transcript");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips timed-out /new recovery when multiple recent reset transcripts make it ambiguous", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-02-16T22:26:35.000Z"));
+
+      const { tempDir, sessionsDir } = await createSessionMemoryWorkspace();
+
+      await writeWorkspaceFile({
+        dir: sessionsDir,
+        name: "alpha-session.jsonl.reset.2026-02-16T22-26-34.000Z",
+        content: createMockSessionContent([
+          { role: "user", content: "Ambiguous recent reset A" },
+          { role: "assistant", content: "Should not be recovered" },
+        ]),
+      });
+      await writeWorkspaceFile({
+        dir: sessionsDir,
+        name: "beta-session.jsonl.reset.2026-02-16T22-26-20.000Z",
+        content: createMockSessionContent([
+          { role: "user", content: "Ambiguous recent reset B" },
+          { role: "assistant", content: "Should not be recovered either" },
+        ]),
+      });
+
+      const { files, memoryContent } = await runNewWithSessionEntryOnly({
+        tempDir,
+        cfg: makeSessionMemoryConfig(tempDir),
+        sessionEntry: { sessionId: "new-ephemeral-session" },
+        action: "new",
+      });
+
+      expect(files.length).toBe(1);
+      expect(memoryContent).not.toContain("## Conversation Summary");
+      expect(memoryContent).not.toContain("Ambiguous recent reset A");
+      expect(memoryContent).not.toContain("Ambiguous recent reset B");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("prefers the newest reset transcript when multiple reset candidates exist", async () => {
