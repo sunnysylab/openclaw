@@ -157,6 +157,9 @@ export async function persistSessionUsageUpdate(params: {
 
           if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
             patch.totalTokensEstimate = totalTokens;
+            if (totalTokens === 0 && !modelChanged && entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+              patch.totalTokensEstimate = entry.totalTokens;
+            }
           } else if (!modelChanged && entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
             // Refresh or backfill estimate baseline from the last known fresh total.
             patch.totalTokensEstimate = entry.totalTokens;

@@ -808,7 +808,9 @@ export async function runCronIsolatedAgentTurn(params: {
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
         cronSession.sessionEntry.totalTokensFresh = true;
-        cronSession.sessionEntry.totalTokensEstimate = totalTokens;
+        if (totalTokens > 0 || cronSession.sessionEntry.totalTokensEstimate === undefined) {
+          cronSession.sessionEntry.totalTokensEstimate = totalTokens;
+        }
         telemetryUsage.total_tokens = totalTokens;
       } else {
         cronSession.sessionEntry.totalTokens = undefined;
