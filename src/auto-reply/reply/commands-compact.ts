@@ -17,6 +17,42 @@ import type { CommandHandler } from "./commands-types.js";
 import { stripMentions, stripStructuralPrefixes } from "./mentions.js";
 import { incrementCompactionCount } from "./session-updates.js";
 
+/**
+ * Rewrite generic SDK cancellation reasons into user-friendly messages.
+ *
+ * The pi-coding-agent SDK returns "Compaction cancelled" when an extension
+ * cancels via `{ cancel: true }`, but that tells the user nothing about *why*.
+ * This function maps known reason patterns to actionable descriptions.
+ */
+function humanizeCompactionReason(reason: string | undefined): string | undefined {
+  const trimmed = reason?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const lower = trimmed.toLowerCase();
+  // The safeguard extension now sets specific reasons via lastCancelReason,
+  // which compact.ts retrieves and passes through instead of the generic
+  // "Compaction cancelled" from the SDK. Handle both the new specific reasons
+  // and the old generic fallback.
+  if (lower === "no compaction model configured") {
+    return "no compaction model is configured — check your model settings";
+  }
+  if (lower === "no api key available for compaction model") {
+    return "no API key available for the compaction model";
+  }
+  if (lower.startsWith("summarization failed:")) {
+    return trimmed; // Already descriptive enough
+  }
+  // Generic SDK fallback (should be rare now that safeguard sets specific reasons)
+  if (lower === "compaction cancelled" || lower === "compaction canceled") {
+    return "compaction was not needed or could not run — check /status for details";
+  }
+  if (lower === "no real conversation messages") {
+    return "no conversation messages to summarize";
+  }
+  return trimmed;
+}
+
 function extractCompactInstructions(params: {
   rawBody?: string;
   ctx: import("../templating.js").MsgContext;
@@ -110,6 +146,16 @@ export const handleCompactCommand: CommandHandler = async (params) => {
     ownerNumbers: params.command.ownerList.length > 0 ? params.command.ownerList : undefined,
   });
 
+  const rawReason = result.reason?.trim();
+  const rawReasonLower = rawReason?.toLowerCase();
+  // Benign skips: context too low or no messages — the system worked as intended.
+  // These get a friendly "Compaction skipped" label.
+  const isCancellation =
+    rawReasonLower === "compaction cancelled" ||
+    rawReasonLower === "compaction canceled" ||
+    rawReasonLower === "no real conversation messages";
+  // Configuration/runtime errors still show "Compaction failed" so the user
+  // knows action is needed (e.g. missing model, missing API key, crash).
   const compactLabel = result.ok
     ? result.compacted
       ? result.result?.tokensBefore != null && result.result?.tokensAfter != null
@@ -118,7 +164,9 @@ export const handleCompactCommand: CommandHandler = async (params) => {
           ? `Compacted (${formatTokenCount(result.result.tokensBefore)} before)`
           : "Compacted"
       : "Compaction skipped"
-    : "Compaction failed";
+    : isCancellation
+      ? "Compaction skipped"
+      : "Compaction failed";
   if (result.ok && result.compacted) {
     await incrementCompactionCount({
       sessionEntry: params.sessionEntry,
@@ -136,7 +184,7 @@ export const handleCompactCommand: CommandHandler = async (params) => {
     typeof totalTokens === "number" && totalTokens > 0 ? totalTokens : null,
     params.contextTokens ?? params.sessionEntry.contextTokens ?? null,
   );
-  const reason = result.reason?.trim();
+  const reason = humanizeCompactionReason(rawReason);
   const line = reason
     ? `${compactLabel}: ${reason} • ${contextSummary}`
     : `${compactLabel} • ${contextSummary}`;
