@@ -1,5 +1,5 @@
 {
-  "name": "@openclaw/rust-plugin",
+  "name": "@wayazi/rust-plugin",
   "version": "2026.3.19",
   "description": "High-performance OpenClaw plugin powered by Rust",
   "keywords": [
@@ -12,15 +12,15 @@
     "plugin",
     "rust"
   ],
-  "homepage": "https://docs.openclaw.ai/plugins/rust-plugin",
+  "homepage": "https://github.com/Wayazi/openclaw",
   "bugs": {
-    "url": "https://github.com/openclaw/openclaw/issues"
+    "url": "https://github.com/Wayazi/openclaw/issues"
   },
   "license": "MIT",
-  "author": "OpenClaw Contributors",
+  "author": "Wayazi",
   "repository": {
     "type": "git",
-    "url": "https://github.com/openclaw/openclaw.git",
+    "url": "https://github.com/Wayazi/openclaw.git",
     "directory": "extensions/rust-plugin"
   },
   "type": "module",
@@ -40,13 +40,13 @@
     "vitest": "^2.0.0"
   },
   "optionalDependencies": {
-    "@openclaw/rust-plugin-darwin-arm64": "2026.3.19",
-    "@openclaw/rust-plugin-darwin-x64": "2026.3.19",
-    "@openclaw/rust-plugin-linux-arm64-gnu": "2026.3.19",
-    "@openclaw/rust-plugin-linux-arm64-musl": "2026.3.19",
-    "@openclaw/rust-plugin-linux-x64-gnu": "2026.3.19",
-    "@openclaw/rust-plugin-linux-x64-musl": "2026.3.19",
-    "@openclaw/rust-plugin-win32-x64-msvc": "2026.3.19"
+    "@wayazi/rust-plugin-darwin-arm64": "2026.3.19",
+    "@wayazi/rust-plugin-darwin-x64": "2026.3.19",
+    "@wayazi/rust-plugin-linux-arm64-gnu": "2026.3.19",
+    "@wayazi/rust-plugin-linux-arm64-musl": "2026.3.19",
+    "@wayazi/rust-plugin-linux-x64-gnu": "2026.3.19",
+    "@wayazi/rust-plugin-linux-x64-musl": "2026.3.19",
+    "@wayazi/rust-plugin-win32-x64-msvc": "2026.3.19"
   },
   "napi": {
     "name": "rust_plugin",
@@ -67,7 +67,7 @@
       "./src/index.ts"
     ],
     "install": {
-      "npmSpec": "@openclaw/rust-plugin",
+      "npmSpec": "@wayazi/rust-plugin",
       "localPath": "extensions/rust-plugin",
       "defaultChoice": "npm"
     },
