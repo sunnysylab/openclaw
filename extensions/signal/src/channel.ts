@@ -340,7 +340,16 @@ export const signalPlugin: ChannelPlugin<ResolvedSignalAccount, SignalProbe> =
         chunker: chunkText,
         chunkerMode: "text",
         textChunkLimit: 4000,
-        sendFormattedText: async ({ cfg, to, text, accountId, deps, abortSignal, replyToId, quoteAuthor }) =>
+        sendFormattedText: async ({
+          cfg,
+          to,
+          text,
+          accountId,
+          deps,
+          abortSignal,
+          replyToId,
+          quoteAuthor,
+        }) =>
           await sendFormattedSignalText({
             cfg,
             to,
