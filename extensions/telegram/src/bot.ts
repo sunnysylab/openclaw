@@ -65,6 +65,7 @@ export type TelegramBotOptions = {
   /** Pre-resolved Telegram transport to reuse across bot instances. If not provided, creates a new one. */
   telegramTransport?: TelegramTransport;
   telegramDeps?: TelegramBotDeps;
+  setStatus?: (status: Record<string, unknown>) => void;
 };
 
 export { getTelegramSequentialKey };
@@ -246,6 +247,17 @@ export function createTelegramBot(opts: TelegramBotOptions) {
   bot.catch((err) => {
     runtime.error?.(danger(`telegram bot error: ${formatUncaughtError(err)}`));
   });
+
+  // ── Health-status middleware ──
+  // Update lastEventAt on every inbound Telegram update so the channel
+  // health monitor knows the connection is alive.
+  if (opts.setStatus) {
+    const setStatus = opts.setStatus;
+    bot.use(async (_ctx, next) => {
+      setStatus({ lastEventAt: Date.now() });
+      await next();
+    });
+  }
 
   const recentUpdates = createTelegramUpdateDedupe();
   const initialUpdateId =
@@ -531,6 +543,17 @@ export function createTelegramBot(opts: TelegramBotOptions) {
     telegramDeps,
   });
 
+  // Track lastInboundAt only for message-bearing updates (not reactions/callbacks).
+  // Must be registered BEFORE registerTelegramHandlers, whose terminal handlers
+  // do not call next() and would prevent this middleware from running.
+  if (opts.setStatus) {
+    const setStatus = opts.setStatus;
+    bot.on(["message", "channel_post"], async (_ctx, next) => {
+      setStatus({ lastInboundAt: Date.now() });
+      await next();
+    });
+  }
+
   registerTelegramHandlers({
     cfg,
     accountId: account.accountId,
@@ -555,6 +578,22 @@ export function createTelegramBot(opts: TelegramBotOptions) {
     threadBindingManager?.stop();
     return originalStop(...args);
   }) as typeof bot.stop;
+
+  // ── Transport heartbeat ──
+  // Stamp lastEventAt on every successful getUpdates response so the health
+  // monitor sees transport liveness even during idle periods (no messages).
+  // If getUpdates fails/hangs, this never fires and lastEventAt goes stale,
+  // letting the health monitor detect the failure correctly.
+  if (opts.setStatus) {
+    const setStatus = opts.setStatus;
+    bot.api.config.use(async (prev, method, payload, signal) => {
+      const result = await prev(method, payload, signal);
+      if (method === "getUpdates") {
+        setStatus({ lastEventAt: Date.now() });
+      }
+      return result;
+    });
+  }
 
   return bot;
 }
