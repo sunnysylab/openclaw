@@ -12,6 +12,12 @@ vi.mock("../../llm-slug-generator.js", () => ({
   generateSlugViaLLM: vi.fn().mockResolvedValue("simple-math"),
 }));
 
+vi.mock("../../session-synthesizer.js", () => ({
+  synthesizeSessionContent: vi
+    .fn()
+    .mockResolvedValue("- Discussed simple math operations\n- Confirmed 2+2 = 4"),
+}));
+
 let handler: HookHandler;
 let suiteWorkspaceRoot = "";
 let workspaceCaseCounter = 0;
@@ -142,6 +148,19 @@ function makeSessionMemoryConfig(tempDir: string, messages?: number): OpenClawCo
   } satisfies OpenClawConfig;
 }
 
+function makeSessionMemoryConfigWithSynthesis(tempDir: string): OpenClawConfig {
+  return {
+    agents: { defaults: { workspace: tempDir } },
+    hooks: {
+      internal: {
+        entries: {
+          "session-memory": { enabled: true, synthesis: true },
+        },
+      },
+    },
+  } satisfies OpenClawConfig;
+}
+
 async function createSessionMemoryWorkspace(params?: {
   activeSession?: { name: string; content: string };
 }): Promise<{ tempDir: string; sessionsDir: string; activeSessionFile?: string }> {
@@ -226,7 +245,7 @@ describe("session-memory hook", () => {
       { role: "assistant", content: "2+2 equals 4" },
     ]);
     const { files, memoryContent } = await runNewWithPreviousSession({ sessionContent });
-    expect(files.length).toBe(1);
+    expect(files.length).toBeGreaterThanOrEqual(1);
 
     // Read the memory file and verify content
     expect(memoryContent).toContain("user: Hello there");
@@ -245,7 +264,7 @@ describe("session-memory hook", () => {
       action: "reset",
     });
 
-    expect(files.length).toBe(1);
+    expect(files.length).toBeGreaterThanOrEqual(1);
     expect(memoryContent).toContain("user: Please reset and keep notes");
     expect(memoryContent).toContain("assistant: Captured before reset");
   });
@@ -281,7 +300,7 @@ describe("session-memory hook", () => {
       },
     });
 
-    expect(files.length).toBe(1);
+    expect(files.length).toBeGreaterThanOrEqual(1);
     expect(memoryContent).toContain("user: Remember this under Navi");
     expect(memoryContent).toContain("assistant: Stored in the bound workspace");
     expect(memoryContent).toContain("- **Session Key**: agent:navi:main");
@@ -449,7 +468,7 @@ describe("session-memory hook", () => {
         sessionFile: resetSessionFile,
       },
     });
-    expect(files.length).toBe(1);
+    expect(files.length).toBeGreaterThanOrEqual(1);
 
     expect(memoryContent).toContain("user: Message from reset pointer");
     expect(memoryContent).toContain("assistant: Recovered directly from reset file");
@@ -480,7 +499,7 @@ describe("session-memory hook", () => {
         sessionId,
       },
     });
-    expect(files.length).toBe(1);
+    expect(files.length).toBeGreaterThanOrEqual(1);
 
     expect(memoryContent).toContain("user: Recovered with missing sessionFile pointer");
     expect(memoryContent).toContain("assistant: Recovered by sessionId fallback");
@@ -557,7 +576,7 @@ describe("session-memory hook", () => {
   it("handles empty session files gracefully", async () => {
     // Should not throw
     const { files } = await runNewWithPreviousSession({ sessionContent: "" });
-    expect(files.length).toBe(1);
+    expect(files.length).toBeGreaterThanOrEqual(1);
   });
 
   it("handles session files with fewer messages than requested", async () => {
@@ -571,5 +590,113 @@ describe("session-memory hook", () => {
     // Both messages should be included
     expect(memoryContent).toContain("user: Only message 1");
     expect(memoryContent).toContain("assistant: Only message 2");
+  });
+
+  it("also appends to canonical daily file", async () => {
+    const sessionContent = createMockSessionContent([
+      { role: "user", content: "Canonical test message" },
+      { role: "assistant", content: "Canonical test reply" },
+    ]);
+    const { tempDir } = await runNewWithPreviousSession({ sessionContent });
+
+    const memoryDir = path.join(tempDir, "memory");
+    const files = await fs.readdir(memoryDir);
+
+    // Find canonical file (YYYY-MM-DD.md — no slug suffix) and slug file
+    const canonicalFile = files.find((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f));
+    const slugFile = files.find(
+      (f) => f.endsWith(".md") && f !== canonicalFile && /^\d{4}-\d{2}-\d{2}-.+\.md$/.test(f),
+    );
+
+    expect(canonicalFile).toBeDefined();
+    expect(slugFile).toBeDefined();
+
+    // Canonical file should contain the same content
+    const canonicalContent = await fs.readFile(path.join(memoryDir, canonicalFile!), "utf-8");
+    expect(canonicalContent).toContain("Canonical test message");
+    expect(canonicalContent).toContain("Canonical test reply");
+  });
+
+  it("appends multiple sessions to canonical daily file with separator", async () => {
+    const tempDir = await createCaseWorkspace("workspace");
+    const sessionsDir = path.join(tempDir, "sessions");
+    await fs.mkdir(sessionsDir, { recursive: true });
+
+    const cfg = {
+      agents: { defaults: { workspace: tempDir } },
+    } satisfies OpenClawConfig;
+
+    // First session
+    const sessionFile1 = await writeWorkspaceFile({
+      dir: sessionsDir,
+      name: "session-1.jsonl",
+      content: createMockSessionContent([
+        { role: "user", content: "First session content" },
+        { role: "assistant", content: "First session reply" },
+      ]),
+    });
+
+    await runNewWithPreviousSessionEntry({
+      tempDir,
+      cfg,
+      previousSessionEntry: { sessionId: "session-1", sessionFile: sessionFile1 },
+    });
+
+    // Second session
+    const sessionFile2 = await writeWorkspaceFile({
+      dir: sessionsDir,
+      name: "session-2.jsonl",
+      content: createMockSessionContent([
+        { role: "user", content: "Second session content" },
+        { role: "assistant", content: "Second session reply" },
+      ]),
+    });
+
+    await runNewWithPreviousSessionEntry({
+      tempDir,
+      cfg,
+      previousSessionEntry: { sessionId: "session-2", sessionFile: sessionFile2 },
+    });
+
+    // Check canonical file has both sessions separated — find by pattern,
+    // not by constructing the date (which could differ from handler's timezone)
+    const memoryDir = path.join(tempDir, "memory");
+    const allFiles = await fs.readdir(memoryDir);
+    const canonFile = allFiles.find((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f));
+    expect(canonFile).toBeDefined();
+    const canonicalContent = await fs.readFile(path.join(memoryDir, canonFile!), "utf-8");
+
+    expect(canonicalContent).toContain("First session content");
+    expect(canonicalContent).toContain("Second session content");
+    expect(canonicalContent).toContain("---"); // separator between sessions
+  });
+
+  it("uses synthesis when enabled in config (test env skips LLM call)", async () => {
+    // In test env, synthesis is skipped (isTestEnv check), so the raw content is used.
+    // This test verifies the code path doesn't crash and falls back gracefully.
+    const sessionContent = createMockSessionContent([
+      { role: "user", content: "Synthesized session test" },
+      { role: "assistant", content: "This should be synthesized" },
+    ]);
+    const { memoryContent } = await runNewWithPreviousSession({
+      sessionContent,
+      cfg: (tempDir) => makeSessionMemoryConfigWithSynthesis(tempDir),
+    });
+
+    // In test env, synthesis LLM call is skipped, so raw content is preserved
+    expect(memoryContent).toContain("Synthesized session test");
+  });
+
+  it("uses raw content by default (synthesis disabled)", async () => {
+    const sessionContent = createMockSessionContent([
+      { role: "user", content: "Raw content test" },
+      { role: "assistant", content: "Should not be synthesized" },
+    ]);
+    const { memoryContent } = await runNewWithPreviousSession({ sessionContent });
+
+    // Default behavior: raw messages in "Conversation Summary" section
+    expect(memoryContent).toContain("## Conversation Summary");
+    expect(memoryContent).toContain("user: Raw content test");
+    expect(memoryContent).toContain("assistant: Should not be synthesized");
   });
 });
