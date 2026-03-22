@@ -142,14 +142,14 @@ export async function persistSessionUsageUpdate(params: {
             if (totalTokens === 0 && entry.totalTokensFresh) {
               if (entry.totalTokensEstimate !== undefined) {
                 patch.totalTokensEstimate = entry.totalTokensEstimate;
-              } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+              } else if (entry.totalTokens !== undefined) {
                 patch.totalTokensEstimate = entry.totalTokens;
               }
             }
           } else {
             if (entry.totalTokensEstimate !== undefined) {
               patch.totalTokensEstimate = entry.totalTokensEstimate;
-            } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+            } else if (entry.totalTokens !== undefined && entry.totalTokensFresh) {
               // Refresh or backfill estimate baseline from the last known fresh total.
               patch.totalTokensEstimate = entry.totalTokens;
             }
@@ -214,7 +214,7 @@ export async function persistSessionUsageUpdate(params: {
           patch.totalTokensEstimate = undefined;
         } else if (entry.totalTokensEstimate !== undefined) {
           patch.totalTokensEstimate = entry.totalTokensEstimate;
-        } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+        } else if (entry.totalTokens !== undefined && entry.totalTokensFresh) {
           // Refresh or backfill estimate baseline from the last known fresh total.
           patch.totalTokensEstimate = entry.totalTokens;
         }

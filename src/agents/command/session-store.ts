@@ -86,7 +86,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.totalTokensEstimate = undefined;
   } else if (entry.totalTokensEstimate !== undefined) {
     next.totalTokensEstimate = entry.totalTokensEstimate;
-  } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+  } else if (entry.totalTokens !== undefined && entry.totalTokensFresh) {
     // Refresh or backfill estimate baseline from the last known fresh total.
     next.totalTokensEstimate = entry.totalTokens;
   }
