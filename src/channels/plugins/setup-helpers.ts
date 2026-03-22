@@ -330,6 +330,7 @@ const COMMON_SINGLE_ACCOUNT_KEYS_TO_MOVE = new Set([
   "code",
   "dmPolicy",
   "allowFrom",
+  "allowSendTo",
   "groupPolicy",
   "groupAllowFrom",
   "defaultTo",
