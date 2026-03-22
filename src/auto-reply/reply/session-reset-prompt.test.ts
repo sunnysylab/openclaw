@@ -5,8 +5,12 @@ import { buildBareSessionResetPrompt } from "./session-reset-prompt.js";
 describe("buildBareSessionResetPrompt", () => {
   it("includes the core session startup instruction", () => {
     const prompt = buildBareSessionResetPrompt();
-    expect(prompt).toContain("Run your Session Startup sequence");
-    expect(prompt).toContain("read the required files before responding to the user");
+    expect(prompt).toContain("Execute your Session Startup sequence now");
+    expect(prompt).toContain("read the required workspace files before responding to the user");
+    expect(prompt).toContain(
+      "Do not volunteer internal startup steps, workspace file names, tools, or reasoning unless one of the startup files explicitly requires a user-facing notice.",
+    );
+    expect(prompt).toContain("Never explain your reboot or setup process.");
   });
 
   it("appends current time line so agents know the date", () => {
