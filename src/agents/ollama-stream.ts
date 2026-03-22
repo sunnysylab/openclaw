@@ -246,6 +246,32 @@ function extractOllamaImages(content: unknown): string[] {
     .map((part) => part.data);
 }
 
+/**
+ * Ensure tool-call arguments are an object, not a JSON string.
+ *
+ * When tool calls round-trip through OpenAI-format storage, `arguments` is
+ * serialized as a JSON string.  Ollama's native API expects an object —
+ * sending the string as-is causes:
+ *   "Value looks like object, but can't find closing '}' symbol"
+ * and the model returns an empty response on the next turn.
+ */
+function ensureArgsObject(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // not valid JSON — fall through to empty object
+    }
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
 function extractToolCalls(content: unknown): OllamaToolCall[] {
   if (!Array.isArray(content)) {
     return [];
@@ -254,9 +280,9 @@ function extractToolCalls(content: unknown): OllamaToolCall[] {
   const result: OllamaToolCall[] = [];
   for (const part of parts) {
     if (part.type === "toolCall") {
-      result.push({ function: { name: part.name, arguments: part.arguments } });
+      result.push({ function: { name: part.name, arguments: ensureArgsObject(part.arguments) } });
     } else if (part.type === "tool_use") {
-      result.push({ function: { name: part.name, arguments: part.input } });
+      result.push({ function: { name: part.name, arguments: ensureArgsObject(part.input) } });
     }
   }
   return result;
