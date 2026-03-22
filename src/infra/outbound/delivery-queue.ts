@@ -53,7 +53,7 @@ export type RecoverySummary = {
   deferredBackoff: number;
 };
 
-export function resolveQueueDir(stateDir?: string): string {
+function resolveQueueDir(stateDir?: string): string {
   const base = stateDir ?? resolveStateDir();
   return path.join(base, QUEUE_DIRNAME);
 }
@@ -506,19 +506,28 @@ async function _drainReconnectQueueCore(opts: {
     await fs.promises.rename(tmp, filePath);
   }
 
-  // Deliver using injectable or real deliver function
+  // Deliver only the eligible entries for this account (scoped drain).
   // Dynamic import to avoid circular dependency (deliver.ts imports from delivery-queue.ts).
   // The INEFFECTIVE_DYNAMIC_IMPORT warning is expected since deliver.ts is statically
   // imported by other modules; the dynamic import here is purely for cycle avoidance.
   const deliver = opts.deliver ?? (await import("./deliver.js")).deliverOutboundPayloads;
 
-  await recoverPendingDeliveries({
-    deliver,
-    cfg: opts.cfg,
-    log: opts.log,
-    stateDir: opts.stateDir,
-    maxRecoveryMs: 30_000,
-  });
+  // Deliver only the reset entries, not the full queue. This prevents cross-account
+  // interference in multi-account setups and avoids duplicate delivery races with
+  // the startup recoverPendingDeliveries run.
+  for (const entry of eligible) {
+    try {
+      await deliver({ cfg: opts.cfg, ...entry, skipQueue: true });
+      await ackDelivery(entry.id, opts.stateDir);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (isPermanentDeliveryError(errMsg)) {
+        await moveToFailed(entry.id, opts.stateDir).catch(() => {});
+      } else {
+        await failDelivery(entry.id, errMsg, opts.stateDir).catch(() => {});
+      }
+    }
+  }
 }
 
 const PERMANENT_ERROR_PATTERNS: readonly RegExp[] = [
