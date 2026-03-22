@@ -121,11 +121,21 @@ export async function updateSessionStoreAfterAgentRun(params: {
     );
     next.inputTokens = input ?? entry.inputTokens;
     next.outputTokens = output ?? entry.outputTokens;
+    const prevFresh = entry.totalTokensFresh;
+    const prevEstimate = entry.totalTokensEstimate;
+    const prevTotal = entry.totalTokens;
+    const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
+
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
-      next.totalTokensFresh = totalTokens > 0 || entry.totalTokensFresh === false;
-      if (totalTokens > 0 || entry.totalTokensFresh !== true) {
+      next.totalTokensFresh = totalTokens > 0 || prevFresh === false || prevWasZero;
+      if (next.totalTokensFresh) {
         next.totalTokensEstimate = totalTokens;
+      } else if (totalTokens === 0) {
+        const fallback = prevEstimate ?? prevTotal;
+        if (fallback !== undefined && fallback > 0) {
+          next.totalTokensEstimate = fallback;
+        }
       }
     } else {
       next.totalTokens = undefined;

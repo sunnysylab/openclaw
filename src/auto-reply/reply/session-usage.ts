@@ -132,18 +132,22 @@ export async function persistSessionUsageUpdate(params: {
           };
 
           patch.totalTokens = totalTokens;
+          const prevFresh = entry.totalTokensFresh;
+          const prevEstimate = entry.totalTokensEstimate;
+          const prevTotal = entry.totalTokens;
+          const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
+
           patch.totalTokensFresh =
-            typeof totalTokens === "number" && (totalTokens > 0 || entry.totalTokensFresh === false);
+            typeof totalTokens === "number" && (totalTokens > 0 || prevFresh === false || prevWasZero);
 
           if (modelChanged) {
             patch.totalTokensEstimate = undefined;
           } else if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
             patch.totalTokensEstimate = totalTokens;
-            if (totalTokens === 0 && entry.totalTokensFresh !== false) {
-              if (entry.totalTokensEstimate !== undefined) {
-                patch.totalTokensEstimate = entry.totalTokensEstimate;
-              } else if (entry.totalTokens !== undefined) {
-                patch.totalTokensEstimate = entry.totalTokens;
+            if (totalTokens === 0 && !patch.totalTokensFresh) {
+              const fallback = prevEstimate ?? prevTotal;
+              if (fallback !== undefined && fallback > 0) {
+                patch.totalTokensEstimate = fallback;
               }
             }
           } else {

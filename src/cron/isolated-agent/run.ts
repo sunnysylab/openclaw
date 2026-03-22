@@ -757,13 +757,21 @@ export async function runCronIsolatedAgentTurn(params: {
         input_tokens: input,
         output_tokens: output,
       };
+      const prevFresh = cronSession.sessionEntry.totalTokensFresh;
+      const prevEstimate = cronSession.sessionEntry.totalTokensEstimate;
+      const prevTotal = cronSession.sessionEntry.totalTokens;
+      const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
+
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
-        const prevTotalTokensFresh = cronSession.sessionEntry.totalTokensFresh;
-        cronSession.sessionEntry.totalTokensFresh =
-          totalTokens > 0 || prevTotalTokensFresh === false;
-        if (totalTokens > 0 || prevTotalTokensFresh !== true) {
+        cronSession.sessionEntry.totalTokensFresh = totalTokens > 0 || prevFresh === false || prevWasZero;
+        if (cronSession.sessionEntry.totalTokensFresh) {
           cronSession.sessionEntry.totalTokensEstimate = totalTokens;
+        } else if (totalTokens === 0) {
+          const fallback = prevEstimate ?? prevTotal;
+          if (fallback !== undefined && fallback > 0) {
+            cronSession.sessionEntry.totalTokensEstimate = fallback;
+          }
         }
         telemetryUsage.total_tokens = totalTokens;
       } else {
