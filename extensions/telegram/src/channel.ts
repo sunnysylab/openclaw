@@ -137,6 +137,10 @@ function resolveTelegramAutoThreadId(params: {
     return undefined;
   }
   const parsedTo = parseTelegramTarget(params.to);
+  // If `to` already encodes an explicit topic/thread, honour it — don't override.
+  if (parsedTo.messageThreadId != null) {
+    return undefined;
+  }
   const parsedChannel = parseTelegramTarget(context.currentChannelId);
   if (parsedTo.chatId.toLowerCase() !== parsedChannel.chatId.toLowerCase()) {
     return undefined;
@@ -691,7 +695,13 @@ export const telegramPlugin = createChatChannelPlugin({
     collectWarnings: collectTelegramSecurityWarnings,
   },
   threading: {
-    topLevelReplyToMode: "telegram",
+    resolveReplyToMode: createTopLevelChannelReplyToModeResolver("telegram"),
+    buildToolContext: ({ context, hasRepliedRef }) => ({
+      currentChannelId: context.To?.trim() || undefined,
+      currentThreadTs:
+        context.MessageThreadId != null ? String(context.MessageThreadId) : undefined,
+      hasRepliedRef,
+    }),
     resolveAutoThreadId: ({ to, toolContext, replyToId }) =>
       replyToId ? undefined : resolveTelegramAutoThreadId({ to, toolContext }),
   },
