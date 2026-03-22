@@ -766,7 +766,7 @@ export async function runCronIsolatedAgentTurn(params: {
 
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
-        cronSession.sessionEntry.totalTokensFresh = totalTokens > 0 || prevFresh !== true || prevWasZero;
+        cronSession.sessionEntry.totalTokensFresh = totalTokens > 0 || prevWasZero;
         if (cronSession.sessionEntry.totalTokensFresh) {
           cronSession.sessionEntry.totalTokensEstimate = totalTokens;
         } else if (totalTokens === 0 && !modelChanged) {

@@ -130,7 +130,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
 
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
-      next.totalTokensFresh = totalTokens > 0 || prevFresh !== true || prevWasZero;
+      next.totalTokensFresh = totalTokens > 0 || prevWasZero;
       if (next.totalTokensFresh) {
         next.totalTokensEstimate = totalTokens;
       } else if (totalTokens === 0 && !modelChanged) {
