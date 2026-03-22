@@ -1,6 +1,11 @@
 import type { Command } from "commander";
+import { loadConfig } from "../config/config.js";
+import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
+import { resolveGatewayCredentialsWithSecretInputs } from "../gateway/call.js";
 import { isLoopbackHost } from "../gateway/net.js";
+import { loadDeviceAuthToken } from "../infra/device-auth-store.js";
+import { loadDeviceIdentityIfPresent } from "../infra/device-identity.js";
 import {
   approveDevicePairing,
   listDevicePairing,
@@ -99,11 +104,44 @@ function normalizeErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): boolean {
-  const message = normalizeErrorMessage(error).toLowerCase();
-  if (!message.includes("pairing required")) {
+function isLoopbackPairingHandshakeTimeout(message: string): boolean {
+  // Local token-auth pairing can time out before the gateway sends a reason
+  // frame, which currently surfaces to the CLI as a plain 1000/no-reason close.
+  const lower = message.toLowerCase();
+  return lower.includes("gateway closed (1000 normal closure): no close reason");
+}
+
+async function hasResolvedGatewayAuth(opts: DevicesRpcOpts): Promise<boolean> {
+  const urlOverride =
+    typeof opts.url === "string" && opts.url.trim().length > 0 ? opts.url.trim() : undefined;
+  const resolved = await resolveGatewayCredentialsWithSecretInputs({
+    config: loadConfig(),
+    explicitAuth: {
+      token: opts.token,
+      password: opts.password,
+    },
+    urlOverride,
+    urlOverrideSource: urlOverride ? "cli" : undefined,
+  });
+  return !!(resolved.token || resolved.password);
+}
+
+function hasStoredDeviceGatewayAuth(): boolean {
+  const identity = loadDeviceIdentityIfPresent();
+  if (!identity) {
     return false;
   }
+  return !!loadDeviceAuthToken({ deviceId: identity.deviceId, role: "operator" })?.token;
+}
+
+function hasPairingProtectedLoopbackGateway(): boolean {
+  const auth = resolveGatewayAuth({
+    authConfig: loadConfig().gateway?.auth ?? {},
+  });
+  return (auth.mode === "token" || auth.mode === "password") && !!(auth.token || auth.password);
+}
+
+function shouldUseImplicitLoopbackPairingFallback(opts: DevicesRpcOpts): boolean {
   if (typeof opts.url === "string" && opts.url.trim().length > 0) {
     // Explicit --url might point at a remote/tunneled gateway; never silently
     // switch to local pairing files in that case.
@@ -120,6 +158,44 @@ function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): bo
   }
 }
 
+async function shouldUseLoopbackHandshakeListFallback(
+  opts: DevicesRpcOpts,
+  error: unknown,
+): Promise<boolean> {
+  if (!shouldUseImplicitLoopbackPairingFallback(opts)) {
+    return false;
+  }
+  if (!isLoopbackPairingHandshakeTimeout(normalizeErrorMessage(error))) {
+    return false;
+  }
+  if (await hasResolvedGatewayAuth(opts)) {
+    // Generic 1000/no-reason closes can also mask real authenticated gateway
+    // failures; only use the local fallback when the CLI was not already
+    // carrying any resolved gateway credentials.
+    return false;
+  }
+  if (hasStoredDeviceGatewayAuth()) {
+    // Stored device tokens also authenticate loopback operator sessions; do not
+    // hide generic authenticated gateway failures behind the local pairing file.
+    return false;
+  }
+  if (!hasPairingProtectedLoopbackGateway()) {
+    // Generic close-without-reason can also mean the local gateway is simply
+    // unhealthy; only treat it as a pairing regression on protected loopback
+    // gateways where the original bug was observed.
+    return false;
+  }
+  return true;
+}
+
+function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): boolean {
+  const message = normalizeErrorMessage(error).toLowerCase();
+  if (!message.includes("pairing required")) {
+    return false;
+  }
+  return shouldUseImplicitLoopbackPairingFallback(opts);
+}
+
 function redactLocalPairedDevice(device: InfraPairedDevice): PairedDevice {
   const { tokens, ...rest } = device;
   return {
@@ -128,11 +204,20 @@ function redactLocalPairedDevice(device: InfraPairedDevice): PairedDevice {
   };
 }
 
-async function listPairingWithFallback(opts: DevicesRpcOpts): Promise<DevicePairingList> {
+async function listPairingWithFallback(
+  opts: DevicesRpcOpts,
+  params?: { allowHandshakeCloseFallback?: boolean },
+): Promise<DevicePairingList> {
   try {
     return parseDevicePairingList(await callGatewayCli("device.pair.list", opts, {}));
   } catch (error) {
-    if (!shouldUseLocalPairingFallback(opts, error)) {
+    if (
+      !shouldUseLocalPairingFallback(opts, error) &&
+      !(
+        params?.allowHandshakeCloseFallback !== false &&
+        (await shouldUseLoopbackHandshakeListFallback(opts, error))
+      )
+    ) {
       throw error;
     }
     if (opts.json !== true) {
@@ -398,7 +483,9 @@ export function registerDevicesCli(program: Command) {
       .action(async (requestId: string | undefined, opts: DevicesRpcOpts) => {
         let resolvedRequestId = requestId?.trim();
         if (!resolvedRequestId || opts.latest) {
-          const latest = selectLatestPendingRequest((await listPairingWithFallback(opts)).pending);
+          const latest = selectLatestPendingRequest(
+            (await listPairingWithFallback(opts, { allowHandshakeCloseFallback: false })).pending,
+          );
           resolvedRequestId = latest?.requestId?.trim();
         }
         if (!resolvedRequestId) {

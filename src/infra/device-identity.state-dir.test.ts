@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { withStateDirEnv } from "../test-helpers/state-dir-env.js";
-import { loadOrCreateDeviceIdentity } from "./device-identity.js";
+import { loadDeviceIdentityIfPresent, loadOrCreateDeviceIdentity } from "./device-identity.js";
 
 describe("device identity state dir defaults", () => {
   it("writes the default identity file under OPENCLAW_STATE_DIR", async () => {
@@ -47,6 +47,26 @@ describe("device identity state dir defaults", () => {
 
       expect(repaired.deviceId).toBe(original.deviceId);
       expect(stored.deviceId).toBe(original.deviceId);
+    });
+  });
+
+  it("returns the repaired device id without mutating disk in read-only probes", async () => {
+    await withStateDirEnv("openclaw-identity-state-", async ({ stateDir }) => {
+      const original = loadOrCreateDeviceIdentity();
+      const identityPath = path.join(stateDir, "identity", "device.json");
+      const raw = JSON.parse(await fs.readFile(identityPath, "utf8")) as Record<string, unknown>;
+
+      await fs.writeFile(
+        identityPath,
+        `${JSON.stringify({ ...raw, deviceId: "stale-device-id" }, null, 2)}\n`,
+        "utf8",
+      );
+
+      const probed = loadDeviceIdentityIfPresent();
+      const stored = JSON.parse(await fs.readFile(identityPath, "utf8")) as { deviceId?: string };
+
+      expect(probed?.deviceId).toBe(original.deviceId);
+      expect(stored.deviceId).toBe("stale-device-id");
     });
   });
 

@@ -7,10 +7,17 @@ const buildGatewayConnectionDetails = vi.fn(() => ({
   urlSource: "local loopback",
   message: "",
 }));
+const resolveGatewayCredentialsWithSecretInputs = vi.fn(
+  async (params?: { explicitAuth?: { token?: string; password?: string } }) =>
+    params?.explicitAuth ?? {},
+);
 const listDevicePairing = vi.fn();
 const approveDevicePairing = vi.fn();
 const summarizeDeviceTokens = vi.fn();
+const loadDeviceAuthToken = vi.fn(() => null);
+const loadDeviceIdentityIfPresent = vi.fn(() => null);
 const withProgress = vi.fn(async (_opts: unknown, fn: () => Promise<unknown>) => await fn());
+const loadConfig = vi.fn(() => ({}));
 const runtime = {
   log: vi.fn(),
   error: vi.fn(),
@@ -20,16 +27,29 @@ const runtime = {
 vi.mock("../gateway/call.js", () => ({
   callGateway,
   buildGatewayConnectionDetails,
+  resolveGatewayCredentialsWithSecretInputs,
 }));
 
 vi.mock("./progress.js", () => ({
   withProgress,
 }));
 
+vi.mock("../config/config.js", () => ({
+  loadConfig,
+}));
+
 vi.mock("../infra/device-pairing.js", () => ({
   listDevicePairing,
   approveDevicePairing,
   summarizeDeviceTokens,
+}));
+
+vi.mock("../infra/device-auth-store.js", () => ({
+  loadDeviceAuthToken,
+}));
+
+vi.mock("../infra/device-identity.js", () => ({
+  loadDeviceIdentityIfPresent,
 }));
 
 vi.mock("../runtime.js", () => ({
@@ -251,6 +271,46 @@ describe("devices cli local fallback", () => {
     expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining(fallbackNotice));
   });
 
+  it.each(["gateway closed (1000 normal closure): no close reason"])(
+    "falls back to local pairing list for loopback handshake close variant %s",
+    async (message) => {
+      loadConfig.mockReturnValueOnce({ gateway: { auth: { token: "cfg-token" } } });
+      callGateway.mockRejectedValueOnce(new Error(message));
+      listDevicePairing.mockResolvedValueOnce({
+        pending: [{ requestId: "req-1", deviceId: "device-1", publicKey: "pk", ts: 1 }],
+        paired: [],
+      });
+      summarizeDeviceTokens.mockReturnValue(undefined);
+
+      await runDevicesCommand(["list"]);
+
+      expect(callGateway).toHaveBeenCalledWith(
+        expect.objectContaining({ method: "device.pair.list" }),
+      );
+      expect(listDevicePairing).toHaveBeenCalledTimes(1);
+      expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining(fallbackNotice));
+    },
+  );
+
+  it("does not use loopback handshake fallback when gateway auth mode is none", async () => {
+    loadConfig.mockReturnValue({ gateway: { auth: { mode: "none" } } });
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+
+    await expect(runDevicesCommand(["list"])).rejects.toThrow("no close reason");
+    expect(listDevicePairing).not.toHaveBeenCalled();
+  });
+
+  it("does not use local list fallback for generic 1000 closes after connect", async () => {
+    callGateway.mockRejectedValueOnce(new Error("gateway closed (1000): no close reason"));
+
+    await expect(runDevicesCommand(["list"])).rejects.toThrow(
+      "gateway closed (1000): no close reason",
+    );
+    expect(listDevicePairing).not.toHaveBeenCalled();
+  });
+
   it("falls back to local approve when gateway returns pairing required on loopback", async () => {
     callGateway
       .mockRejectedValueOnce(new Error("gateway closed (1008): pairing required"))
@@ -277,12 +337,122 @@ describe("devices cli local fallback", () => {
     expect(runtime.log).toHaveBeenCalledWith(expect.stringContaining("Approved"));
   });
 
-  it("does not use local fallback when an explicit --url is provided", async () => {
-    callGateway.mockRejectedValueOnce(new Error("gateway closed (1008): pairing required"));
+  it("does not use local approve fallback for generic loopback 1000 closes", async () => {
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+
+    await expect(runDevicesApprove(["req-1"])).rejects.toThrow(
+      "gateway closed (1000 normal closure): no close reason",
+    );
+    expect(approveDevicePairing).not.toHaveBeenCalled();
+  });
+
+  it("does not use loopback handshake list fallback for approve --latest", async () => {
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+
+    await expect(runDevicesApprove(["--latest"])).rejects.toThrow("no close reason");
+    expect(listDevicePairing).not.toHaveBeenCalled();
+    expect(approveDevicePairing).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "gateway closed (1008): pairing required",
+    "gateway closed (1000 normal closure): no close reason",
+  ])("does not use local fallback when an explicit --url is provided (%s)", async (message) => {
+    callGateway.mockRejectedValueOnce(new Error(message));
 
     await expect(
       runDevicesCommand(["list", "--json", "--url", "ws://127.0.0.1:18789"]),
-    ).rejects.toThrow("pairing required");
+    ).rejects.toThrow(
+      message.includes("pairing required") ? "pairing required" : "no close reason",
+    );
+    expect(listDevicePairing).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["--token", "test-token"],
+    ["--password", "test-password"],
+  ])(
+    "does not use generic loopback handshake fallback when explicit auth %s is provided",
+    async (flag, value) => {
+      callGateway.mockRejectedValueOnce(
+        new Error("gateway closed (1000 normal closure): no close reason"),
+      );
+
+      await expect(runDevicesCommand(["list", flag, value])).rejects.toThrow("no close reason");
+      expect(listDevicePairing).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not use generic loopback handshake fallback when shared gateway auth resolves from config or SecretRef", async () => {
+    loadConfig.mockReturnValueOnce({
+      gateway: {
+        auth: {
+          mode: "token",
+          token: { ref: "secrets.gateway-token" } as unknown as string,
+        },
+      },
+    });
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+    resolveGatewayCredentialsWithSecretInputs.mockResolvedValueOnce({
+      token: "resolved-secret-token",
+    });
+
+    await expect(runDevicesCommand(["list"])).rejects.toThrow("no close reason");
+    expect(resolveGatewayCredentialsWithSecretInputs).toHaveBeenCalledTimes(1);
+    expect(listDevicePairing).not.toHaveBeenCalled();
+  });
+
+  it("does not use generic loopback handshake fallback when a stored device token exists", async () => {
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+    loadDeviceIdentityIfPresent.mockReturnValueOnce({ deviceId: "device-identity-1" });
+    loadDeviceAuthToken.mockReturnValueOnce({ token: "device-token" });
+
+    await expect(runDevicesCommand(["list"])).rejects.toThrow("no close reason");
+    expect(loadDeviceIdentityIfPresent).toHaveBeenCalledTimes(1);
+    expect(loadDeviceAuthToken).toHaveBeenCalledWith({
+      deviceId: "device-identity-1",
+      role: "operator",
+    });
+    expect(listDevicePairing).not.toHaveBeenCalled();
+  });
+
+  it("falls back when the current device identity has no stored operator token", async () => {
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+    loadDeviceIdentityIfPresent.mockReturnValueOnce({ deviceId: "current-device" });
+    loadDeviceAuthToken.mockReturnValueOnce(null);
+
+    listDevicePairing.mockResolvedValueOnce({
+      pending: [{ requestId: "req-1", deviceId: "device-1", publicKey: "pk", ts: 1 }],
+      paired: [],
+    });
+    summarizeDeviceTokens.mockReturnValue(undefined);
+
+    await runDevicesCommand(["list"]);
+
+    expect(loadDeviceAuthToken).toHaveBeenCalledWith({
+      deviceId: "current-device",
+      role: "operator",
+    });
+    expect(listDevicePairing).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not use loopback handshake fallback when auth mode is only defaulted", async () => {
+    loadConfig.mockReturnValue({ gateway: { auth: { allowTailscale: true } } });
+    callGateway.mockRejectedValueOnce(
+      new Error("gateway closed (1000 normal closure): no close reason"),
+    );
+
+    await expect(runDevicesCommand(["list"])).rejects.toThrow("no close reason");
     expect(listDevicePairing).not.toHaveBeenCalled();
   });
 });
@@ -319,6 +489,15 @@ afterEach(() => {
     urlSource: "local loopback",
     message: "",
   });
+  resolveGatewayCredentialsWithSecretInputs.mockClear();
+  resolveGatewayCredentialsWithSecretInputs.mockImplementation(
+    async (params?: { explicitAuth?: { token?: string; password?: string } }) =>
+      params?.explicitAuth ?? {},
+  );
+  loadDeviceAuthToken.mockClear();
+  loadDeviceAuthToken.mockReturnValue(null);
+  loadDeviceIdentityIfPresent.mockClear();
+  loadDeviceIdentityIfPresent.mockReturnValue(null);
   listDevicePairing.mockClear();
   listDevicePairing.mockResolvedValue({ pending: [], paired: [] });
   approveDevicePairing.mockClear();
@@ -326,6 +505,8 @@ afterEach(() => {
   summarizeDeviceTokens.mockClear();
   summarizeDeviceTokens.mockReturnValue(undefined);
   withProgress.mockClear();
+  loadConfig.mockClear();
+  loadConfig.mockReturnValue({ gateway: { auth: { token: "cfg-token" } } });
   runtime.log.mockClear();
   runtime.error.mockClear();
   runtime.exit.mockClear();
