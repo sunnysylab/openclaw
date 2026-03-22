@@ -8,7 +8,7 @@ import { getNodesTheme, runNodesCommand } from "./cli-utils.js";
 import { formatPermissions, parseNodeList, parsePairingList } from "./format.js";
 import { renderPendingPairingRequestsTable } from "./pairing-render.js";
 import { callGatewayCli, nodesCallOpts, resolveNodeId } from "./rpc.js";
-import type { NodesRpcOpts } from "./types.js";
+import type { NodeListNode, NodesRpcOpts, PairedNode } from "./types.js";
 
 function formatVersionLabel(raw: string) {
   const trimmed = raw.trim();
@@ -95,6 +95,45 @@ function parseSinceMs(raw: unknown, label: string): number | undefined {
     defaultRuntime.exit(1);
     return undefined;
   }
+}
+
+function messageFromError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return "";
+}
+
+function shouldFallbackToPairList(error: unknown): boolean {
+  const message = messageFromError(error).toLowerCase();
+  if (!message.includes("node.list")) {
+    return false;
+  }
+  // Auth/scope failures should surface to callers instead of silently degrading.
+  if (
+    message.includes("unauthorized") ||
+    message.includes("forbidden") ||
+    message.includes("missing scope")
+  ) {
+    return false;
+  }
+  return (
+    message.includes("unknown method") ||
+    message.includes("method not found") ||
+    message.includes("not implemented") ||
+    message.includes("unsupported")
+  );
 }
 
 export function registerNodesStatusCommands(nodes: Command) {
@@ -297,7 +336,7 @@ export function registerNodesStatusCommands(nodes: Command) {
   nodesCallOpts(
     nodes
       .command("list")
-      .description("List pending and paired nodes")
+      .description("List pending, paired, and connected nodes")
       .option("--connected", "Only show connected nodes")
       .option("--last-connected <duration>", "Only show nodes connected within duration (e.g. 24h)")
       .action(async (opts: NodesRpcOpts) => {
@@ -311,28 +350,41 @@ export function registerNodesStatusCommands(nodes: Command) {
           const now = Date.now();
           const hasFilters = connectedOnly || sinceMs !== undefined;
           const pendingRows = hasFilters ? [] : pending;
-          const connectedById = hasFilters
-            ? new Map(
-                parseNodeList(await callGatewayCli("node.list", opts, {})).map((node) => [
-                  node.nodeId,
-                  node,
-                ]),
-              )
-            : null;
-          const filteredPaired = paired.filter((node) => {
+          const pairedById = new Map(paired.map((entry) => [entry.nodeId, entry]));
+
+          let nodes: NodeListNode[] = paired.map((entry) => ({
+            nodeId: entry.nodeId,
+            displayName: entry.displayName,
+            remoteIp: entry.remoteIp,
+            connected: false,
+            paired: true,
+          }));
+          try {
+            nodes = parseNodeList(await callGatewayCli("node.list", opts, {}));
+          } catch (error) {
+            if (hasFilters || !shouldFallbackToPairList(error)) {
+              throw error;
+            }
+          }
+
+          const isPairedNode = (nodeId: string, pairedFlag: boolean | undefined) =>
+            Boolean(pairedFlag) || pairedById.has(nodeId);
+          const candidates = nodes.filter(
+            (node) => isPairedNode(node.nodeId, node.paired) || Boolean(node.connected),
+          );
+          const filteredNodes = candidates.filter((node) => {
             if (connectedOnly) {
-              const live = connectedById?.get(node.nodeId);
-              if (!live?.connected) {
+              if (!node.connected) {
                 return false;
               }
             }
             if (sinceMs !== undefined) {
-              const live = connectedById?.get(node.nodeId);
+              const pairedNode = pairedById.get(node.nodeId);
               const lastConnectedAtMs =
-                typeof node.lastConnectedAtMs === "number"
-                  ? node.lastConnectedAtMs
-                  : typeof live?.connectedAtMs === "number"
-                    ? live.connectedAtMs
+                typeof pairedNode?.lastConnectedAtMs === "number"
+                  ? pairedNode.lastConnectedAtMs
+                  : typeof node.connectedAtMs === "number"
+                    ? node.connectedAtMs
                     : undefined;
               if (typeof lastConnectedAtMs !== "number") {
                 return false;
@@ -343,15 +395,56 @@ export function registerNodesStatusCommands(nodes: Command) {
             }
             return true;
           });
+          const pairedCount = filteredNodes.filter((node) =>
+            isPairedNode(node.nodeId, node.paired),
+          ).length;
+          const totalPairedCount = candidates.filter((node) =>
+            isPairedNode(node.nodeId, node.paired),
+          ).length;
           const filteredLabel =
-            hasFilters && filteredPaired.length !== paired.length ? ` (of ${paired.length})` : "";
+            hasFilters && pairedCount !== totalPairedCount ? ` (of ${totalPairedCount})` : "";
+          const connectedCount = filteredNodes.filter((node) => Boolean(node.connected)).length;
           defaultRuntime.log(
-            `Pending: ${pendingRows.length} · Paired: ${filteredPaired.length}${filteredLabel}`,
+            `Pending: ${pendingRows.length} · Paired: ${pairedCount}${filteredLabel} · Connected: ${connectedCount}`,
           );
 
           if (opts.json) {
+            const filteredPaired = filteredNodes
+              .filter((node) => isPairedNode(node.nodeId, node.paired))
+              .map((node): PairedNode => {
+                const pairedEntry = pairedById.get(node.nodeId);
+                if (pairedEntry) {
+                  return pairedEntry;
+                }
+                return {
+                  nodeId: node.nodeId,
+                  token: undefined,
+                  displayName: node.displayName,
+                  platform: node.platform,
+                  version: node.version,
+                  coreVersion: node.coreVersion,
+                  uiVersion: node.uiVersion,
+                  remoteIp: node.remoteIp,
+                  permissions: node.permissions,
+                  createdAtMs: undefined,
+                  approvedAtMs: undefined,
+                  lastConnectedAtMs:
+                    typeof node.connectedAtMs === "number" ? node.connectedAtMs : undefined,
+                };
+              });
+            const filteredConnected = filteredNodes.filter(
+              (node) => !isPairedNode(node.nodeId, node.paired),
+            );
             defaultRuntime.log(
-              JSON.stringify({ pending: pendingRows, paired: filteredPaired }, null, 2),
+              JSON.stringify(
+                {
+                  pending: pendingRows,
+                  paired: filteredPaired,
+                  connected: filteredConnected,
+                },
+                null,
+                2,
+              ),
             );
             return;
           }
@@ -368,19 +461,19 @@ export function registerNodesStatusCommands(nodes: Command) {
             defaultRuntime.log(rendered.table);
           }
 
-          if (filteredPaired.length > 0) {
-            const pairedRows = filteredPaired.map((n) => {
-              const live = connectedById?.get(n.nodeId);
+          if (filteredNodes.length > 0) {
+            const pairedRows = filteredNodes.map((n) => {
+              const pairedNode = pairedById.get(n.nodeId);
               const lastConnectedAtMs =
-                typeof n.lastConnectedAtMs === "number"
-                  ? n.lastConnectedAtMs
-                  : typeof live?.connectedAtMs === "number"
-                    ? live.connectedAtMs
+                typeof pairedNode?.lastConnectedAtMs === "number"
+                  ? pairedNode.lastConnectedAtMs
+                  : typeof n.connectedAtMs === "number"
+                    ? n.connectedAtMs
                     : undefined;
               return {
-                Node: n.displayName?.trim() ? n.displayName.trim() : n.nodeId,
+                Node: n.displayName?.trim() || pairedNode?.displayName?.trim() || n.nodeId,
                 Id: n.nodeId,
-                IP: n.remoteIp ?? "",
+                IP: n.remoteIp ?? pairedNode?.remoteIp ?? "",
                 LastConnect:
                   typeof lastConnectedAtMs === "number"
                     ? formatTimeAgo(Math.max(0, now - lastConnectedAtMs))
@@ -388,7 +481,7 @@ export function registerNodesStatusCommands(nodes: Command) {
               };
             });
             defaultRuntime.log("");
-            defaultRuntime.log(heading("Paired"));
+            defaultRuntime.log(heading("Paired / Connected"));
             defaultRuntime.log(
               renderTable({
                 width: tableWidth,

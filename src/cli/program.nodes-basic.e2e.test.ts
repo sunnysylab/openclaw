@@ -100,6 +100,170 @@ describe("cli program (nodes basics)", () => {
     expect(output).not.toContain("Two");
   });
 
+  it("runs nodes list and includes connected nodes missing from node.pair.list", async () => {
+    const now = Date.now();
+    callGateway.mockImplementation(async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as { method?: string };
+      if (opts.method === "node.pair.list") {
+        return {
+          pending: [],
+          paired: [],
+        };
+      }
+      if (opts.method === "node.list") {
+        return {
+          nodes: [
+            {
+              nodeId: "n-live",
+              displayName: "Live Node",
+              remoteIp: "10.0.0.9",
+              paired: false,
+              connected: true,
+              connectedAtMs: now - 1_000,
+            },
+          ],
+        };
+      }
+      return { ok: true };
+    });
+
+    await runProgram(["nodes", "list"]);
+
+    const output = getRuntimeOutput();
+    expect(output).toContain("Pending: 0 · Paired: 0 · Connected: 1");
+    expect(output).toContain("Live Node");
+  });
+
+  it("runs nodes list without filters when node.list is unavailable", async () => {
+    const now = Date.now();
+    callGateway.mockImplementation(async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as { method?: string };
+      if (opts.method === "node.pair.list") {
+        return {
+          pending: [],
+          paired: [
+            {
+              nodeId: "n1",
+              displayName: "One",
+              remoteIp: "10.0.0.1",
+              lastConnectedAtMs: now - 1_000,
+            },
+          ],
+        };
+      }
+      if (opts.method === "node.list") {
+        throw new Error("unknown method: node.list");
+      }
+      return { ok: true };
+    });
+
+    await runProgram(["nodes", "list"]);
+
+    const output = getRuntimeOutput();
+    expect(output).toContain("One");
+  });
+
+  it("runs nodes list --json and preserves paired metadata fields", async () => {
+    const now = Date.now();
+    callGateway.mockImplementation(async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as { method?: string };
+      if (opts.method === "node.pair.list") {
+        return {
+          pending: [],
+          paired: [
+            {
+              nodeId: "n1",
+              displayName: "One",
+              remoteIp: "10.0.0.1",
+              lastConnectedAtMs: now - 1_000,
+              approvedAtMs: now - 2_000,
+            },
+          ],
+        };
+      }
+      if (opts.method === "node.list") {
+        return {
+          nodes: [
+            {
+              nodeId: "n1",
+              displayName: "One",
+              remoteIp: "10.0.0.1",
+              paired: true,
+              connected: true,
+              connectedAtMs: now - 1_000,
+            },
+          ],
+        };
+      }
+      return { ok: true };
+    });
+
+    await runProgram(["nodes", "list", "--json"]);
+
+    const output = getRuntimeOutput();
+    expect(output).toContain('"paired"');
+    expect(output).toContain('"lastConnectedAtMs"');
+    expect(output).toContain('"approvedAtMs"');
+  });
+
+  it("runs nodes list --json and keeps paired nodes reported only by node.list", async () => {
+    const now = Date.now();
+    callGateway.mockImplementation(async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as { method?: string };
+      if (opts.method === "node.pair.list") {
+        return {
+          pending: [],
+          paired: [],
+        };
+      }
+      if (opts.method === "node.list") {
+        return {
+          nodes: [
+            {
+              nodeId: "n-skew",
+              displayName: "Skew Node",
+              remoteIp: "10.0.0.7",
+              paired: true,
+              connected: true,
+              connectedAtMs: now - 1_000,
+              permissions: { camera: true },
+            },
+          ],
+        };
+      }
+      return { ok: true };
+    });
+
+    await runProgram(["nodes", "list", "--json"]);
+
+    const output = getRuntimeOutput();
+    expect(output).toContain('"paired"');
+    expect(output).toContain('"n-skew"');
+    expect(output).toContain('"lastConnectedAtMs"');
+    expect(output).toContain('"permissions"');
+  });
+
+  it("surfaces node.list auth errors instead of silently falling back", async () => {
+    callGateway.mockImplementation(async (...args: unknown[]) => {
+      const opts = (args[0] ?? {}) as { method?: string };
+      if (opts.method === "node.pair.list") {
+        return {
+          pending: [],
+          paired: [],
+        };
+      }
+      if (opts.method === "node.list") {
+        throw new Error("missing scope: operator.read (node.list)");
+      }
+      return { ok: true };
+    });
+
+    await expect(runProgram(["nodes", "list"])).rejects.toThrow("exit");
+    expect(runtime.error).toHaveBeenCalledWith(
+      expect.stringContaining("missing scope: operator.read"),
+    );
+  });
+
   it("runs nodes status --last-connected and filters by age", async () => {
     const now = Date.now();
     callGateway.mockImplementation(async (...args: unknown[]) => {

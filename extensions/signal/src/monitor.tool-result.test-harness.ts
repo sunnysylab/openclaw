@@ -164,6 +164,7 @@ vi.mock("openclaw/plugin-sdk/infra-runtime", async () => {
   );
   return {
     ...actual,
+    enqueueSystemEvent: actual.enqueueSystemEvent,
     waitForTransportReady: (...args: unknown[]) => waitForTransportReadyMock(...args),
     enqueueSystemEvent: (...args: Parameters<typeof actual.enqueueSystemEvent>) => {
       enqueueSystemEventMock(...args);
