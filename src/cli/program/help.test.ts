@@ -113,7 +113,9 @@ describe("configureProgramHelp", () => {
     configureProgramHelp(program, testProgramContext);
 
     const help = captureHelpOutput(program);
-    expect(help).toContain("Hint: commands suffixed with * have subcommands");
+    // 更新测试以匹配中英双语格式 / Update test to match bilingual format
+    expect(help).toContain("带 * 的命令有子命令");
+    expect(help).toContain("Commands with * have subcommands");
     expect(help).toContain("models *");
     expect(help).toContain("status");
     expect(help).not.toContain("status *");
