@@ -38,10 +38,37 @@ const EXPLICIT_TARGET_ACTIONS = new Set<ChannelMessageActionName>([
   "thread-reply",
   "broadcast",
 ]);
+const POLL_PARAM_KEYS = [
+  "pollQuestion",
+  "pollOption",
+  "pollDurationHours",
+  "pollDurationSeconds",
+  "pollMulti",
+  "pollAnonymous",
+  "pollPublic",
+  "pollId",
+  "pollOptionId",
+  "pollOptionIds",
+  "pollOptionIndex",
+  "pollOptionIndexes",
+] as const;
 
 function actionNeedsExplicitTarget(action: ChannelMessageActionName): boolean {
   return EXPLICIT_TARGET_ACTIONS.has(action);
 }
+
+function prunePollParamsForNonPollAction(
+  action: ChannelMessageActionName,
+  params: Record<string, unknown>,
+): void {
+  if (action === "poll") {
+    return;
+  }
+  for (const key of POLL_PARAM_KEYS) {
+    delete params[key];
+  }
+}
+
 function buildRoutingSchema() {
   return {
     channel: Type.Optional(Type.String()),
@@ -707,6 +734,7 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
           })
         ).resolvedConfig;
       }
+      prunePollParamsForNonPollAction(action, params);
       const requireExplicitTarget = options?.requireExplicitTarget === true;
       if (requireExplicitTarget && actionNeedsExplicitTarget(action)) {
         const explicitTarget =

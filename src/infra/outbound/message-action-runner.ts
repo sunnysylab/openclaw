@@ -62,6 +62,33 @@ export type MessageActionRunnerGateway = {
   mode: GatewayClientMode;
 };
 
+const POLL_PARAM_KEYS = [
+  "pollQuestion",
+  "pollOption",
+  "pollDurationHours",
+  "pollDurationSeconds",
+  "pollMulti",
+  "pollAnonymous",
+  "pollPublic",
+  "pollId",
+  "pollOptionId",
+  "pollOptionIds",
+  "pollOptionIndex",
+  "pollOptionIndexes",
+] as const;
+
+function prunePollParamsForNonPollAction(
+  action: ChannelMessageActionName,
+  params: Record<string, unknown>,
+): void {
+  if (action === "poll") {
+    return;
+  }
+  for (const key of POLL_PARAM_KEYS) {
+    delete params[key];
+  }
+}
+
 function resolveAndApplyOutboundThreadId(
   params: Record<string, unknown>,
   ctx: {
@@ -727,6 +754,7 @@ export async function runMessageAction(
   parseInteractiveParam(params);
 
   const action = input.action;
+  prunePollParamsForNonPollAction(action, params);
   if (action === "broadcast") {
     return handleBroadcastAction(input, params);
   }
