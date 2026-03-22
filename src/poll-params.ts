@@ -71,7 +71,8 @@ export function hasPollCreationParams(params: Record<string, unknown>): boolean 
     if (def.kind === "number") {
       // Treat zero-valued numeric defaults as unset, but preserve any non-zero
       // numeric value as explicit poll intent so invalid durations still hit
-      // the poll-only validation path.
+      // the poll-only validation path. Negative values are intentional caller
+      // signals (unusual enough to warrant poll validation), not auto-filled defaults.
       if (typeof value === "number" && Number.isFinite(value) && value !== 0) {
         return true;
       }
