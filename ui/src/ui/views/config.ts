@@ -560,7 +560,7 @@ function renderNotificationsSection(props: ConfigProps) {
       <div class="settings-appearance__section">
         <h3 class="settings-appearance__heading">Push Notifications</h3>
         <p class="settings-appearance__hint">
-          Receive browser notifications when messages arrive or tasks complete.
+          Subscribe to receive browser push notifications from your gateway.
         </p>
 
         <div class="settings-info-grid">
