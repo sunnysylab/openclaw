@@ -121,4 +121,23 @@ describe("chat.abort authorization", () => {
     expect(ok).toBe(true);
     expect(payload).toMatchObject({ aborted: true, runIds: ["run-1"] });
   });
+
+  it("supports chat.stop as an alias to stop active chat runs", async () => {
+    const context = createSingleAbortContext();
+
+    const respond = await invokeChatAbortHandler({
+      handler: chatHandlers["chat.stop"],
+      context,
+      request: { sessionKey: "main", runId: "run-1" },
+      client: {
+        connId: "conn-owner",
+        connect: { device: { id: "dev-owner" }, scopes: ["operator.write"] },
+      },
+    });
+
+    const [ok, payload] = respond.mock.calls.at(-1) ?? [];
+    expect(ok).toBe(true);
+    expect(payload).toMatchObject({ stopped: true, aborted: true, runIds: ["run-1"] });
+    expect(context.chatAbortControllers.has("run-1")).toBe(false);
+  });
 });

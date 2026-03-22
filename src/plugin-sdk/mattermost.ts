@@ -28,6 +28,8 @@ export {
 export { buildChannelConfigSchema } from "../channels/plugins/config-schema.js";
 export { formatPairingApproveHint } from "../channels/plugins/helpers.js";
 export { resolveChannelMediaMaxBytes } from "../channels/plugins/media-limits.js";
+export type { ChannelOnboardingAdapter } from "../channels/plugins/onboarding-types.js";
+export { resolveChannelGroupRequireMention } from "../config/group-policy.js";
 export {
   buildSingleChannelSecretPromptState,
   promptSingleChannelSecretInput,

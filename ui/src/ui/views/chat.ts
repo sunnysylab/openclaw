@@ -1464,27 +1464,14 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
       message: msg,
     });
   }
-  // Interleave stream segments and tool cards in order. Each segment
-  // contains text that was streaming before the corresponding tool started.
-  // This ensures correct visual ordering: text → tool → text → tool → ...
-  const segments = props.streamSegments ?? [];
-  const maxLen = Math.max(segments.length, tools.length);
-  for (let i = 0; i < maxLen; i++) {
-    if (i < segments.length && segments[i].text.trim().length > 0) {
-      items.push({
-        kind: "stream" as const,
-        key: `stream-seg:${props.sessionKey}:${i}`,
-        text: segments[i].text,
-        startedAt: segments[i].ts,
-      });
-    }
-    if (i < tools.length && props.showToolCalls) {
-      items.push({
-        kind: "message",
-        key: messageKey(tools[i], i + history.length),
-        message: tools[i],
-      });
-    }
+  // Tool calls/results should be visible regardless of the "show thinking" toggle.
+  // (Thinking controls reasoning visibility, not operational transparency.)
+  for (let i = 0; i < tools.length; i++) {
+    items.push({
+      kind: "message",
+      key: messageKey(tools[i], i + history.length),
+      message: tools[i],
+    });
   }
 
   if (props.stream !== null) {

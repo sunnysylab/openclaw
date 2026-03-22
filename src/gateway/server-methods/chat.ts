@@ -67,9 +67,11 @@ import { setGatewayDedupeEntry } from "./agent-wait-dedupe.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
 import { appendInjectedAssistantMessageToTranscript } from "./chat-transcript-inject.js";
 import type {
+  GatewayClient,
   GatewayRequestContext,
   GatewayRequestHandlerOptions,
   GatewayRequestHandlers,
+  RespondFn,
 } from "./types.js";
 
 type TranscriptAppendResult = {
@@ -1075,6 +1077,96 @@ function broadcastChatError(params: {
   params.context.agentRunSeq.delete(params.runId);
 }
 
+function handleChatStopLikeRpc(params: {
+  methodName: "chat.abort" | "chat.stop";
+  requestParams: Record<string, unknown>;
+  respond: RespondFn;
+  context: GatewayRequestContext;
+  client: GatewayClient | null;
+}) {
+  if (!validateChatAbortParams(params.requestParams)) {
+    params.respond(
+      false,
+      undefined,
+      errorShape(
+        ErrorCodes.INVALID_REQUEST,
+        `invalid ${params.methodName} params: ${formatValidationErrors(validateChatAbortParams.errors)}`,
+      ),
+    );
+    return;
+  }
+
+  const { sessionKey: rawSessionKey, runId } = params.requestParams as {
+    sessionKey: string;
+    runId?: string;
+  };
+
+  const ops = createChatAbortOps(params.context);
+  const requester = resolveChatAbortRequester(params.client);
+
+  if (!runId) {
+    const res = abortChatRunsForSessionKeyWithPartials({
+      context: params.context,
+      ops,
+      sessionKey: rawSessionKey,
+      abortOrigin: "rpc",
+      stopReason: "rpc",
+      requester,
+    });
+    if (res.unauthorized) {
+      params.respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unauthorized"));
+      return;
+    }
+    params.respond(true, { ok: true, stopped: res.aborted, aborted: res.aborted, runIds: res.runIds });
+    return;
+  }
+
+  const active = params.context.chatAbortControllers.get(runId);
+  if (!active) {
+    params.respond(true, { ok: true, stopped: false, aborted: false, runIds: [] });
+    return;
+  }
+  if (active.sessionKey !== rawSessionKey) {
+    params.respond(
+      false,
+      undefined,
+      errorShape(ErrorCodes.INVALID_REQUEST, "runId does not match sessionKey"),
+    );
+    return;
+  }
+  if (!canRequesterAbortChatRun(active, requester)) {
+    params.respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unauthorized"));
+    return;
+  }
+
+  const partialText = params.context.chatRunBuffers.get(runId);
+  const res = abortChatRunById(ops, {
+    runId,
+    sessionKey: rawSessionKey,
+    stopReason: "rpc",
+  });
+  if (res.aborted && partialText && partialText.trim()) {
+    persistAbortedPartials({
+      context: params.context,
+      sessionKey: rawSessionKey,
+      snapshots: [
+        {
+          runId,
+          sessionId: active.sessionId,
+          text: partialText,
+          abortOrigin: "rpc",
+        },
+      ],
+    });
+  }
+  params.respond(true, {
+    ok: true,
+    stopped: res.aborted,
+    aborted: res.aborted,
+    runIds: res.aborted ? [runId] : [],
+  });
+}
+
 export const chatHandlers: GatewayRequestHandlers = {
   "chat.history": async ({ params, respond, context }) => {
     if (!validateChatHistoryParams(params)) {
@@ -1141,84 +1233,21 @@ export const chatHandlers: GatewayRequestHandlers = {
     });
   },
   "chat.abort": ({ params, respond, context, client }) => {
-    if (!validateChatAbortParams(params)) {
-      respond(
-        false,
-        undefined,
-        errorShape(
-          ErrorCodes.INVALID_REQUEST,
-          `invalid chat.abort params: ${formatValidationErrors(validateChatAbortParams.errors)}`,
-        ),
-      );
-      return;
-    }
-    const { sessionKey: rawSessionKey, runId } = params as {
-      sessionKey: string;
-      runId?: string;
-    };
-
-    const ops = createChatAbortOps(context);
-    const requester = resolveChatAbortRequester(client);
-
-    if (!runId) {
-      const res = abortChatRunsForSessionKeyWithPartials({
-        context,
-        ops,
-        sessionKey: rawSessionKey,
-        abortOrigin: "rpc",
-        stopReason: "rpc",
-        requester,
-      });
-      if (res.unauthorized) {
-        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unauthorized"));
-        return;
-      }
-      respond(true, { ok: true, aborted: res.aborted, runIds: res.runIds });
-      return;
-    }
-
-    const active = context.chatAbortControllers.get(runId);
-    if (!active) {
-      respond(true, { ok: true, aborted: false, runIds: [] });
-      return;
-    }
-    if (active.sessionKey !== rawSessionKey) {
-      respond(
-        false,
-        undefined,
-        errorShape(ErrorCodes.INVALID_REQUEST, "runId does not match sessionKey"),
-      );
-      return;
-    }
-    if (!canRequesterAbortChatRun(active, requester)) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unauthorized"));
-      return;
-    }
-
-    const partialText = context.chatRunBuffers.get(runId);
-    const res = abortChatRunById(ops, {
-      runId,
-      sessionKey: rawSessionKey,
-      stopReason: "rpc",
+    handleChatStopLikeRpc({
+      methodName: "chat.abort",
+      requestParams: params,
+      respond,
+      context,
+      client,
     });
-    if (res.aborted && partialText && partialText.trim()) {
-      persistAbortedPartials({
-        context,
-        sessionKey: rawSessionKey,
-        snapshots: [
-          {
-            runId,
-            sessionId: active.sessionId,
-            text: partialText,
-            abortOrigin: "rpc",
-          },
-        ],
-      });
-    }
-    respond(true, {
-      ok: true,
-      aborted: res.aborted,
-      runIds: res.aborted ? [runId] : [],
+  },
+  "chat.stop": ({ params, respond, context, client }) => {
+    handleChatStopLikeRpc({
+      methodName: "chat.stop",
+      requestParams: params,
+      respond,
+      context,
+      client,
     });
   },
   "chat.send": async ({ params, respond, context, client }) => {
