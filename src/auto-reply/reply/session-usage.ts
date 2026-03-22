@@ -160,16 +160,13 @@ export async function persistSessionUsageUpdate(params: {
           }
 
           if (hasUsage) {
-            const useFallback = !modelChanged;
-            patch.inputTokens = params.usage?.input ?? (useFallback ? entry.inputTokens : undefined);
-            patch.outputTokens = params.usage?.output ?? (useFallback ? entry.outputTokens : undefined);
+            patch.inputTokens = params.usage?.input;
+            patch.outputTokens = params.usage?.output;
             // Cache counters should reflect the latest context snapshot when
             // available, not accumulated per-call totals across a whole run.
             const cacheUsage = params.lastCallUsage ?? params.usage;
-            patch.cacheRead =
-              cacheUsage?.cacheRead ?? (useFallback ? entry.cacheRead : undefined);
-            patch.cacheWrite =
-              cacheUsage?.cacheWrite ?? (useFallback ? entry.cacheWrite : undefined);
+            patch.cacheRead = cacheUsage?.cacheRead;
+            patch.cacheWrite = cacheUsage?.cacheWrite;
           }
           if (runEstimatedCostUsd !== undefined) {
             patch.estimatedCostUsd = existingEstimatedCostUsd + runEstimatedCostUsd;

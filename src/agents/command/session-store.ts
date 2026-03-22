@@ -141,11 +141,10 @@ export async function updateSessionStoreAfterAgentRun(params: {
       next.totalTokens = undefined;
       next.totalTokensFresh = false;
     }
-    const useFallback = !modelChanged;
-    next.inputTokens = input ?? (useFallback ? entry.inputTokens : undefined);
-    next.outputTokens = output ?? (useFallback ? entry.outputTokens : undefined);
-    next.cacheRead = usage?.cacheRead ?? (useFallback ? entry.cacheRead : undefined);
-    next.cacheWrite = usage?.cacheWrite ?? (useFallback ? entry.cacheWrite : undefined);
+    next.inputTokens = input;
+    next.outputTokens = output;
+    next.cacheRead = usage?.cacheRead;
+    next.cacheWrite = usage?.cacheWrite;
     if (runEstimatedCostUsd !== undefined) {
       next.estimatedCostUsd =
         (resolveNonNegativeNumber(entry.estimatedCostUsd) ?? 0) + runEstimatedCostUsd;

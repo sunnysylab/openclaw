@@ -778,11 +778,10 @@ export async function runCronIsolatedAgentTurn(params: {
         cronSession.sessionEntry.totalTokens = undefined;
         cronSession.sessionEntry.totalTokensFresh = false;
       }
-      const useFallback = !modelChanged;
-      cronSession.sessionEntry.inputTokens = input ?? (useFallback ? cronSession.sessionEntry.inputTokens : undefined);
-      cronSession.sessionEntry.outputTokens = output ?? (useFallback ? cronSession.sessionEntry.outputTokens : undefined);
-      cronSession.sessionEntry.cacheRead = usage?.cacheRead ?? (useFallback ? cronSession.sessionEntry.cacheRead : undefined);
-      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite ?? (useFallback ? cronSession.sessionEntry.cacheWrite : undefined);
+      cronSession.sessionEntry.inputTokens = input;
+      cronSession.sessionEntry.outputTokens = output;
+      cronSession.sessionEntry.cacheRead = usage?.cacheRead;
+      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite;
       if (runEstimatedCostUsd !== undefined) {
         cronSession.sessionEntry.estimatedCostUsd =
           (resolveNonNegativeNumber(cronSession.sessionEntry.estimatedCostUsd) ?? 0) +

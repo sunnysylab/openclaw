@@ -60,15 +60,15 @@ export function resolveTotalTokens(entry?: TokenUsageLike) {
   ) {
     return entry.totalTokens;
   }
-  if (typeof entry.totalTokensEstimate === "number" && Number.isFinite(entry.totalTokensEstimate)) {
-    return entry.totalTokensEstimate;
-  }
   const hasInput = typeof entry.inputTokens === "number";
   const hasOutput = typeof entry.outputTokens === "number";
   if (hasInput || hasOutput) {
     const input = hasInput ? (entry.inputTokens as number) : 0;
     const output = hasOutput ? (entry.outputTokens as number) : 0;
     return input + output;
+  }
+  if (typeof entry.totalTokensEstimate === "number" && Number.isFinite(entry.totalTokensEstimate)) {
+    return entry.totalTokensEstimate;
   }
   return undefined;
 }
