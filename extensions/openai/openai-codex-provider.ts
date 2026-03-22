@@ -141,16 +141,11 @@ function resolveCodexForwardCompatModel(
 
 async function refreshOpenAICodexOAuthCredential(cred: OAuthCredential) {
   try {
-    const { getOAuthApiKey } = await import("./openai-codex-provider.runtime.js");
-    const refreshed = await getOAuthApiKey("openai-codex", {
-      "openai-codex": cred,
-    });
-    if (!refreshed) {
-      throw new Error("OpenAI Codex OAuth refresh returned no credentials.");
-    }
+    const { refreshOpenAICodexOAuthToken } = await import("./openai-codex-provider.runtime.js");
+    const refreshed = await refreshOpenAICodexOAuthToken(cred.refresh);
     return {
       ...cred,
-      ...refreshed.newCredentials,
+      ...refreshed,
       type: "oauth" as const,
       provider: PROVIDER_ID,
       email: cred.email,
