@@ -4,6 +4,7 @@ import { listAgentIds, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { listChannelPlugins } from "../channels/plugins/index.js";
 import type { ChannelId } from "../channels/plugins/types.js";
 import type { OpenClawConfig } from "../config/config.js";
+import type { HookSessionTarget } from "../config/types.hooks.js";
 import { readJsonBodyWithLimit, requestBodyErrorToText } from "../infra/http-body.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { normalizeMessageChannel } from "../utils/message-channel.js";
@@ -32,6 +33,7 @@ export type HookAgentPolicyResolved = {
 export type HookSessionPolicyResolved = {
   defaultSessionKey?: string;
   allowRequestSessionKey: boolean;
+  allowRequestSessionTarget: boolean;
   allowedSessionKeyPrefixes?: string[];
 };
 
@@ -90,6 +92,7 @@ export function resolveHooksConfig(cfg: OpenClawConfig): HooksConfigResolved | n
     sessionPolicy: {
       defaultSessionKey,
       allowRequestSessionKey: cfg.hooks?.allowRequestSessionKey === true,
+      allowRequestSessionTarget: cfg.hooks?.allowRequestSessionTarget === true,
       allowedSessionKeyPrefixes,
     },
   };
@@ -205,6 +208,7 @@ export type HookAgentPayload = {
   idempotencyKey?: string;
   wakeMode: "now" | "next-heartbeat";
   sessionKey?: string;
+  sessionTarget?: HookSessionTarget;
   deliver: boolean;
   channel: HookMessageChannel;
   to?: string;
@@ -300,8 +304,28 @@ export function isHookAgentAllowed(
 export const getHookAgentPolicyError = () => "agentId is not allowed by hooks.allowedAgentIds";
 export const getHookSessionKeyRequestPolicyError = () =>
   "sessionKey is disabled for external /hooks/agent payloads; set hooks.allowRequestSessionKey=true to enable";
+export const getHookSessionTargetRequestPolicyError = () =>
+  'sessionTarget is disabled for external /hooks/agent payloads unless it is "isolated"; set hooks.allowRequestSessionTarget=true to enable non-isolated targets';
 export const getHookSessionKeyPrefixError = (prefixes: string[]) =>
   `sessionKey must start with one of: ${prefixes.join(", ")}`;
+export const getHookSessionTargetError = () =>
+  'sessionTarget must be "main", "isolated", "current", or "session:<id>"';
+
+export function resolveHookSessionTarget(raw: unknown): HookSessionTarget | null {
+  if (raw === undefined) {
+    return "isolated";
+  }
+  if (raw === "main" || raw === "isolated" || raw === "current") {
+    return raw;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("session:") && trimmed.length > "session:".length) {
+      return trimmed as HookSessionTarget;
+    }
+  }
+  return null;
+}
 
 export function resolveHookSessionKey(params: {
   hooksConfig: HooksConfigResolved;
@@ -332,6 +356,23 @@ export function resolveHookSessionKey(params: {
     return { ok: false, error: getHookSessionKeyPrefixError(allowedPrefixes) };
   }
   return { ok: true, value: generated };
+}
+
+export function resolveHookDispatchSessionTarget(params: {
+  hooksConfig: HooksConfigResolved;
+  source: "request" | "mapping";
+  sessionTarget?: HookSessionTarget;
+}): { ok: true; value: HookSessionTarget } | { ok: false; error: string } {
+  const requestedSessionTarget = params.sessionTarget ?? "isolated";
+  const sessionTarget = requestedSessionTarget === "current" ? "isolated" : requestedSessionTarget;
+  if (
+    params.source === "request" &&
+    sessionTarget !== "isolated" &&
+    !params.hooksConfig.sessionPolicy.allowRequestSessionTarget
+  ) {
+    return { ok: false, error: getHookSessionTargetRequestPolicyError() };
+  }
+  return { ok: true, value: sessionTarget };
 }
 
 export function normalizeHookDispatchSessionKey(params: {
@@ -373,6 +414,10 @@ export function normalizeAgentPayload(payload: Record<string, unknown>):
   const sessionKeyRaw = payload.sessionKey;
   const sessionKey =
     typeof sessionKeyRaw === "string" && sessionKeyRaw.trim() ? sessionKeyRaw.trim() : undefined;
+  const sessionTarget = resolveHookSessionTarget(payload.sessionTarget);
+  if (!sessionTarget) {
+    return { ok: false, error: getHookSessionTargetError() };
+  }
   const channel = resolveHookChannel(payload.channel);
   if (!channel) {
     return { ok: false, error: getHookChannelError() };
@@ -402,6 +447,7 @@ export function normalizeAgentPayload(payload: Record<string, unknown>):
       idempotencyKey,
       wakeMode,
       sessionKey,
+      sessionTarget,
       deliver,
       channel,
       to,

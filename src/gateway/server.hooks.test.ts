@@ -221,6 +221,39 @@ describe("gateway server hooks", () => {
     });
   });
 
+  test("rejects non-isolated request sessionTarget unless hooks.allowRequestSessionTarget is enabled", async () => {
+    testState.hooksConfig = { enabled: true, token: HOOK_TOKEN };
+    await withGatewayServer(async ({ port }) => {
+      const denied = await postHook(port, "/hooks/agent", {
+        message: "Resume this",
+        sessionTarget: "main",
+      });
+      expect(denied.status).toBe(400);
+      const deniedBody = (await denied.json()) as { error?: string };
+      expect(deniedBody.error).toContain("hooks.allowRequestSessionTarget");
+    });
+  });
+
+  test('treats request sessionTarget "current" as isolated without requiring hooks.allowRequestSessionTarget', async () => {
+    testState.hooksConfig = { enabled: true, token: HOOK_TOKEN };
+    await withGatewayServer(async ({ port }) => {
+      mockIsolatedRunOkOnce();
+      const allowed = await postHook(port, "/hooks/agent", {
+        message: "Current should isolate",
+        sessionTarget: "current",
+      });
+      expect(allowed.status).toBe(200);
+      await waitForSystemEvent();
+
+      const call = (cronIsolatedRun.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { job?: { sessionKey?: string; sessionTarget?: string } }
+        | undefined;
+      expect(call?.job?.sessionKey).toBeUndefined();
+      expect(call?.job?.sessionTarget).toBe("isolated");
+      drainSystemEvents(resolveMainKey());
+    });
+  });
+
   test("respects hooks session policy for request + mapping session keys", async () => {
     testState.hooksConfig = {
       enabled: true,
@@ -317,6 +350,152 @@ describe("gateway server hooks", () => {
         | undefined;
       expect(routedCall?.job?.agentId).toBe("hooks");
       expect(routedCall?.sessionKey).toBe("slack:channel:c123");
+      drainSystemEvents(resolveMainKey());
+    });
+  });
+
+  test("passes through explicit sessionTarget for direct and mapped agent hooks", async () => {
+    testState.hooksConfig = {
+      enabled: true,
+      token: HOOK_TOKEN,
+      allowRequestSessionKey: true,
+      allowRequestSessionTarget: true,
+      allowedSessionKeyPrefixes: ["hook:"],
+      mappings: [
+        {
+          match: { path: "mapped-resume" },
+          action: "agent",
+          messageTemplate: "Mapped: {{payload.subject}}",
+          sessionKey: "hook:mapped:resume",
+          sessionTarget: "main",
+        },
+      ],
+    };
+    await withGatewayServer(async ({ port }) => {
+      mockIsolatedRunOkOnce();
+      const direct = await postHook(port, "/hooks/agent", {
+        message: "Resume this",
+        sessionKey: "hook:direct:resume",
+        sessionTarget: "main",
+      });
+      expect(direct.status).toBe(200);
+      await waitForSystemEvent();
+
+      const directCall = (cronIsolatedRun.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { sessionKey?: string; job?: { sessionKey?: string; sessionTarget?: string } }
+        | undefined;
+      expect(directCall?.sessionKey).toBe("agent:main:main");
+      expect(directCall?.job?.sessionKey).toBe("agent:main:main");
+      expect(directCall?.job?.sessionTarget).toBe("main");
+      drainSystemEvents(resolveMainKey());
+
+      mockIsolatedRunOkOnce();
+      const mapped = await postHook(port, "/hooks/mapped-resume", { subject: "hello" });
+      expect(mapped.status).toBe(200);
+      await waitForSystemEvent();
+
+      const mappedCall = (cronIsolatedRun.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { sessionKey?: string; job?: { sessionKey?: string; sessionTarget?: string } }
+        | undefined;
+      expect(mappedCall?.sessionKey).toBe("agent:main:main");
+      expect(mappedCall?.job?.sessionKey).toBe("agent:main:main");
+      expect(mappedCall?.job?.sessionTarget).toBe("main");
+      drainSystemEvents(resolveMainKey());
+    });
+  });
+
+  test("maps sessionTarget session:* to the requested custom session key", async () => {
+    testState.hooksConfig = {
+      enabled: true,
+      token: HOOK_TOKEN,
+      allowRequestSessionTarget: true,
+      mappings: [
+        {
+          match: { path: "mapped-custom-session" },
+          action: "agent",
+          messageTemplate: "Mapped: {{payload.subject}}",
+          sessionTarget: "session:project-alpha",
+        },
+      ],
+    };
+    await withGatewayServer(async ({ port }) => {
+      mockIsolatedRunOkOnce();
+      const direct = await postHook(port, "/hooks/agent", {
+        message: "Resume custom session",
+        sessionTarget: "session:custom-thread",
+      });
+      expect(direct.status).toBe(200);
+      await waitForSystemEvent();
+
+      const directCall = (cronIsolatedRun.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { sessionKey?: string; job?: { sessionKey?: string; sessionTarget?: string } }
+        | undefined;
+      expect(directCall?.sessionKey).toBe("custom-thread");
+      expect(directCall?.job?.sessionKey).toBe("agent:main:custom-thread");
+      expect(directCall?.job?.sessionTarget).toBe("session:custom-thread");
+      drainSystemEvents(resolveMainKey());
+
+      mockIsolatedRunOkOnce();
+      const mapped = await postHook(port, "/hooks/mapped-custom-session", { subject: "hello" });
+      expect(mapped.status).toBe(200);
+      await waitForSystemEvent();
+
+      const mappedCall = (cronIsolatedRun.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { sessionKey?: string; job?: { sessionKey?: string; sessionTarget?: string } }
+        | undefined;
+      expect(mappedCall?.sessionKey).toBe("project-alpha");
+      expect(mappedCall?.job?.sessionKey).toBe("agent:main:project-alpha");
+      expect(mappedCall?.job?.sessionTarget).toBe("session:project-alpha");
+      drainSystemEvents(resolveMainKey());
+    });
+  });
+
+  test("normalizes sessionTarget current to isolated for hook agent dispatch", async () => {
+    testState.hooksConfig = {
+      enabled: true,
+      token: HOOK_TOKEN,
+      allowRequestSessionKey: true,
+      allowRequestSessionTarget: true,
+      allowedSessionKeyPrefixes: ["hook:"],
+      mappings: [
+        {
+          match: { path: "mapped-current-session" },
+          action: "agent",
+          messageTemplate: "Mapped current: {{payload.subject}}",
+          sessionKey: "hook:mapped:current",
+          sessionTarget: "current",
+        },
+      ],
+    };
+    await withGatewayServer(async ({ port }) => {
+      mockIsolatedRunOkOnce();
+      const direct = await postHook(port, "/hooks/agent", {
+        message: "Current should isolate",
+        sessionKey: "hook:direct:current",
+        sessionTarget: "current",
+      });
+      expect(direct.status).toBe(200);
+      await waitForSystemEvent();
+
+      const directCall = (cronIsolatedRun.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { sessionKey?: string; job?: { sessionKey?: string; sessionTarget?: string } }
+        | undefined;
+      expect(directCall?.sessionKey).toBe("hook:direct:current");
+      expect(directCall?.job?.sessionKey).toBeUndefined();
+      expect(directCall?.job?.sessionTarget).toBe("isolated");
+      drainSystemEvents(resolveMainKey());
+
+      mockIsolatedRunOkOnce();
+      const mapped = await postHook(port, "/hooks/mapped-current-session", { subject: "hello" });
+      expect(mapped.status).toBe(200);
+      await waitForSystemEvent();
+
+      const mappedCall = (cronIsolatedRun.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { sessionKey?: string; job?: { sessionKey?: string; sessionTarget?: string } }
+        | undefined;
+      expect(mappedCall?.sessionKey).toBe("hook:mapped:current");
+      expect(mappedCall?.job?.sessionKey).toBeUndefined();
+      expect(mappedCall?.job?.sessionTarget).toBe("isolated");
       drainSystemEvents(resolveMainKey());
     });
   });

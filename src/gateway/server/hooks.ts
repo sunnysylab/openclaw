@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import type { CliDeps } from "../../cli/deps.js";
 import { loadConfig, type OpenClawConfig } from "../../config/config.js";
 import { resolveMainSessionKeyFromConfig } from "../../config/sessions.js";
 import { runCronIsolatedAgentTurn } from "../../cron/isolated-agent.js";
+import { canonicalizeCronSessionKey } from "../../cron/isolated-agent/session-key.js";
 import type { CronJob } from "../../cron/types.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
@@ -41,47 +43,89 @@ export function createGatewayHooksRequestHandler(params: {
     }
   };
 
-  const dispatchAgentHook = (value: HookAgentDispatchPayload) => {
-    const sessionKey = normalizeHookDispatchSessionKey({
-      sessionKey: value.sessionKey,
-      targetAgentId: value.agentId,
+  const resolveHookAgentRunSessionKey = (params: {
+    cfg: OpenClawConfig;
+    value: HookAgentDispatchPayload;
+    agentId: string;
+  }) => {
+    const sessionTarget = params.value.sessionTarget ?? "isolated";
+    if (sessionTarget === "main") {
+      return canonicalizeCronSessionKey({
+        cfg: params.cfg,
+        sessionKey: "main",
+        agentId: params.agentId,
+      });
+    }
+    if (sessionTarget.startsWith("session:")) {
+      const customSessionKey = sessionTarget.slice("session:".length).trim();
+      if (customSessionKey) {
+        return customSessionKey;
+      }
+    }
+    return normalizeHookDispatchSessionKey({
+      sessionKey: params.value.sessionKey,
+      targetAgentId: params.value.agentId,
     });
+  };
+
+  const resolveHookDeliverySessionKey = (params: {
+    cfg: OpenClawConfig;
+    value: HookAgentDispatchPayload;
+    sessionKey: string;
+    agentId: string;
+  }) => {
+    const sessionTarget = params.value.sessionTarget ?? "isolated";
+    if (sessionTarget === "isolated") {
+      return undefined;
+    }
+    return canonicalizeCronSessionKey({
+      cfg: params.cfg,
+      sessionKey: params.sessionKey,
+      agentId: params.agentId,
+    });
+  };
+
+  const dispatchAgentHook = (value: HookAgentDispatchPayload) => {
     const mainSessionKey = resolveMainSessionKeyFromConfig();
     const jobId = randomUUID();
     const now = Date.now();
-    const job: CronJob = {
-      id: jobId,
-      agentId: value.agentId,
-      name: value.name,
-      enabled: true,
-      createdAtMs: now,
-      updatedAtMs: now,
-      schedule: { kind: "at", at: new Date(now).toISOString() },
-      sessionTarget: "isolated",
-      wakeMode: value.wakeMode,
-      payload: {
-        kind: "agentTurn",
-        message: value.message,
-        model: value.model,
-        thinking: value.thinking,
-        timeoutSeconds: value.timeoutSeconds,
-        deliver: value.deliver,
-        channel: value.channel,
-        to: value.to,
-        allowUnsafeExternalContent: value.allowUnsafeExternalContent,
-      },
-      state: { nextRunAtMs: now },
-    };
 
     const runId = randomUUID();
     void (async () => {
       try {
         const cfg = loadConfig();
+        const agentId = value.agentId?.trim() || resolveDefaultAgentId(cfg);
+        const sessionKey = resolveHookAgentRunSessionKey({ cfg, value, agentId });
+        const job: CronJob = {
+          id: jobId,
+          agentId: value.agentId,
+          name: value.name,
+          enabled: true,
+          createdAtMs: now,
+          updatedAtMs: now,
+          schedule: { kind: "at", at: new Date(now).toISOString() },
+          sessionKey: resolveHookDeliverySessionKey({ cfg, value, sessionKey, agentId }),
+          sessionTarget: value.sessionTarget ?? "isolated",
+          wakeMode: value.wakeMode,
+          payload: {
+            kind: "agentTurn",
+            message: value.message,
+            model: value.model,
+            thinking: value.thinking,
+            timeoutSeconds: value.timeoutSeconds,
+            deliver: value.deliver,
+            channel: value.channel,
+            to: value.to,
+            allowUnsafeExternalContent: value.allowUnsafeExternalContent,
+          },
+          state: { nextRunAtMs: now },
+        };
         const result = await runCronIsolatedAgentTurn({
           cfg,
           deps,
           job,
           message: value.message,
+          agentId,
           sessionKey,
           lane: "cron",
           deliveryContract: "shared",
