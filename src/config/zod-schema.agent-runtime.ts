@@ -347,8 +347,90 @@ export const ToolsWebFetchSchema = z
   .strict()
   .optional();
 
+const UrlAllowlistDomainPattern =
+  /^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+// Suffixes that the SSRF guard unconditionally blocks — allowlisting them is a no-op.
+const SSRF_ALWAYS_BLOCKED_SUFFIXES = [".localhost", ".local", ".internal"];
+
+// Bare hostnames the SSRF guard unconditionally blocks. Rejecting at schema time avoids
+// confusing SsrFBlockedError at request time when operators follow documented examples.
+// Note: single-label hostnames like `localhost` are blocked here because the SSRF guard
+// blocks them unconditionally at the network level; the allowlist cannot override that.
+const SSRF_ALWAYS_BLOCKED_BARE = new Set([
+  "localhost",
+  "localhost.localdomain",
+  "metadata.google.internal",
+]);
+
+// IPv4 literal pattern — all-numeric dot-separated labels (e.g. "169.254.169.254", "10.0.0.1").
+// The SSRF guard blocks private/reserved/link-local/loopback ranges at the network level, so
+// allowlisting IP literals is misleading. Reject them at schema time with a clear message.
+const IPV4_LITERAL_PATTERN = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+const UrlAllowlistSchema = z
+  .array(
+    z
+      .string()
+      .refine((val) => UrlAllowlistDomainPattern.test(val), {
+        message:
+          'Invalid domain pattern. Use "example.com" or "*.example.com". Full URLs, empty strings, bare "*", and "*." are not allowed.',
+      })
+      .refine(
+        (val) => {
+          // Reject bare hostnames that the SSRF guard unconditionally blocks.
+          const lower = val.toLowerCase();
+          return !SSRF_ALWAYS_BLOCKED_BARE.has(lower);
+        },
+        {
+          message:
+            '"localhost", "localhost.localdomain", and "metadata.google.internal" are always blocked by the SSRF guard and cannot be allowlisted.',
+        },
+      )
+      .refine((val) => !IPV4_LITERAL_PATTERN.test(val), {
+        message:
+          "IP address literals are not supported in urlAllowlist. Use hostnames instead. The SSRF guard blocks private/reserved IP ranges at the network level regardless of the allowlist.",
+      })
+      .refine(
+        (val) => {
+          // Reject wildcard patterns like *.localhost / *.local / *.internal —
+          // their subdomains are unconditionally blocked by the SSRF guard so allowlisting
+          // them is always a no-op.
+          if (!val.startsWith("*.")) {
+            return true;
+          }
+          const bare = val.slice(2).toLowerCase();
+          return !SSRF_ALWAYS_BLOCKED_SUFFIXES.some(
+            (suffix) => bare === suffix.slice(1) || bare.endsWith(suffix),
+          );
+        },
+        {
+          message:
+            'Wildcard patterns like "*.localhost", "*.local", or "*.internal" are always blocked by the SSRF guard and cannot be allowlisted.',
+        },
+      )
+      .refine(
+        (val) => {
+          // Reject non-wildcard hostnames ending with SSRF-blocked suffixes (e.g.
+          // sub.localhost, server.local, api.internal). These pass the bare-hostname
+          // and wildcard guards above but are still unconditionally blocked at runtime.
+          if (val.startsWith("*.")) {
+            return true; // Already handled by the wildcard refine above.
+          }
+          const lower = val.toLowerCase();
+          return !SSRF_ALWAYS_BLOCKED_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+        },
+        {
+          message:
+            'Hostnames ending in ".localhost", ".local", or ".internal" are always blocked by the SSRF guard and cannot be allowlisted.',
+        },
+      ),
+  )
+  .optional();
+
 export const ToolsWebSchema = z
   .object({
+    urlAllowlist: UrlAllowlistSchema,
     search: ToolsWebSearchSchema,
     fetch: ToolsWebFetchSchema,
   })
