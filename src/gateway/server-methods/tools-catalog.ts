@@ -10,7 +10,6 @@ import {
   resolveCoreToolProfiles,
 } from "../../agents/tool-catalog.js";
 import { loadConfig } from "../../config/config.js";
-import { getActivePluginRegistry } from "../../plugins/runtime.js";
 import { getPluginToolMeta, resolvePluginTools } from "../../plugins/tools.js";
 import {
   ErrorCodes,
@@ -83,7 +82,6 @@ function buildPluginGroups(params: {
       agentDir,
       agentId: params.agentId,
     },
-    registry: getActivePluginRegistry() ?? undefined,
     existingToolNames: params.existingToolNames,
     toolAllowlist: ["group:plugins"],
     suppressNameConflicts: true,

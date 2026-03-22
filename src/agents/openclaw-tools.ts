@@ -1,5 +1,4 @@
 import type { OpenClawConfig } from "../config/config.js";
-import { getActivePluginRegistry } from "../plugins/runtime.js";
 import { resolvePluginTools } from "../plugins/tools.js";
 import { getActiveRuntimeWebToolsMetadata } from "../secrets/runtime.js";
 import type { GatewayMessageChannel } from "../utils/message-channel.js";
@@ -246,7 +245,6 @@ export function createOpenClawTools(
       senderIsOwner: options?.senderIsOwner ?? undefined,
       sandboxed: options?.sandboxed,
     },
-    registry: getActivePluginRegistry() ?? undefined,
     existingToolNames: new Set(tools.map((tool) => tool.name)),
     toolAllowlist: options?.pluginToolAllowlist,
     allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
