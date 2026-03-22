@@ -447,6 +447,8 @@ importers:
         specifier: workspace:*
         version: link:../..
 
+  extensions/meganova: {}
+
   extensions/memory-core:
     dependencies:
       openclaw:
