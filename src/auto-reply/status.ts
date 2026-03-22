@@ -478,8 +478,8 @@ export function buildStatusMessage(args: StatusArgs): string {
     );
     if (logUsage) {
       const candidate = logUsage.promptTokens || logUsage.total;
-      if (logUsage.totalTokensFresh) {
-        // Session transcript is authoritative — always prefer it over the store.
+      if (logUsage.totalTokensFresh && freshTotal === undefined) {
+        // Session transcript is authoritative — prefer it over stale/estimated totals.
         totalTokens = candidate;
       }
       if (!entry?.model && logUsage.model) {

@@ -767,7 +767,7 @@ export async function runCronIsolatedAgentTurn(params: {
         cronSession.sessionEntry.totalTokensFresh = totalTokens > 0 || prevFresh === false || prevWasZero;
         if (cronSession.sessionEntry.totalTokensFresh) {
           cronSession.sessionEntry.totalTokensEstimate = totalTokens;
-        } else if (totalTokens === 0) {
+        } else if (totalTokens === 0 && !modelChanged) {
           const fallback = prevEstimate ?? prevTotal;
           if (fallback !== undefined && fallback > 0) {
             cronSession.sessionEntry.totalTokensEstimate = fallback;

@@ -131,7 +131,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
       next.totalTokensFresh = totalTokens > 0 || prevFresh === false || prevWasZero;
       if (next.totalTokensFresh) {
         next.totalTokensEstimate = totalTokens;
-      } else if (totalTokens === 0) {
+      } else if (totalTokens === 0 && !modelChanged) {
         const fallback = prevEstimate ?? prevTotal;
         if (fallback !== undefined && fallback > 0) {
           next.totalTokensEstimate = fallback;
