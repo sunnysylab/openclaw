@@ -3,7 +3,7 @@ import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { listImageGenerationProviders } from "./provider-registry.js";
 
-const loadOpenClawPluginsMock = vi.fn(() => ({ imageGenerationProviders: [] }));
+const loadOpenClawPluginsMock = vi.fn((_params?: unknown) => ({ imageGenerationProviders: [] }));
 
 vi.mock("../plugins/loader.js", () => ({
   loadOpenClawPlugins: (params: unknown) => loadOpenClawPluginsMock(params),

@@ -3,7 +3,7 @@ import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { listSpeechProviders } from "./provider-registry.js";
 
-const loadOpenClawPluginsMock = vi.fn(() => ({ speechProviders: [] }));
+const loadOpenClawPluginsMock = vi.fn((_params?: unknown) => ({ speechProviders: [] }));
 
 vi.mock("../plugins/loader.js", () => ({
   loadOpenClawPlugins: (params: unknown) => loadOpenClawPluginsMock(params),

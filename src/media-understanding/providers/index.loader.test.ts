@@ -3,7 +3,7 @@ import { createEmptyPluginRegistry } from "../../plugins/registry.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { buildMediaUnderstandingRegistry } from "./index.js";
 
-const loadOpenClawPluginsMock = vi.fn(() => ({ mediaUnderstandingProviders: [] }));
+const loadOpenClawPluginsMock = vi.fn((_params?: unknown) => ({ mediaUnderstandingProviders: [] }));
 
 vi.mock("../../plugins/loader.js", () => ({
   loadOpenClawPlugins: (params: unknown) => loadOpenClawPluginsMock(params),
