@@ -138,6 +138,21 @@ export const registerTelegramHandlers = ({
   const textFragmentBuffer = new Map<string, TextFragmentEntry>();
   let textFragmentProcessing: Promise<void> = Promise.resolve();
 
+  // Document batch buffer — collects document messages from the same sender
+  // within a short window and dispatches them as a single processMessage call.
+  const DEFAULT_DOCUMENT_BATCH_WINDOW_MS = 1500;
+  const DOCUMENT_BATCH_WINDOW_MS =
+    telegramCfg.documentBatchWindowMs ?? DEFAULT_DOCUMENT_BATCH_WINDOW_MS;
+  type DocumentBatchEntry = {
+    key: string;
+    messages: Array<{ msg: Message; ctx: TelegramContext; debounceLane: TelegramDebounceLane }>;
+    timer: ReturnType<typeof setTimeout>;
+    resolvedThreadId?: number;
+    dmThreadId?: number;
+  };
+  const documentBatchBuffer = new Map<string, DocumentBatchEntry>();
+  let documentBatchProcessing: Promise<void> = Promise.resolve();
+
   const debounceMs = resolveInboundDebounceMs({ cfg, channel: "telegram" });
   const FORWARD_BURST_DEBOUNCE_MS = 80;
   type TelegramDebounceLane = "default" | "forward";
@@ -461,6 +476,131 @@ export const registerTelegramHandlers = ({
     entry.timer = setTimeout(async () => {
       await runTextFragmentFlush(entry);
     }, TELEGRAM_TEXT_FRAGMENT_MAX_GAP_MS);
+  };
+
+  const processDocumentBatch = async (entry: DocumentBatchEntry) => {
+    entry.messages.sort((a, b) => a.msg.message_id - b.msg.message_id);
+
+    const captionMsg = entry.messages.find((m) => m.msg.caption || m.msg.text);
+    const primaryEntry = captionMsg ?? entry.messages[0];
+    if (!primaryEntry) {
+      return;
+    }
+
+    const storeAllowFrom = await loadStoreAllowFrom();
+    const senderId =
+      primaryEntry.msg.from?.id != null
+        ? String(primaryEntry.msg.from.id)
+        : primaryEntry.msg.sender_chat?.id != null
+          ? `sender_chat:${primaryEntry.msg.sender_chat.id}`
+          : "";
+    const replyMedia = await resolveReplyMediaForMessage(primaryEntry.ctx, primaryEntry.msg);
+
+    const allMedia: TelegramMediaRef[] = [];
+    const succeededEntries = new Set<typeof primaryEntry>();
+    let captionDispatchedViaPlaceholder = false;
+    for (const item of entry.messages) {
+      const { ctx: itemCtx, msg: itemMsg } = item;
+      try {
+        const media = await resolveMedia(
+          itemCtx,
+          mediaMaxBytes,
+          opts.token,
+          telegramTransport,
+          telegramCfg.apiRoot,
+        );
+        if (media) {
+          allMedia.push({
+            path: media.path,
+            contentType: media.contentType,
+            stickerMetadata: media.stickerMetadata,
+          });
+          succeededEntries.add(item);
+          continue;
+        }
+      } catch (mediaErr) {
+        const errMsg = String(mediaErr);
+        if (isMediaSizeLimitError(mediaErr)) {
+          const limitMb = Math.round(mediaMaxBytes / (1024 * 1024));
+          await withTelegramApiErrorLogging({
+            operation: "sendMessage",
+            runtime,
+            fn: () =>
+              bot.api.sendMessage(
+                itemMsg.chat.id,
+                `⚠️ File too large. Maximum size is ${limitMb}MB.`,
+                {
+                  reply_to_message_id: itemMsg.message_id,
+                },
+              ),
+          }).catch(() => {});
+          logger.warn(
+            { chatId: itemMsg.chat.id, error: errMsg },
+            "document batch: media exceeds size limit",
+          );
+          continue;
+        } else {
+          runtime.error?.(
+            warn(`document batch: preserving placeholder for file that failed to fetch: ${errMsg}`),
+          );
+        }
+      }
+
+      const placeholderMedia = await resolveReplyMediaForMessage(itemCtx, itemMsg);
+      if (item === primaryEntry || item.msg.caption || item.msg.text) {
+        captionDispatchedViaPlaceholder = true;
+      }
+      await processMessage(itemCtx, [], storeAllowFrom, undefined, placeholderMedia);
+    }
+
+    // Re-select primary if the original failed media resolution, to avoid
+    // duplicating caption/instruction from a rejected oversize message.
+    const effectivePrimary = succeededEntries.has(primaryEntry)
+      ? primaryEntry
+      : (entry.messages.find((m) => succeededEntries.has(m) && (m.msg.caption || m.msg.text)) ??
+        entry.messages.find((m) => succeededEntries.has(m)) ??
+        primaryEntry);
+
+    const captionText = effectivePrimary.msg.text ?? effectivePrimary.msg.caption ?? "";
+    if (
+      (!captionText.trim() && allMedia.length === 0) ||
+      (allMedia.length === 0 && captionDispatchedViaPlaceholder)
+    ) {
+      return;
+    }
+
+    // Use resolved thread IDs consistent with the single-message path
+    const conversationThreadId = entry.resolvedThreadId ?? entry.dmThreadId;
+    const conversationKey =
+      conversationThreadId != null
+        ? `${effectivePrimary.msg.chat.id}:topic:${conversationThreadId}`
+        : String(effectivePrimary.msg.chat.id);
+    const debounceKey = senderId
+      ? `telegram:${accountId ?? "default"}:${conversationKey}:${senderId}:${effectivePrimary.debounceLane}`
+      : null;
+    await inboundDebouncer.enqueue({
+      ctx: effectivePrimary.ctx,
+      msg: effectivePrimary.msg,
+      allMedia,
+      storeAllowFrom,
+      receivedAtMs: Date.now(),
+      debounceKey,
+      debounceLane: effectivePrimary.debounceLane,
+      botUsername: effectivePrimary.ctx.me?.username,
+    });
+  };
+
+  const scheduleDocumentBatchFlush = (entry: DocumentBatchEntry) => {
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(async () => {
+      documentBatchBuffer.delete(entry.key);
+      documentBatchProcessing = documentBatchProcessing
+        .then(async () => {
+          await processDocumentBatch(entry);
+        })
+        .catch(() => undefined);
+      await documentBatchProcessing;
+    }, DOCUMENT_BATCH_WINDOW_MS);
   };
 
   const loadStoreAllowFrom = async () =>
@@ -996,6 +1136,67 @@ export const registerTelegramHandlers = ({
         mediaGroupBuffer.set(mediaGroupId, entry);
       }
       return;
+    }
+
+    // Document batch handling — buffer individual document messages from the same sender.
+    // Telegram sends documents without media_group_id, so we collect them in a time window.
+    const documentSenderId =
+      msg.from?.id != null
+        ? String(msg.from.id)
+        : msg.sender_chat?.id != null
+          ? `sender_chat:${msg.sender_chat.id}`
+          : null;
+    const documentDebounceLane = resolveTelegramDebounceLane(msg);
+    if (
+      DOCUMENT_BATCH_WINDOW_MS > 0 &&
+      (msg as { document?: unknown }).document &&
+      !mediaGroupId &&
+      documentSenderId &&
+      documentDebounceLane !== "forward"
+    ) {
+      const debounceLane = documentDebounceLane;
+      const docBatchKey = `doc:${chatId}:${resolvedThreadId ?? dmThreadId ?? "main"}:${documentSenderId}:${debounceLane}`;
+      const existing = documentBatchBuffer.get(docBatchKey);
+      if (existing) {
+        clearTimeout(existing.timer);
+        existing.messages.push({ msg, ctx, debounceLane });
+        scheduleDocumentBatchFlush(existing);
+      } else {
+        const entry: DocumentBatchEntry = {
+          key: docBatchKey,
+          messages: [{ msg, ctx, debounceLane }],
+          timer: setTimeout(() => {}, DOCUMENT_BATCH_WINDOW_MS),
+          resolvedThreadId,
+          dmThreadId,
+        };
+        documentBatchBuffer.set(docBatchKey, entry);
+        scheduleDocumentBatchFlush(entry);
+      }
+      return;
+    }
+
+    if (!(msg as { document?: unknown }).document && documentSenderId) {
+      const forwardLane = resolveTelegramDebounceLane(msg);
+      for (const [key, pendingEntry] of documentBatchBuffer) {
+        if (
+          !key.startsWith(
+            `doc:${chatId}:${resolvedThreadId ?? dmThreadId ?? "main"}:${documentSenderId}:`,
+          )
+        ) {
+          continue;
+        }
+        if (pendingEntry.messages.some((item) => item.debounceLane !== forwardLane)) {
+          continue;
+        }
+        documentBatchBuffer.delete(key);
+        clearTimeout(pendingEntry.timer);
+        documentBatchProcessing = documentBatchProcessing
+          .then(async () => {
+            await processDocumentBatch(pendingEntry);
+          })
+          .catch(() => undefined);
+      }
+      await documentBatchProcessing;
     }
 
     let media: Awaited<ReturnType<typeof resolveMedia>> = null;
