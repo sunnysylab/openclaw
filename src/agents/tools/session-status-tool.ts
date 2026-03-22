@@ -10,7 +10,10 @@ import {
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
-import { loadCombinedSessionStoreForGateway } from "../../gateway/session-utils.js";
+import {
+  loadCombinedSessionStoreForGateway,
+  resolveSessionModelIdentityRef,
+} from "../../gateway/session-utils.js";
 import {
   formatUsageWindowSummary,
   loadProviderUsageSummary,
@@ -418,7 +421,20 @@ export function createSessionStatusTool(opts?: {
       }
 
       const agentDir = resolveAgentDir(cfg, agentId);
-      const providerForCard = resolved.entry.providerOverride?.trim() || configured.provider;
+      const storedModelOverride = resolved.entry.modelOverride?.trim();
+      const resolvedCardModel = storedModelOverride
+        ? {
+            provider: resolved.entry.providerOverride?.trim() || configured.provider,
+            model: storedModelOverride,
+          }
+        : resolveSessionModelIdentityRef(
+            cfg,
+            resolved.entry,
+            agentId,
+            `${configured.provider}/${configured.model}`,
+          );
+      const providerForCard = resolvedCardModel.provider?.trim() || configured.provider;
+      const modelForCard = resolvedCardModel.model.trim();
       const usageProvider = resolveUsageProviderId(providerForCard);
       let usageLine: string | undefined;
       if (usageProvider) {
@@ -472,7 +488,9 @@ export function createSessionStatusTool(opts?: {
         : `🕒 Time zone: ${userTimezone}`;
 
       const agentDefaults = cfg.agents?.defaults ?? {};
-      const defaultLabel = `${configured.provider}/${configured.model}`;
+      const selectedProvider = resolved.entry.providerOverride?.trim() || configured.provider;
+      const selectedModel = storedModelOverride || configured.model;
+      const defaultLabel = `${selectedProvider}/${selectedModel}`;
       const agentModel =
         typeof agentDefaults.model === "object" && agentDefaults.model
           ? { ...agentDefaults.model, primary: defaultLabel }
@@ -488,7 +506,27 @@ export function createSessionStatusTool(opts?: {
         sessionKey: resolved.key,
         sessionStorePath: storePath,
         groupActivation,
+        displayModelRef: storedModelOverride
+          ? undefined
+          : {
+              provider: providerForCard,
+              model: modelForCard,
+            },
+        displayModelAuth: storedModelOverride
+          ? undefined
+          : resolveModelAuthLabel({
+              provider: providerForCard,
+              cfg,
+              sessionEntry: resolved.entry,
+              agentDir,
+            }),
         modelAuth: resolveModelAuthLabel({
+          provider: selectedProvider,
+          cfg,
+          sessionEntry: resolved.entry,
+          agentDir,
+        }),
+        activeModelAuth: resolveModelAuthLabel({
           provider: providerForCard,
           cfg,
           sessionEntry: resolved.entry,
