@@ -119,8 +119,10 @@ export async function updateSessionStoreAfterAgentRun(params: {
         }),
       }),
     );
-    next.inputTokens = input ?? entry.inputTokens;
-    next.outputTokens = output ?? entry.outputTokens;
+    const hasCurrentUsage = hasExplicitUsage(usage);
+    const useFallback = !modelChanged && !hasCurrentUsage;
+    next.inputTokens = input ?? (useFallback ? entry.inputTokens : undefined);
+    next.outputTokens = output ?? (useFallback ? entry.outputTokens : undefined);
     const prevFresh = entry.totalTokensFresh;
     const prevEstimate = entry.totalTokensEstimate;
     const prevTotal = entry.totalTokens;
@@ -141,10 +143,8 @@ export async function updateSessionStoreAfterAgentRun(params: {
       next.totalTokens = undefined;
       next.totalTokensFresh = false;
     }
-    next.inputTokens = input;
-    next.outputTokens = output;
-    next.cacheRead = usage?.cacheRead;
-    next.cacheWrite = usage?.cacheWrite;
+    next.cacheRead = usage?.cacheRead ?? (useFallback ? entry.cacheRead : undefined);
+    next.cacheWrite = usage?.cacheWrite ?? (useFallback ? entry.cacheWrite : undefined);
     if (runEstimatedCostUsd !== undefined) {
       next.estimatedCostUsd =
         (resolveNonNegativeNumber(entry.estimatedCostUsd) ?? 0) + runEstimatedCostUsd;

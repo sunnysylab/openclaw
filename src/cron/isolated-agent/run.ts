@@ -751,8 +751,10 @@ export async function runCronIsolatedAgentTurn(params: {
           }),
         }),
       );
-      cronSession.sessionEntry.inputTokens = input ?? cronSession.sessionEntry.inputTokens;
-      cronSession.sessionEntry.outputTokens = output ?? cronSession.sessionEntry.outputTokens;
+      const hasCurrentUsage = hasExplicitUsage(usage);
+      const useFallback = !modelChanged && !hasCurrentUsage;
+      cronSession.sessionEntry.inputTokens = input ?? (useFallback ? cronSession.sessionEntry.inputTokens : undefined);
+      cronSession.sessionEntry.outputTokens = output ?? (useFallback ? cronSession.sessionEntry.outputTokens : undefined);
       const telemetryUsage: NonNullable<CronRunTelemetry["usage"]> = {
         input_tokens: input,
         output_tokens: output,
@@ -778,10 +780,8 @@ export async function runCronIsolatedAgentTurn(params: {
         cronSession.sessionEntry.totalTokens = undefined;
         cronSession.sessionEntry.totalTokensFresh = false;
       }
-      cronSession.sessionEntry.inputTokens = input;
-      cronSession.sessionEntry.outputTokens = output;
-      cronSession.sessionEntry.cacheRead = usage?.cacheRead;
-      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite;
+      cronSession.sessionEntry.cacheRead = usage?.cacheRead ?? (useFallback ? cronSession.sessionEntry.cacheRead : undefined);
+      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite ?? (useFallback ? cronSession.sessionEntry.cacheWrite : undefined);
       if (runEstimatedCostUsd !== undefined) {
         cronSession.sessionEntry.estimatedCostUsd =
           (resolveNonNegativeNumber(cronSession.sessionEntry.estimatedCostUsd) ?? 0) +
