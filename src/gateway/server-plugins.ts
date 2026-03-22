@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { normalizeModelRef, parseModelRef } from "../agents/model-selection.js";
 import { primeConfiguredBindingRegistry } from "../channels/plugins/binding-registry.js";
 import type { loadConfig } from "../config/config.js";
-import { normalizePluginsConfig } from "../plugins/config-state.js";
+import { resolveConfiguredChannelPluginIds } from "../plugins/channel-plugin-ids.js";
+import { BUNDLED_ENABLED_BY_DEFAULT, normalizePluginsConfig } from "../plugins/config-state.js";
 import { loadOpenClawPlugins } from "../plugins/loader.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { setGatewaySubagentRuntime } from "../plugins/runtime/index.js";
@@ -396,6 +397,7 @@ export function loadGatewayPlugins(params: {
   baseMethods: string[];
   preferSetupRuntimeForChannelPlugins?: boolean;
   logDiagnostics?: boolean;
+  lightweight?: boolean;
 }) {
   setPluginSubagentOverridePolicies(params.cfg);
   // Set the process-global gateway subagent runtime BEFORE loading plugins.
@@ -404,6 +406,29 @@ export function loadGatewayPlugins(params: {
   // the default subagent behavior for every plugin runtime in the process.
   const gatewaySubagent = createGatewaySubagentRuntime();
   setGatewaySubagentRuntime(gatewaySubagent);
+
+  // In lightweight mode, only load plugins that are explicitly configured and
+  // enabled so that unused channel adapters never consume memory.
+  let onlyPluginIds: string[] | undefined;
+  if (params.lightweight) {
+    const normalized = normalizePluginsConfig(params.cfg.plugins);
+    const enabledEntryIds = Object.entries(normalized.entries)
+      .filter(([, entry]) => entry.enabled !== false)
+      .map(([id]) => id);
+    const configuredChannelIds = resolveConfiguredChannelPluginIds({
+      config: params.cfg,
+      workspaceDir: params.workspaceDir,
+      env: process.env,
+    });
+    onlyPluginIds = Array.from(new Set([
+      ...enabledEntryIds,
+      ...configuredChannelIds,
+      ...BUNDLED_ENABLED_BY_DEFAULT,
+    ]));
+    params.log.info(
+      `[lightweight] loading only ${onlyPluginIds.length} plugin(s): ${onlyPluginIds.join(", ") || "(none)"}`,
+    );
+  }
 
   const pluginRegistry = loadOpenClawPlugins({
     config: params.cfg,
@@ -419,6 +444,7 @@ export function loadGatewayPlugins(params: {
       allowGatewaySubagentBinding: true,
     },
     preferSetupRuntimeForChannelPlugins: params.preferSetupRuntimeForChannelPlugins,
+    onlyPluginIds,
   });
   primeConfiguredBindingRegistry({ cfg: params.cfg });
   const pluginMethods = Object.keys(pluginRegistry.gatewayHandlers);
