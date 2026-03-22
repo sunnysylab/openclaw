@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { setVerbose } from "../../globals.js";
 import { isTruthyEnvValue } from "../../infra/env.js";
+import { routeLogsToStderr } from "../../logging.js";
 import type { LogLevel } from "../../logging/levels.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
@@ -140,15 +141,18 @@ export function registerPreActionHooks(program: Command, programVersion: string)
     if (!verbose) {
       process.env.NODE_NO_WARNINGS ??= "1";
     }
+    const jsonOutputMode = isJsonOutputMode(commandPath, argv);
+    if (jsonOutputMode) {
+      routeLogsToStderr();
+    }
     if (shouldBypassConfigGuard(commandPath)) {
       return;
     }
-    const suppressDoctorStdout = isJsonOutputMode(commandPath, argv);
     const { ensureConfigReady } = await loadConfigGuardModule();
     await ensureConfigReady({
       runtime: defaultRuntime,
       commandPath,
-      ...(suppressDoctorStdout ? { suppressDoctorStdout: true } : {}),
+      ...(jsonOutputMode ? { suppressDoctorStdout: true } : {}),
     });
     // Load plugins for commands that need channel access
     if (shouldLoadPluginsForCommand(commandPath, argv)) {

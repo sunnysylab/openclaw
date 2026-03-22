@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { loggingState } from "../../logging/state.js";
 
 const setVerboseMock = vi.fn();
 const emitCliBannerMock = vi.fn();
@@ -54,6 +55,7 @@ beforeEach(() => {
   originalHideBanner = process.env.OPENCLAW_HIDE_BANNER;
   delete process.env.NODE_NO_WARNINGS;
   delete process.env.OPENCLAW_HIDE_BANNER;
+  loggingState.forceConsoleToStderr = false;
 });
 
 afterEach(() => {
@@ -69,6 +71,7 @@ afterEach(() => {
   } else {
     process.env.OPENCLAW_HIDE_BANNER = originalHideBanner;
   }
+  loggingState.forceConsoleToStderr = false;
 });
 
 describe("registerPreActionHooks", () => {
@@ -222,6 +225,7 @@ describe("registerPreActionHooks", () => {
       processArgv: ["node", "openclaw", "status", "--json"],
     });
 
+    expect(loggingState.forceConsoleToStderr).toBe(true);
     expect(ensureConfigReadyMock).toHaveBeenCalledWith({
       runtime: runtimeMock,
       commandPath: ["status"],
@@ -230,11 +234,13 @@ describe("registerPreActionHooks", () => {
     expect(ensurePluginRegistryLoadedMock).not.toHaveBeenCalled();
 
     vi.clearAllMocks();
+    loggingState.forceConsoleToStderr = false;
     await runPreAction({
       parseArgv: ["update", "status", "--json"],
       processArgv: ["node", "openclaw", "update", "status", "--json"],
     });
 
+    expect(loggingState.forceConsoleToStderr).toBe(true);
     expect(ensureConfigReadyMock).toHaveBeenCalledWith({
       runtime: runtimeMock,
       commandPath: ["update", "status"],
@@ -243,11 +249,13 @@ describe("registerPreActionHooks", () => {
     expect(ensurePluginRegistryLoadedMock).not.toHaveBeenCalled();
 
     vi.clearAllMocks();
+    loggingState.forceConsoleToStderr = false;
     await runPreAction({
       parseArgv: ["config", "set", "gateway.auth.mode", "{bad", "--json"],
       processArgv: ["node", "openclaw", "config", "set", "gateway.auth.mode", "{bad", "--json"],
     });
 
+    expect(loggingState.forceConsoleToStderr).toBe(false);
     expect(ensureConfigReadyMock).toHaveBeenCalledWith({
       runtime: runtimeMock,
       commandPath: ["config", "set"],
@@ -278,6 +286,7 @@ describe("registerPreActionHooks", () => {
       processArgv: ["node", "openclaw", "backup", "create", "--json"],
     });
 
+    expect(loggingState.forceConsoleToStderr).toBe(true);
     expect(ensureConfigReadyMock).not.toHaveBeenCalled();
   });
 
