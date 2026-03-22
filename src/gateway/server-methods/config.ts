@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { listChannelPlugins } from "../../channels/plugins/index.js";
+import { listChannelPluginsFromRegistry } from "../../channels/plugins/index.js";
 import {
   createConfigIO,
   loadConfig,
@@ -247,7 +247,10 @@ function loadSchemaWithPlugins(): ConfigSchemaResponse {
   const workspaceDir = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
   const pluginRegistry = loadOpenClawPlugins({
     config: cfg,
-    cache: true,
+    // Config schema reads need a snapshot registry only; they must not replace the
+    // live gateway plugin runtime while the process is serving channel traffic.
+    cache: false,
+    activate: false,
     workspaceDir,
     runtimeOptions: {
       allowGatewaySubagentBinding: true,
@@ -270,7 +273,7 @@ function loadSchemaWithPlugins(): ConfigSchemaResponse {
       configUiHints: plugin.configUiHints,
       configSchema: plugin.configJsonSchema,
     })),
-    channels: listChannelPlugins().map((entry) => ({
+    channels: listChannelPluginsFromRegistry(pluginRegistry).map((entry) => ({
       id: entry.id,
       label: entry.meta.label,
       description: entry.meta.blurb,

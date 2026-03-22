@@ -1,3 +1,4 @@
+import type { IncomingMessage } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ChannelId, type ChannelPlugin } from "../channels/plugins/types.js";
 import {
@@ -5,12 +6,30 @@ import {
   type SubsystemLogger,
   runtimeForLogger,
 } from "../logging/subsystem.js";
+import {
+  getGlobalPluginRegistry,
+  initializeGlobalHookRunner,
+  resetGlobalHookRunner,
+} from "../plugins/hook-runner-global.js";
+import { registerPluginHttpRoute } from "../plugins/http-registry.js";
 import { createEmptyPluginRegistry, type PluginRegistry } from "../plugins/registry.js";
-import { getActivePluginRegistry, setActivePluginRegistry } from "../plugins/runtime.js";
+import {
+  getActivePluginRegistry,
+  getActivePluginRegistryKey,
+  pinActivePluginHttpRouteRegistry,
+  releasePinnedPluginHttpRouteRegistry,
+  setActivePluginRegistry,
+} from "../plugins/runtime.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
 import { DEFAULT_ACCOUNT_ID } from "../routing/session-key.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { createChannelManager } from "./server-channels.js";
+import {
+  ChannelLifecyclePluginRuntimeState,
+  resolveChannelLifecyclePluginRuntimeState,
+} from "./server-plugin-runtime-state.js";
+import { createGatewayPluginRequestHandler } from "./server/plugins-http.js";
+import { makeMockHttpResponse } from "./test-http-response.js";
 
 const hoisted = vi.hoisted(() => {
   const computeBackoff = vi.fn(() => 10);
@@ -41,12 +60,15 @@ type TestAccount = {
 };
 
 function createTestPlugin(params?: {
+  id?: ChannelId;
   account?: TestAccount;
   startAccount?: NonNullable<ChannelPlugin<TestAccount>["gateway"]>["startAccount"];
+  stopAccount?: NonNullable<ChannelPlugin<TestAccount>["gateway"]>["stopAccount"];
   includeDescribeAccount?: boolean;
   resolveAccount?: ChannelPlugin<TestAccount>["config"]["resolveAccount"];
   isConfigured?: ChannelPlugin<TestAccount>["config"]["isConfigured"];
 }): ChannelPlugin<TestAccount> {
+  const id = params?.id ?? "discord";
   const account = params?.account ?? { enabled: true, configured: true };
   const includeDescribeAccount = params?.includeDescribeAccount !== false;
   const config: ChannelPlugin<TestAccount>["config"] = {
@@ -66,13 +88,16 @@ function createTestPlugin(params?: {
   if (params?.startAccount) {
     gateway.startAccount = params.startAccount;
   }
+  if (params?.stopAccount) {
+    gateway.stopAccount = params.stopAccount;
+  }
   return {
-    id: "discord",
+    id,
     meta: {
-      id: "discord",
-      label: "Discord",
-      selectionLabel: "Discord",
-      docsPath: "/channels/discord",
+      id,
+      label: id,
+      selectionLabel: id,
+      docsPath: `/channels/${id}`,
       blurb: "test stub",
     },
     capabilities: { chatTypes: ["direct"] },
@@ -89,13 +114,20 @@ function createDeferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve: resolvePromise };
 }
 
-function installTestRegistry(plugin: ChannelPlugin<TestAccount>) {
+function createTestRegistry(...plugins: ChannelPlugin<TestAccount>[]): PluginRegistry {
   const registry = createEmptyPluginRegistry();
-  registry.channels.push({
-    pluginId: plugin.id,
-    source: "test",
-    plugin,
-  });
+  for (const plugin of plugins) {
+    registry.channels.push({
+      pluginId: plugin.id,
+      source: "test",
+      plugin,
+    });
+  }
+  return registry;
+}
+
+function installTestRegistry(plugin: ChannelPlugin<TestAccount>) {
+  const registry = createTestRegistry(plugin);
   setActivePluginRegistry(registry);
 }
 
@@ -103,6 +135,9 @@ function createManager(options?: {
   channelRuntime?: PluginRuntime["channel"];
   resolveChannelRuntime?: () => PluginRuntime["channel"];
   loadConfig?: () => Record<string, unknown>;
+  pluginRegistry?: PluginRegistry;
+  pluginRegistryCacheKey?: string | null;
+  resolvePluginRuntimeState?: () => { registry: PluginRegistry; cacheKey?: string | null } | null;
 }) {
   const log = createSubsystemLogger("gateway/server-channels-test");
   const channelLogs = { discord: log } as Record<ChannelId, SubsystemLogger>;
@@ -112,18 +147,29 @@ function createManager(options?: {
     loadConfig: () => options?.loadConfig?.() ?? {},
     channelLogs,
     channelRuntimeEnvs,
+    ...(options?.pluginRegistry ? { pluginRegistry: options.pluginRegistry } : {}),
+    ...(options && "pluginRegistryCacheKey" in options
+      ? { pluginRegistryCacheKey: options.pluginRegistryCacheKey }
+      : {}),
     ...(options?.channelRuntime ? { channelRuntime: options.channelRuntime } : {}),
     ...(options?.resolveChannelRuntime
       ? { resolveChannelRuntime: options.resolveChannelRuntime }
+      : {}),
+    ...(options?.resolvePluginRuntimeState
+      ? { resolvePluginRuntimeState: options.resolvePluginRuntimeState }
       : {}),
   });
 }
 
 describe("server-channels auto restart", () => {
   let previousRegistry: PluginRegistry | null = null;
+  let previousRegistryKey: string | null = null;
+  let previousHookRegistry: PluginRegistry | null = null;
 
   beforeEach(() => {
     previousRegistry = getActivePluginRegistry();
+    previousRegistryKey = getActivePluginRegistryKey();
+    previousHookRegistry = getGlobalPluginRegistry();
     vi.useFakeTimers();
     hoisted.computeBackoff.mockClear();
     hoisted.sleepWithAbort.mockClear();
@@ -131,7 +177,16 @@ describe("server-channels auto restart", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    setActivePluginRegistry(previousRegistry ?? createEmptyPluginRegistry());
+    releasePinnedPluginHttpRouteRegistry();
+    setActivePluginRegistry(
+      previousRegistry ?? createEmptyPluginRegistry(),
+      previousRegistryKey ?? undefined,
+    );
+    if (previousHookRegistry) {
+      initializeGlobalHookRunner(previousHookRegistry);
+    } else {
+      resetGlobalHookRunner();
+    }
   });
 
   it("caps crash-loop restarts after max attempts", async () => {
@@ -408,5 +463,244 @@ describe("server-channels auto restart", () => {
     });
 
     expect(manager.isHealthMonitorEnabled("discord", "")).toBe(true);
+  });
+
+  it("rebinds the active plugin registry and hook runner before channel startup", async () => {
+    const startupRegistry = createEmptyPluginRegistry();
+    startupRegistry.channels.push({
+      pluginId: "discord",
+      source: "test",
+      plugin: createTestPlugin({
+        startAccount: async () => {
+          registerPluginHttpRoute({
+            path: "/probe-webhook",
+            auth: "plugin",
+            pluginId: "discord",
+            source: "test-webhook",
+            handler: () => true,
+          });
+        },
+      }),
+    });
+    // Drift to an empty registry to verify bulk startup rebinds before listing channels.
+    const driftedRegistry = createEmptyPluginRegistry();
+
+    setActivePluginRegistry(startupRegistry, "startup-registry");
+    initializeGlobalHookRunner(startupRegistry);
+    const manager = createManager({
+      resolvePluginRuntimeState: () => ({
+        registry: startupRegistry,
+        cacheKey: "startup-registry",
+      }),
+    });
+
+    // Simulate registry drift before a hot-reload channel restart.
+    setActivePluginRegistry(driftedRegistry, "drifted-registry");
+    initializeGlobalHookRunner(driftedRegistry);
+
+    await manager.startChannels();
+
+    expect(startupRegistry.httpRoutes).toHaveLength(1);
+    expect(startupRegistry.httpRoutes[0]?.path).toBe("/probe-webhook");
+    expect(driftedRegistry.httpRoutes).toHaveLength(0);
+    expect(getActivePluginRegistryKey()).toBe("startup-registry");
+    expect(getGlobalPluginRegistry()).toBe(startupRegistry);
+  });
+
+  it("promotes live channel runtime state when the active registry gains channels", async () => {
+    const startupStartAccount = vi.fn(async () => {
+      registerPluginHttpRoute({
+        path: "/startup-webhook",
+        auth: "plugin",
+        pluginId: "discord",
+        source: "test-webhook",
+        handler: () => true,
+      });
+    });
+    const bootstrappedStartAccount = vi.fn(async () => {
+      registerPluginHttpRoute({
+        path: "/bootstrapped-webhook",
+        auth: "plugin",
+        pluginId: "discord",
+        source: "test-webhook",
+        handler: () => true,
+      });
+    });
+    const startupRegistry = createTestRegistry(
+      createTestPlugin({
+        startAccount: startupStartAccount,
+      }),
+    );
+    const bootstrappedRegistry = createTestRegistry(
+      createTestPlugin({
+        startAccount: bootstrappedStartAccount,
+      }),
+      createTestPlugin({
+        id: "telegram",
+      }),
+    );
+
+    setActivePluginRegistry(startupRegistry, "startup-registry");
+    initializeGlobalHookRunner(startupRegistry);
+    let runtimeState: ChannelLifecyclePluginRuntimeState = {
+      registry: startupRegistry,
+      cacheKey: "startup-registry",
+    };
+    const manager = createManager({
+      resolvePluginRuntimeState: () => {
+        runtimeState = resolveChannelLifecyclePluginRuntimeState(runtimeState);
+        return runtimeState;
+      },
+    });
+
+    setActivePluginRegistry(bootstrappedRegistry, "bootstrapped-registry");
+    initializeGlobalHookRunner(bootstrappedRegistry);
+
+    await manager.startChannel("discord", DEFAULT_ACCOUNT_ID);
+
+    expect(bootstrappedStartAccount).toHaveBeenCalledTimes(1);
+    expect(startupStartAccount).not.toHaveBeenCalled();
+    expect(bootstrappedRegistry.httpRoutes).toHaveLength(1);
+    expect(bootstrappedRegistry.httpRoutes[0]?.path).toBe("/bootstrapped-webhook");
+    expect(startupRegistry.httpRoutes).toHaveLength(0);
+    expect(getActivePluginRegistry()).toBe(bootstrappedRegistry);
+    expect(getActivePluginRegistryKey()).toBe("bootstrapped-registry");
+    expect(getGlobalPluginRegistry()).toBe(bootstrappedRegistry);
+  });
+
+  it("promotes live channel runtime state when the active registry changes but channel IDs stay the same", async () => {
+    const startupStartAccount = vi.fn(async () => {});
+    const upgradedStartAccount = vi.fn(async () => {
+      registerPluginHttpRoute({
+        path: "/upgraded-webhook",
+        auth: "plugin",
+        pluginId: "discord",
+        source: "test-webhook",
+        handler: () => true,
+      });
+    });
+    const startupRegistry = createTestRegistry(
+      createTestPlugin({
+        startAccount: startupStartAccount,
+      }),
+    );
+    const upgradedRegistry = createTestRegistry(
+      createTestPlugin({
+        startAccount: upgradedStartAccount,
+      }),
+    );
+
+    setActivePluginRegistry(startupRegistry, "startup-registry");
+    initializeGlobalHookRunner(startupRegistry);
+    let runtimeState: ChannelLifecyclePluginRuntimeState = {
+      registry: startupRegistry,
+      cacheKey: "startup-registry",
+    };
+    const manager = createManager({
+      resolvePluginRuntimeState: () => {
+        runtimeState = resolveChannelLifecyclePluginRuntimeState(runtimeState);
+        return runtimeState;
+      },
+    });
+
+    // Simulate an upgrade that activates a new registry with same channel IDs.
+    setActivePluginRegistry(upgradedRegistry, "upgraded-registry");
+    initializeGlobalHookRunner(upgradedRegistry);
+
+    await manager.startChannel("discord", DEFAULT_ACCOUNT_ID);
+
+    expect(upgradedStartAccount).toHaveBeenCalledTimes(1);
+    expect(startupStartAccount).not.toHaveBeenCalled();
+    expect(upgradedRegistry.httpRoutes).toHaveLength(1);
+    expect(upgradedRegistry.httpRoutes[0]?.path).toBe("/upgraded-webhook");
+    expect(startupRegistry.httpRoutes).toHaveLength(0);
+    expect(getActivePluginRegistry()).toBe(upgradedRegistry);
+    expect(getActivePluginRegistryKey()).toBe("upgraded-registry");
+    expect(getGlobalPluginRegistry()).toBe(upgradedRegistry);
+  });
+
+  it("keeps webhook dispatch reachable through the pinned route registry after channel restart", async () => {
+    let unregisterWebhook = () => {};
+    const initialWebhookHandler = vi.fn(async (_req, res) => {
+      res.statusCode = 202;
+      res.end("initial");
+      return true;
+    });
+    const restartedWebhookHandler = vi.fn(async (_req, res) => {
+      res.statusCode = 400;
+      res.end("invalid payload");
+      return true;
+    });
+    const startAccount = vi
+      .fn<NonNullable<ChannelPlugin<TestAccount>["gateway"]>["startAccount"]>()
+      .mockImplementationOnce(async () => {
+        unregisterWebhook = registerPluginHttpRoute({
+          path: "/bluebubbles-webhook",
+          auth: "plugin",
+          pluginId: "discord",
+          source: "test-webhook",
+          handler: initialWebhookHandler,
+          replaceExisting: true,
+        });
+      })
+      .mockImplementationOnce(async () => {
+        unregisterWebhook = registerPluginHttpRoute({
+          path: "/bluebubbles-webhook",
+          auth: "plugin",
+          pluginId: "discord",
+          source: "test-webhook",
+          handler: restartedWebhookHandler,
+          replaceExisting: true,
+        });
+      });
+    const stopAccount = vi.fn(async () => {
+      unregisterWebhook();
+      unregisterWebhook = () => {};
+    });
+
+    const startupRegistry = createTestRegistry(
+      createTestPlugin({
+        startAccount,
+        stopAccount,
+      }),
+    );
+    const driftedRegistry = createEmptyPluginRegistry();
+
+    setActivePluginRegistry(startupRegistry, "startup-registry");
+    pinActivePluginHttpRouteRegistry(startupRegistry);
+    initializeGlobalHookRunner(startupRegistry);
+    const manager = createManager({
+      resolvePluginRuntimeState: () => ({
+        registry: startupRegistry,
+        cacheKey: "startup-registry",
+      }),
+    });
+
+    await manager.startChannel("discord", DEFAULT_ACCOUNT_ID);
+    expect(initialWebhookHandler).not.toHaveBeenCalled();
+
+    setActivePluginRegistry(driftedRegistry, "drifted-registry");
+    initializeGlobalHookRunner(driftedRegistry);
+
+    await manager.stopChannel("discord", DEFAULT_ACCOUNT_ID);
+    await manager.startChannel("discord", DEFAULT_ACCOUNT_ID);
+
+    const handler = createGatewayPluginRequestHandler({
+      registry: startupRegistry,
+      log: createSubsystemLogger("gateway/server-channels-test/plugin-http"),
+    });
+    const { res, end } = makeMockHttpResponse();
+    const handled = await handler({ url: "/bluebubbles-webhook" } as IncomingMessage, res);
+
+    expect(handled).toBe(true);
+    expect(stopAccount).toHaveBeenCalledTimes(1);
+    expect(startAccount).toHaveBeenCalledTimes(2);
+    expect(initialWebhookHandler).not.toHaveBeenCalled();
+    expect(restartedWebhookHandler).toHaveBeenCalledTimes(1);
+    expect(res.statusCode).toBe(400);
+    expect(end).toHaveBeenCalledWith("invalid payload");
+    expect(startupRegistry.httpRoutes).toHaveLength(1);
+    expect(startupRegistry.httpRoutes[0]?.path).toBe("/bluebubbles-webhook");
+    expect(driftedRegistry.httpRoutes).toHaveLength(0);
   });
 });
