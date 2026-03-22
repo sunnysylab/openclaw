@@ -40,6 +40,7 @@ import {
 } from "./directory-config.js";
 import {
   isDiscordExecApprovalClientEnabled,
+  resolveDiscordExecApprovalTimeoutMs,
   shouldSuppressLocalDiscordExecApprovalPrompt,
 } from "./exec-approvals.js";
 import {
@@ -364,6 +365,8 @@ export const discordPlugin: ChannelPlugin<ResolvedDiscordAccount> = {
       isDiscordExecApprovalClientEnabled({ cfg, accountId })
         ? { kind: "enabled" }
         : { kind: "disabled" },
+    resolveApprovalTimeoutMs: ({ cfg, accountId, defaultTimeoutMs }) =>
+      resolveDiscordExecApprovalTimeoutMs({ cfg, accountId, defaultTimeoutMs }),
     shouldSuppressLocalPrompt: ({ cfg, accountId, payload }) =>
       shouldSuppressLocalDiscordExecApprovalPrompt({
         cfg,

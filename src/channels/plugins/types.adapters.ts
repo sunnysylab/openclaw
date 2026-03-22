@@ -465,6 +465,11 @@ export type ChannelExecApprovalAdapter = {
     cfg: OpenClawConfig;
     accountId?: string | null;
   }) => ChannelExecApprovalInitiatingSurfaceState;
+  resolveApprovalTimeoutMs?: (params: {
+    cfg: OpenClawConfig;
+    accountId?: string | null;
+    defaultTimeoutMs: number;
+  }) => number | undefined;
   shouldSuppressLocalPrompt?: (params: {
     cfg: OpenClawConfig;
     accountId?: string | null;
