@@ -1091,12 +1091,13 @@ export function buildGatewaySessionRow(params: {
   const totalTokens =
     resolveNonNegativeNumber(freshTotal) ??
     resolveNonNegativeNumber(entry?.totalTokensEstimate) ??
+    resolveNonNegativeNumber(entry?.totalTokens) ??
     (transcriptFresh ? transcriptTotal : undefined) ??
     transcriptTotal;
 
   const totalTokensFresh =
     (typeof freshTotal === "number" && Number.isFinite(freshTotal) && freshTotal >= 0) ||
-    (transcriptFresh && typeof transcriptTotal === "number" && transcriptTotal >= 0);
+    (totalTokens === transcriptTotal && transcriptFresh);
   const childSessions = resolveChildSessionKeys(key, store);
   const estimatedCostUsd =
     resolveEstimatedSessionCostUsd({
