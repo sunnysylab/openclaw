@@ -161,7 +161,7 @@ export async function sessionsCommand(
             return {
               ...r,
               totalTokens: freshTotal ?? r.totalTokensEstimate ?? null,
-              totalTokensFresh: r.totalTokensFresh ?? (r.totalTokens != null),
+              totalTokensFresh: r.totalTokensFresh ?? (typeof r.totalTokens === "number" && r.totalTokens > 0),
               contextTokens:
                 r.contextTokens ?? lookupContextTokens(model) ?? configContextTokens ?? null,
               model,
