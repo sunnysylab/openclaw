@@ -435,7 +435,9 @@ export function createSessionStatusTool(opts?: {
         : `🕒 Time zone: ${userTimezone}`;
 
       const agentDefaults = cfg.agents?.defaults ?? {};
-      const defaultLabel = `${providerForCard}/${modelForCard}`;
+      const selectedProvider = resolved.entry.providerOverride?.trim() || configured.provider;
+      const selectedModel = storedModelOverride || configured.model;
+      const defaultLabel = `${selectedProvider}/${selectedModel}`;
       const agentModel =
         typeof agentDefaults.model === "object" && agentDefaults.model
           ? { ...agentDefaults.model, primary: defaultLabel }
@@ -451,7 +453,27 @@ export function createSessionStatusTool(opts?: {
         sessionKey: resolved.key,
         sessionStorePath: storePath,
         groupActivation,
+        displayModelRef: storedModelOverride
+          ? undefined
+          : {
+              provider: providerForCard,
+              model: modelForCard,
+            },
+        displayModelAuth: storedModelOverride
+          ? undefined
+          : resolveModelAuthLabel({
+              provider: providerForCard,
+              cfg,
+              sessionEntry: resolved.entry,
+              agentDir,
+            }),
         modelAuth: resolveModelAuthLabel({
+          provider: selectedProvider,
+          cfg,
+          sessionEntry: resolved.entry,
+          agentDir,
+        }),
+        activeModelAuth: resolveModelAuthLabel({
           provider: providerForCard,
           cfg,
           sessionEntry: resolved.entry,

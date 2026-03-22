@@ -233,6 +233,41 @@ describe("session_status tool", () => {
     expect(details.statusText).not.toContain("🧠 Model: openai-codex/gpt-5.4");
   });
 
+  it("keeps fallback details visible when the runtime model differs from the default", async () => {
+    resetSessionStore({
+      main: {
+        sessionId: "s1",
+        updatedAt: 10,
+        modelProvider: "anthropic",
+        model: "claude-opus-4-6",
+        fallbackNoticeSelectedModel: "openai-codex/gpt-5.4",
+        fallbackNoticeActiveModel: "anthropic/claude-opus-4-6",
+        fallbackNoticeReason: "rate limit",
+      },
+    });
+    mockConfig = {
+      session: { mainKey: "main", scope: "per-sender" },
+      agents: {
+        defaults: {
+          model: { primary: "openai-codex/gpt-5.4" },
+          models: {},
+        },
+      },
+      tools: {
+        agentToAgent: { enabled: false },
+      },
+    };
+
+    const tool = getSessionStatusTool();
+
+    const result = await tool.execute("call-runtime-fallback", {});
+    const details = result.details as { ok?: boolean; statusText?: string };
+    expect(details.ok).toBe(true);
+    expect(details.statusText).toContain("🧠 Model: openai-codex/gpt-5.4");
+    expect(details.statusText).toContain("↪️ Fallback: anthropic/claude-opus-4-6");
+    expect(details.statusText).toContain("(rate limit)");
+  });
+
   it("errors for unknown session keys", async () => {
     resetSessionStore({
       main: { sessionId: "s1", updatedAt: 10 },
