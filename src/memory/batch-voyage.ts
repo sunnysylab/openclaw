@@ -50,12 +50,14 @@ async function assertVoyageResponseOk(res: Response, context: string): Promise<v
 function buildVoyageBatchRequest<T>(params: {
   client: VoyageEmbeddingClient;
   path: string;
+  timeoutMs?: number;
   onResponse: (res: Response) => Promise<T>;
 }) {
   const baseUrl = normalizeBatchBaseUrl(params.client);
   return {
     url: `${baseUrl}/${params.path}`,
     ssrfPolicy: params.client.ssrfPolicy,
+    timeoutMs: params.timeoutMs,
     init: {
       headers: buildBatchHeaders(params.client, { json: true }),
     },
@@ -67,12 +69,14 @@ async function submitVoyageBatch(params: {
   client: VoyageEmbeddingClient;
   requests: VoyageBatchRequest[];
   agentId: string;
+  timeoutMs?: number;
 }): Promise<VoyageBatchStatus> {
   const baseUrl = normalizeBatchBaseUrl(params.client);
   const inputFileId = await uploadBatchJsonlFile({
     client: params.client,
     requests: params.requests,
     errorPrefix: "voyage batch file upload failed",
+    timeoutMs: params.timeoutMs,
   });
 
   // 2. Create batch job using Voyage Batches API
@@ -80,6 +84,7 @@ async function submitVoyageBatch(params: {
     url: `${baseUrl}/batches`,
     headers: buildBatchHeaders(params.client, { json: true }),
     ssrfPolicy: params.client.ssrfPolicy,
+    timeoutMs: params.timeoutMs,
     body: {
       input_file_id: inputFileId,
       endpoint: VOYAGE_BATCH_ENDPOINT,
@@ -100,11 +105,13 @@ async function submitVoyageBatch(params: {
 async function fetchVoyageBatchStatus(params: {
   client: VoyageEmbeddingClient;
   batchId: string;
+  timeoutMs?: number;
 }): Promise<VoyageBatchStatus> {
   return await withRemoteHttpResponse(
     buildVoyageBatchRequest({
       client: params.client,
       path: `batches/${params.batchId}`,
+      timeoutMs: params.timeoutMs,
       onResponse: async (res) => {
         await assertVoyageResponseOk(res, "voyage batch status failed");
         return (await res.json()) as VoyageBatchStatus;
@@ -116,12 +123,14 @@ async function fetchVoyageBatchStatus(params: {
 async function readVoyageBatchError(params: {
   client: VoyageEmbeddingClient;
   errorFileId: string;
+  timeoutMs?: number;
 }): Promise<string | undefined> {
   try {
     return await withRemoteHttpResponse(
       buildVoyageBatchRequest({
         client: params.client,
         path: `files/${params.errorFileId}/content`,
+        timeoutMs: params.timeoutMs,
         onResponse: async (res) => {
           await assertVoyageResponseOk(res, "voyage batch error file content failed");
           const text = await res.text();
@@ -152,13 +161,16 @@ async function waitForVoyageBatch(params: {
   initial?: VoyageBatchStatus;
 }): Promise<BatchCompletionResult> {
   const start = Date.now();
+  const deadline = start + params.timeoutMs;
   let current: VoyageBatchStatus | undefined = params.initial;
   while (true) {
+    const remainingMs = Math.max(1, deadline - Date.now());
     const status =
       current ??
       (await fetchVoyageBatchStatus({
         client: params.client,
         batchId: params.batchId,
+        timeoutMs: remainingMs,
       }));
     const state = status.status ?? "unknown";
     if (state === "completed") {
@@ -175,12 +187,13 @@ async function waitForVoyageBatch(params: {
         await readVoyageBatchError({
           client: params.client,
           errorFileId,
+          timeoutMs: remainingMs,
         }),
     });
     if (!params.wait) {
       throw new Error(`voyage batch ${params.batchId} still ${state}; wait disabled`);
     }
-    if (Date.now() - start > params.timeoutMs) {
+    if (Date.now() >= deadline) {
       throw new Error(`voyage batch ${params.batchId} timed out after ${params.timeoutMs}ms`);
     }
     params.debug?.(`voyage batch ${params.batchId} ${state}; waiting ${params.pollIntervalMs}ms`);
@@ -206,6 +219,7 @@ export async function runVoyageEmbeddingBatches(
         client: params.client,
         requests: group,
         agentId: params.agentId,
+        timeoutMs: params.timeoutMs,
       });
       if (!batchInfo.id) {
         throw new Error("voyage batch create failed: missing batch id");
@@ -243,6 +257,7 @@ export async function runVoyageEmbeddingBatches(
       await withRemoteHttpResponse({
         url: `${baseUrl}/files/${completed.outputFileId}/content`,
         ssrfPolicy: params.client.ssrfPolicy,
+        timeoutMs: params.timeoutMs,
         init: {
           headers: buildBatchHeaders(params.client, { json: true }),
         },

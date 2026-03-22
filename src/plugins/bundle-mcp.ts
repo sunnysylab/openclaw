@@ -30,6 +30,7 @@ export type EnabledBundleMcpConfigResult = {
   config: BundleMcpConfig;
   diagnostics: BundleMcpDiagnostic[];
 };
+
 export type BundleMcpRuntimeSupport = {
   hasSupportedStdioServer: boolean;
   supportedServerNames: string[];

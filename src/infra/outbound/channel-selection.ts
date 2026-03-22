@@ -3,10 +3,10 @@ import type { ChannelPlugin } from "../../channels/plugins/types.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
-  listDeliverableMessageChannels,
-  type DeliverableMessageChannel,
   isDeliverableMessageChannel,
+  listDeliverableMessageChannels,
   normalizeMessageChannel,
+  type DeliverableMessageChannel,
 } from "../../utils/message-channel.js";
 import { resolveOutboundChannelPlugin } from "./channel-resolution.js";
 
