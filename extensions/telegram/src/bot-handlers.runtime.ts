@@ -1,4 +1,4 @@
-import type { Message, ReactionTypeEmoji } from "@grammyjs/types";
+import type { Message } from "@grammyjs/types";
 import { resolveAgentDir, resolveDefaultAgentId } from "openclaw/plugin-sdk/agent-runtime";
 import { resolveDefaultModelForAgent } from "openclaw/plugin-sdk/agent-runtime";
 import { resolveChannelConfigWrites } from "openclaw/plugin-sdk/channel-config-helpers";
@@ -35,6 +35,8 @@ import { dispatchPluginInteractiveHandler } from "openclaw/plugin-sdk/plugin-run
 import { resolveAgentRoute } from "openclaw/plugin-sdk/routing";
 import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
 import { danger, logVerbose, warn } from "openclaw/plugin-sdk/runtime-env";
+import { requestHeartbeatNow } from "../../../src/infra/heartbeat-wake.js";
+import { scopedHeartbeatWakeOptions } from "../../../src/routing/session-key.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import {
   isSenderAllowed,
@@ -91,6 +93,11 @@ import {
   resolveModelSelection,
   type ProviderInfo,
 } from "./model-buttons.js";
+import {
+  buildTelegramReactionSystemEventText,
+  collectAddedTelegramReactions,
+  resolveTelegramReactionSemantic,
+} from "./reaction-events.js";
 import { buildInlineKeyboard } from "./send.js";
 
 export const registerTelegramHandlers = ({
@@ -817,15 +824,10 @@ export const registerTelegramHandlers = ({
         }
       }
 
-      // Detect added reactions.
-      const oldEmojis = new Set(
-        reaction.old_reaction
-          .filter((r): r is ReactionTypeEmoji => r.type === "emoji")
-          .map((r) => r.emoji),
-      );
-      const addedReactions = reaction.new_reaction
-        .filter((r): r is ReactionTypeEmoji => r.type === "emoji")
-        .filter((r) => !oldEmojis.has(r.emoji));
+      const addedReactions = collectAddedTelegramReactions({
+        oldReactions: reaction.old_reaction,
+        newReactions: reaction.new_reaction,
+      });
 
       if (addedReactions.length === 0) {
         return;
@@ -865,15 +867,47 @@ export const registerTelegramHandlers = ({
       });
       const sessionKey = route.sessionKey;
 
-      // Enqueue system event for each added reaction.
-      for (const r of addedReactions) {
-        const emoji = r.emoji;
-        const text = `Telegram reaction added: ${emoji} by ${senderLabel} on msg ${messageId}`;
-        telegramDeps.enqueueSystemEvent(text, {
-          sessionKey,
-          contextKey: `telegram:reaction:add:${chatId}:${messageId}:${user?.id ?? "anon"}:${emoji}`,
+      let requestedWake = false;
+      let enqueuedCount = 0;
+      for (const reactionEntry of addedReactions) {
+        const semantic = resolveTelegramReactionSemantic({
+          reaction: reactionEntry,
+          semantics: telegramCfg.reactionSemantics,
         });
-        logVerbose(`telegram: reaction event enqueued: ${text}`);
+        const action = semantic?.action ?? "queue";
+        if (action === "ignore") {
+          logVerbose(
+            `telegram: reaction ignored chat=${chatId} msg=${messageId} key=${reactionEntry.key} reason=semantic-action-ignore`,
+          );
+          continue;
+        }
+        const text = buildTelegramReactionSystemEventText({
+          reaction: reactionEntry,
+          actorLabel: senderLabel,
+          messageId,
+          semantic,
+        });
+        const enqueued = telegramDeps.enqueueSystemEvent(text, {
+          sessionKey,
+          contextKey: `telegram:reaction:add:${chatId}:${messageId}:${user?.id ?? "anon"}:${reactionEntry.key}`,
+        });
+        if (!enqueued) {
+          logVerbose(
+            `telegram: reaction ignored chat=${chatId} msg=${messageId} key=${reactionEntry.key} reason=duplicate-system-event`,
+          );
+          continue;
+        }
+        enqueuedCount += 1;
+        if (action === "wake") {
+          requestedWake = true;
+        }
+        logVerbose(
+          `telegram: reaction enqueued chat=${chatId} msg=${messageId} key=${reactionEntry.key} action=${action} session=${sessionKey}`,
+        );
+      }
+      if (requestedWake && enqueuedCount > 0) {
+        requestHeartbeatNow(scopedHeartbeatWakeOptions(sessionKey, { reason: "wake" }));
+        logVerbose(`telegram: reaction wake requested session=${sessionKey}`);
       }
     } catch (err) {
       runtime.error?.(danger(`telegram reaction handler failed: ${String(err)}`));

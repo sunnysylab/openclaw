@@ -281,6 +281,19 @@ vi.doMock("openclaw/plugin-sdk/infra-runtime", async (importOriginal) => {
   };
 });
 
+const heartbeatWakeHoisted = vi.hoisted(() => ({
+  requestHeartbeatNowSpy: vi.fn(),
+}));
+export const requestHeartbeatNowSpy: AnyMock = heartbeatWakeHoisted.requestHeartbeatNowSpy;
+
+vi.mock("../../../src/infra/heartbeat-wake.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../src/infra/heartbeat-wake.js")>();
+  return {
+    ...actual,
+    requestHeartbeatNow: heartbeatWakeHoisted.requestHeartbeatNowSpy,
+  };
+});
+
 const sentMessageCacheHoisted = vi.hoisted(() => ({
   wasSentByBot: vi.fn(() => false),
 }));
@@ -540,6 +553,8 @@ beforeEach(() => {
   sendMessageDraftSpy.mockReset();
   sendMessageDraftSpy.mockResolvedValue(true);
   enqueueSystemEventSpy.mockReset();
+  enqueueSystemEventSpy.mockReturnValue(true);
+  requestHeartbeatNowSpy.mockReset();
   wasSentByBot.mockReset();
   wasSentByBot.mockReturnValue(false);
   listSkillCommandsForAgents.mockReset();
