@@ -1090,8 +1090,8 @@ export function buildGatewaySessionRow(params: {
 
   const totalTokens =
     resolveNonNegativeNumber(freshTotal) ??
-    (transcriptFresh ? transcriptTotal : undefined) ??
     resolveNonNegativeNumber(entry?.totalTokensEstimate) ??
+    (transcriptFresh ? transcriptTotal : undefined) ??
     transcriptTotal;
 
   const totalTokensFresh =
