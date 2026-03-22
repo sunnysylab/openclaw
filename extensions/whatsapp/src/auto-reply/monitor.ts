@@ -4,6 +4,7 @@ import { waitForever } from "openclaw/plugin-sdk/cli-runtime";
 import { hasControlCommand } from "openclaw/plugin-sdk/command-auth";
 import { loadConfig } from "openclaw/plugin-sdk/config-runtime";
 import { createConnectedChannelStatusPatch } from "openclaw/plugin-sdk/gateway-runtime";
+import { drainReconnectQueue } from "openclaw/plugin-sdk/infra-runtime";
 import { formatDurationPrecise } from "openclaw/plugin-sdk/infra-runtime";
 import { enqueueSystemEvent } from "openclaw/plugin-sdk/infra-runtime";
 import { DEFAULT_GROUP_HISTORY_LIMIT } from "openclaw/plugin-sdk/reply-history";
@@ -227,6 +228,16 @@ export async function monitorWebChannel(
     });
 
     setActiveWebListener(account.accountId, listener);
+
+    // Drain any messages that failed with "no listener" during the disconnect window.
+    void drainReconnectQueue({
+      accountId: account.accountId,
+      cfg,
+      log: reconnectLogger,
+    }).catch((err) => {
+      reconnectLogger.warn({ connectionId, error: String(err) }, "reconnect drain failed");
+    });
+
     unregisterUnhandled = registerUnhandledRejectionHandler((reason) => {
       if (!isLikelyWhatsAppCryptoError(reason)) {
         return false;

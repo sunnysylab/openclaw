@@ -26,6 +26,7 @@ export * from "../infra/net/fetch-guard.js";
 export * from "../infra/net/proxy-env.js";
 export * from "../infra/net/proxy-fetch.js";
 export * from "../infra/net/ssrf.js";
+export * from "../infra/outbound/delivery-queue.js";
 export * from "../infra/outbound/identity.js";
 export * from "../infra/outbound/send-deps.js";
 export * from "../infra/retry.js";
