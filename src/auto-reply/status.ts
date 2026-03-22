@@ -297,9 +297,6 @@ const readUsageFromSessionLog = (
     output = lastUsage.output ?? 0;
     promptTokens = derivePromptTokens(lastUsage) ?? lastUsage.total ?? input + output;
     const total = lastUsage.total ?? promptTokens + output;
-    if (promptTokens === 0 && total === 0) {
-      return undefined;
-    }
     return { input, output, promptTokens, total, totalTokensFresh: true, model };
   } catch {
     return undefined;
