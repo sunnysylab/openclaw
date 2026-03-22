@@ -95,7 +95,7 @@ Managed hook directories can be either a **single hook** or a **hook pack** (pac
 
 Each hook is a directory containing:
 
-```
+```text
 my-hook/
 ├── HOOK.md          # Metadata + documentation
 └── handler.ts       # Handler implementation
@@ -788,7 +788,7 @@ metadata: { "openclaw": { "events": ["command"] } } # General - more overhead
 
 The gateway logs hook loading at startup:
 
-```
+```text
 Registered hook: session-memory -> command:new
 Registered hook: bootstrap-extra-files -> agent:bootstrap
 Registered hook: command-logger -> command
@@ -878,7 +878,7 @@ test("my handler works", async () => {
 
 ### Discovery Flow
 
-```
+```text
 Gateway startup
     ↓
 Scan directories (workspace → managed → bundled)
@@ -894,7 +894,7 @@ Register handlers for events
 
 ### Event Flow
 
-```
+```text
 User sends /new
     ↓
 Command validation

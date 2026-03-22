@@ -31,7 +31,7 @@ List all discovered hooks from workspace, managed, extra, and bundled directorie
 
 **Example output:**
 
-```
+```text
 Hooks (4/4 ready)
 
 Ready:
@@ -81,7 +81,7 @@ openclaw hooks info session-memory
 
 **Output:**
 
-```
+```text
 💾 session-memory ✓ Ready
 
 Save session context to memory when /new command is issued
@@ -111,7 +111,7 @@ Show summary of hook eligibility status (how many are ready vs. not ready).
 
 **Example output:**
 
-```
+```text
 Hooks Status
 
 Total hooks: 4
@@ -141,7 +141,7 @@ openclaw hooks enable session-memory
 
 **Output:**
 
-```
+```text
 ✓ Enabled hook: 💾 session-memory
 ```
 
@@ -178,7 +178,7 @@ openclaw hooks disable command-logger
 
 **Output:**
 
-```
+```text
 ⏸ Disabled hook: 📝 command-logger
 ```
 

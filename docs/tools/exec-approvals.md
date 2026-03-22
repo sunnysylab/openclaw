@@ -352,7 +352,7 @@ Config:
 
 Reply in chat:
 
-```
+```text
 /approve <id> allow-once
 /approve <id> allow-always
 /approve <id> deny
@@ -386,7 +386,7 @@ See:
 
 ### macOS IPC flow
 
-```
+```text
 Gateway -> Node Service (WS)
                  |  IPC (UDS + token + HMAC + TTL)
                  v

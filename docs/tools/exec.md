@@ -103,7 +103,7 @@ Send `/exec` with no arguments to show the current values.
 
 Example:
 
-```
+```text
 /exec host=gateway security=allowlist ask=on-miss node=mac-1
 ```
 
