@@ -33,4 +33,17 @@ describe("Model Studio implicit provider", () => {
       ),
     ).toBe(false);
   });
+
+  it("should opt into streaming usage when DashScope URL is used via a generic provider key", () => {
+    const providers = applyNativeStreamingUsageCompat({
+      generic: {
+        ...buildModelStudioProvider(),
+        baseUrl: "https://coding.dashscope.aliyuncs.com/v1",
+      },
+    });
+    expect(providers?.generic).toBeDefined();
+    expect(
+      providers?.generic?.models?.every((model) => model.compat?.supportsUsageInStreaming === true),
+    ).toBe(true);
+  });
 });
