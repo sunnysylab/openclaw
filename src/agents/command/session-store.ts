@@ -123,7 +123,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.outputTokens = output;
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
-      next.totalTokensFresh = true;
+      next.totalTokensFresh = totalTokens > 0 || !entry.totalTokensFresh;
       if (totalTokens > 0 || !entry.totalTokensFresh) {
         next.totalTokensEstimate = totalTokens;
       }

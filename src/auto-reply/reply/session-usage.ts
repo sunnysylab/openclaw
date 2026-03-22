@@ -153,7 +153,8 @@ export async function persistSessionUsageUpdate(params: {
           // Missing a last-call snapshot (and promptTokens fallback) means
           // context utilization is stale/unknown.
           patch.totalTokens = totalTokens;
-          patch.totalTokensFresh = typeof totalTokens === "number";
+          patch.totalTokensFresh =
+            typeof totalTokens === "number" && (totalTokens > 0 || !entry.totalTokensFresh);
 
           if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
             patch.totalTokensEstimate = totalTokens;
