@@ -456,6 +456,7 @@ function resolvePackageEntrySource(params: {
   sourceLabel: string;
   diagnostics: PluginDiagnostic[];
   rejectHardlinks?: boolean;
+  origin?: PluginOrigin;
 }): string | null {
   const source = path.resolve(params.packageDir, params.entryPath);
   const opened = openBoundaryFileSync({
@@ -465,6 +466,14 @@ function resolvePackageEntrySource(params: {
     rejectHardlinks: params.rejectHardlinks ?? true,
   });
   if (!opened.ok) {
+    if (params.origin === "bundled" && opened.reason === "path") {
+      params.diagnostics.push({
+        level: "warn",
+        message: `bundled extension entry skipped — file not found (likely npm stripping): ${params.sourceLabel}/${params.entryPath}; install via pnpm or use the pre-built Docker image`,
+        source: params.sourceLabel,
+      });
+      return null;
+    }
     params.diagnostics.push({
       level: "error",
       message: `extension entry escapes package directory: ${params.entryPath}`,
@@ -539,6 +548,7 @@ function discoverInDirectory(params: {
             sourceLabel: fullPath,
             diagnostics: params.diagnostics,
             rejectHardlinks,
+            origin: params.origin,
           })
         : null;
 
@@ -550,6 +560,7 @@ function discoverInDirectory(params: {
           sourceLabel: fullPath,
           diagnostics: params.diagnostics,
           rejectHardlinks,
+          origin: params.origin,
         });
         if (!resolved) {
           continue;
@@ -669,6 +680,7 @@ function discoverFromPath(params: {
             sourceLabel: resolved,
             diagnostics: params.diagnostics,
             rejectHardlinks,
+            origin: params.origin,
           })
         : null;
 
@@ -680,6 +692,7 @@ function discoverFromPath(params: {
           sourceLabel: resolved,
           diagnostics: params.diagnostics,
           rejectHardlinks,
+          origin: params.origin,
         });
         if (!source) {
           continue;
