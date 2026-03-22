@@ -242,7 +242,8 @@ export async function sendWebPushNotification(
   payload: WebPushPayload,
   vapidKeys?: VapidKeyPair,
 ): Promise<WebPushSendResult> {
-  const keys = vapidKeys ?? (await resolveVapidKeys());
+  const vapid = vapidKeys ?? (await resolveVapidKeys());
+  webPush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
 
   const pushSubscription = {
     endpoint: subscription.endpoint,
@@ -286,10 +287,8 @@ export async function broadcastWebPush(
     return [];
   }
 
+  // Resolve VAPID keys once and pass to all sends to avoid repeated file reads.
   const vapidKeys = await resolveVapidKeys(baseDir);
-
-  // Set VAPID details once before fanning out concurrent sends.
-  webPush.setVapidDetails(vapidKeys.subject, vapidKeys.publicKey, vapidKeys.privateKey);
 
   const results = await Promise.allSettled(
     subscriptions.map((sub) => sendWebPushNotification(sub, payload, vapidKeys)),

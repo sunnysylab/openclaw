@@ -165,7 +165,7 @@ describe("subscription CRUD", () => {
         keys,
         baseDir: tmpDir,
       }),
-    ).rejects.toThrow("invalid push subscription endpoint");
+    ).rejects.toThrow("Invalid push subscription endpoint");
   });
 
   it("rejects empty keys", async () => {
@@ -175,6 +175,6 @@ describe("subscription CRUD", () => {
         keys: { p256dh: "", auth: "auth-key" },
         baseDir: tmpDir,
       }),
-    ).rejects.toThrow("invalid push subscription keys");
+    ).rejects.toThrow("Invalid push subscription keys");
   });
 });
