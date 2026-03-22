@@ -86,7 +86,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.totalTokensEstimate = undefined;
   } else if (entry.totalTokensEstimate !== undefined) {
     next.totalTokensEstimate = entry.totalTokensEstimate;
-  } else if (entry.totalTokens !== undefined && entry.totalTokensFresh) {
+  } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
     // Refresh or backfill estimate baseline from the last known fresh total.
     next.totalTokensEstimate = entry.totalTokens;
   }
@@ -123,8 +123,8 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.outputTokens = output;
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
-      next.totalTokensFresh = totalTokens > 0 || !entry.totalTokensFresh;
-      if (totalTokens > 0 || !entry.totalTokensFresh) {
+      next.totalTokensFresh = totalTokens > 0 || entry.totalTokensFresh === false;
+      if (totalTokens > 0 || entry.totalTokensFresh !== true) {
         next.totalTokensEstimate = totalTokens;
       }
     } else {

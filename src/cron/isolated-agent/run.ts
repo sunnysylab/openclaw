@@ -768,7 +768,7 @@ export async function runCronIsolatedAgentTurn(params: {
       cronSession.sessionEntry.totalTokens = undefined;
       cronSession.sessionEntry.totalTokensFresh = false;
       cronSession.sessionEntry.totalTokensEstimate = undefined;
-    } else if (cronSession.sessionEntry.totalTokensEstimate === undefined && preRunTotalTokens !== undefined && cronSession.sessionEntry.totalTokensFresh) {
+    } else if (cronSession.sessionEntry.totalTokensEstimate === undefined && preRunTotalTokens !== undefined && cronSession.sessionEntry.totalTokensFresh !== false) {
       // Refresh or backfill estimate baseline from the last known fresh total.
       // (Note: totalTokensFresh was already true on cronSession.sessionEntry if it was true on entry)
       cronSession.sessionEntry.totalTokensEstimate = preRunTotalTokens;
@@ -807,8 +807,8 @@ export async function runCronIsolatedAgentTurn(params: {
       };
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
-        cronSession.sessionEntry.totalTokensFresh = totalTokens > 0 || !cronSession.sessionEntry.totalTokensFresh;
-        if (totalTokens > 0 || !cronSession.sessionEntry.totalTokensFresh) {
+        cronSession.sessionEntry.totalTokensFresh = totalTokens > 0 || cronSession.sessionEntry.totalTokensFresh === false;
+        if (totalTokens > 0 || cronSession.sessionEntry.totalTokensFresh !== true) {
           cronSession.sessionEntry.totalTokensEstimate = totalTokens;
         }
         telemetryUsage.total_tokens = totalTokens;

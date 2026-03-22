@@ -133,13 +133,13 @@ export async function persistSessionUsageUpdate(params: {
 
           patch.totalTokens = totalTokens;
           patch.totalTokensFresh =
-            typeof totalTokens === "number" && (totalTokens > 0 || !entry.totalTokensFresh);
+            typeof totalTokens === "number" && (totalTokens > 0 || entry.totalTokensFresh === false);
 
           if (modelChanged) {
             patch.totalTokensEstimate = undefined;
           } else if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
             patch.totalTokensEstimate = totalTokens;
-            if (totalTokens === 0 && entry.totalTokensFresh) {
+            if (totalTokens === 0 && entry.totalTokensFresh !== false) {
               if (entry.totalTokensEstimate !== undefined) {
                 patch.totalTokensEstimate = entry.totalTokensEstimate;
               } else if (entry.totalTokens !== undefined) {
@@ -149,7 +149,7 @@ export async function persistSessionUsageUpdate(params: {
           } else {
             if (entry.totalTokensEstimate !== undefined) {
               patch.totalTokensEstimate = entry.totalTokensEstimate;
-            } else if (entry.totalTokens !== undefined && entry.totalTokensFresh) {
+            } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
               // Refresh or backfill estimate baseline from the last known fresh total.
               patch.totalTokensEstimate = entry.totalTokens;
             }
@@ -214,7 +214,7 @@ export async function persistSessionUsageUpdate(params: {
           patch.totalTokensEstimate = undefined;
         } else if (entry.totalTokensEstimate !== undefined) {
           patch.totalTokensEstimate = entry.totalTokensEstimate;
-        } else if (entry.totalTokens !== undefined && entry.totalTokensFresh) {
+        } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
           // Refresh or backfill estimate baseline from the last known fresh total.
           patch.totalTokensEstimate = entry.totalTokens;
         }
