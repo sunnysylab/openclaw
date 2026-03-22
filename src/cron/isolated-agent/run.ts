@@ -759,7 +759,6 @@ export async function runCronIsolatedAgentTurn(params: {
         input_tokens: input,
         output_tokens: output,
       };
-      const prevFresh = cronSession.sessionEntry.totalTokensFresh;
       const prevEstimate = cronSession.sessionEntry.totalTokensEstimate;
       const prevTotal = cronSession.sessionEntry.totalTokens;
       const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
