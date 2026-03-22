@@ -201,7 +201,7 @@ export async function getReplyFromConfig(
     });
     logIngressStage("link-understanding", `applied=${appliedLinkUnderstanding ? "1" : "0"}`);
   }
-  emitPreAgentMessageHooks({
+  await emitPreAgentMessageHooks({
     ctx: finalized,
     cfg,
     isFastTestEnv,
