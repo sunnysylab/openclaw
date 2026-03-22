@@ -132,6 +132,15 @@ export type ResolvedTtsConfig = {
     proxy?: string;
     timeoutMs?: number;
   };
+  minimax: {
+    apiKey?: string;
+    baseUrl: string;
+    model: string;
+    voiceId: string;
+    speed?: number;
+    volume?: number;
+    pitch?: number;
+  };
   prefsPath?: string;
   maxTextLength: number;
   timeoutMs: number;
@@ -339,6 +348,18 @@ export function resolveTtsConfig(cfg: OpenClawConfig): ResolvedTtsConfig {
       proxy: rawMicrosoft.proxy?.trim() || undefined,
       timeoutMs: rawMicrosoft.timeoutMs,
     },
+    minimax: {
+      apiKey: normalizeResolvedSecretInputString({
+        value: raw.minimax?.apiKey,
+        path: "messages.tts.minimax.apiKey",
+      }),
+      baseUrl: (raw.minimax?.baseUrl?.trim() || "https://api.minimaxi.com").replace(/\/+$/, ""),
+      model: raw.minimax?.model || "speech-01-turbo",
+      voiceId: raw.minimax?.voiceId || "female-shaonv",
+      speed: raw.minimax?.speed,
+      volume: raw.minimax?.volume,
+      pitch: raw.minimax?.pitch,
+    },
     prefsPath: raw.prefsPath,
     maxTextLength: raw.maxTextLength ?? DEFAULT_MAX_TEXT_LENGTH,
     timeoutMs: raw.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -478,6 +499,9 @@ export function getTtsProvider(config: ResolvedTtsConfig, prefsPath: string): Tt
   if (resolveTtsApiKey(config, "elevenlabs")) {
     return "elevenlabs";
   }
+  if (resolveTtsApiKey(config, "minimax")) {
+    return "minimax";
+  }
   return "microsoft";
 }
 
@@ -546,10 +570,13 @@ export function resolveTtsApiKey(
   if (normalizedProvider === "openai") {
     return config.openai.apiKey || process.env.OPENAI_API_KEY;
   }
+  if (normalizedProvider === "minimax") {
+    return config.minimax.apiKey || process.env.MINIMAX_API_KEY;
+  }
   return undefined;
 }
 
-export const TTS_PROVIDERS = ["openai", "elevenlabs", "microsoft"] as const;
+export const TTS_PROVIDERS = ["openai", "elevenlabs", "microsoft", "minimax"] as const;
 
 export function resolveTtsProviderOrder(primary: TtsProvider, cfg?: OpenClawConfig): TtsProvider[] {
   const normalizedPrimary = normalizeSpeechProviderId(primary) ?? primary;
