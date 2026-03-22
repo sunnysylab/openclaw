@@ -764,7 +764,7 @@ export async function runCronIsolatedAgentTurn(params: {
 
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
-        cronSession.sessionEntry.totalTokensFresh = totalTokens > 0 || prevFresh === false || prevWasZero;
+        cronSession.sessionEntry.totalTokensFresh = totalTokens > 0 || prevFresh !== true || prevWasZero;
         if (cronSession.sessionEntry.totalTokensFresh) {
           cronSession.sessionEntry.totalTokensEstimate = totalTokens;
         } else if (totalTokens === 0 && !modelChanged) {
@@ -778,8 +778,11 @@ export async function runCronIsolatedAgentTurn(params: {
         cronSession.sessionEntry.totalTokens = undefined;
         cronSession.sessionEntry.totalTokensFresh = false;
       }
-      cronSession.sessionEntry.cacheRead = usage?.cacheRead ?? cronSession.sessionEntry.cacheRead;
-      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite ?? cronSession.sessionEntry.cacheWrite;
+      const useFallback = !modelChanged;
+      cronSession.sessionEntry.inputTokens = input ?? (useFallback ? cronSession.sessionEntry.inputTokens : undefined);
+      cronSession.sessionEntry.outputTokens = output ?? (useFallback ? cronSession.sessionEntry.outputTokens : undefined);
+      cronSession.sessionEntry.cacheRead = usage?.cacheRead ?? (useFallback ? cronSession.sessionEntry.cacheRead : undefined);
+      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite ?? (useFallback ? cronSession.sessionEntry.cacheWrite : undefined);
       if (runEstimatedCostUsd !== undefined) {
         cronSession.sessionEntry.estimatedCostUsd =
           (resolveNonNegativeNumber(cronSession.sessionEntry.estimatedCostUsd) ?? 0) +

@@ -138,7 +138,7 @@ export async function persistSessionUsageUpdate(params: {
           const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
           patch.totalTokensFresh =
-            typeof totalTokens === "number" && (totalTokens > 0 || prevFresh === false || prevWasZero);
+            typeof totalTokens === "number" && (totalTokens > 0 || prevFresh !== true || prevWasZero);
 
           if (modelChanged) {
             patch.totalTokensEstimate = undefined;
@@ -160,13 +160,16 @@ export async function persistSessionUsageUpdate(params: {
           }
 
           if (hasUsage) {
-            patch.inputTokens = params.usage?.input ?? entry.inputTokens;
-            patch.outputTokens = params.usage?.output ?? entry.outputTokens;
+            const useFallback = !modelChanged;
+            patch.inputTokens = params.usage?.input ?? (useFallback ? entry.inputTokens : undefined);
+            patch.outputTokens = params.usage?.output ?? (useFallback ? entry.outputTokens : undefined);
             // Cache counters should reflect the latest context snapshot when
             // available, not accumulated per-call totals across a whole run.
             const cacheUsage = params.lastCallUsage ?? params.usage;
-            patch.cacheRead = cacheUsage?.cacheRead ?? entry.cacheRead;
-            patch.cacheWrite = cacheUsage?.cacheWrite ?? entry.cacheWrite;
+            patch.cacheRead =
+              cacheUsage?.cacheRead ?? (useFallback ? entry.cacheRead : undefined);
+            patch.cacheWrite =
+              cacheUsage?.cacheWrite ?? (useFallback ? entry.cacheWrite : undefined);
           }
           if (runEstimatedCostUsd !== undefined) {
             patch.estimatedCostUsd = existingEstimatedCostUsd + runEstimatedCostUsd;
