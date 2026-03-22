@@ -15,6 +15,16 @@ vi.mock("../../config/config.js", () => {
   };
 });
 
+vi.mock("../../agents/session-dirs.js", async () => {
+  const actual = await vi.importActual<typeof import("../../agents/session-dirs.js")>(
+    "../../agents/session-dirs.js",
+  );
+  return {
+    ...actual,
+    resolveAgentSessionDirsFromAgentsDir: vi.fn(actual.resolveAgentSessionDirsFromAgentsDir),
+  };
+});
+
 vi.mock("../session-utils.js", async () => {
   const actual = await vi.importActual<typeof import("../session-utils.js")>("../session-utils.js");
   return {
@@ -29,7 +39,7 @@ vi.mock("../../infra/session-cost-usage.js", async () => {
   );
   return {
     ...actual,
-    discoverAllSessions: vi.fn(async (params?: { agentId?: string }) => {
+    discoverAllSessions: vi.fn(async (params?: { agentId?: string; sessionsDir?: string }) => {
       if (params?.agentId === "main") {
         return [
           {
@@ -73,6 +83,8 @@ vi.mock("../../infra/session-cost-usage.js", async () => {
   };
 });
 
+import { resolveAgentSessionDirsFromAgentsDir } from "../../agents/session-dirs.js";
+import { loadConfig } from "../../config/config.js";
 import {
   discoverAllSessions,
   loadSessionCostSummary,
@@ -130,23 +142,217 @@ describe("sessions.usage", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    vi.mocked(loadConfig).mockReturnValue({
+      agents: {
+        list: [{ id: "main" }, { id: "opus" }],
+      },
+      session: {},
+    });
+    vi.mocked(loadCombinedSessionStoreForGateway).mockReturnValue({
+      storePath: "(multiple)",
+      store: {},
+    });
+    vi.mocked(discoverAllSessions).mockImplementation(
+      async (params?: { agentId?: string; sessionsDir?: string }) => {
+        if (params?.agentId === "main") {
+          return [
+            {
+              sessionId: "s-main",
+              sessionFile: "/tmp/agents/main/sessions/s-main.jsonl",
+              mtime: 100,
+              firstUserMessage: "hello",
+            },
+          ];
+        }
+        if (params?.agentId === "opus") {
+          return [
+            {
+              sessionId: "s-opus",
+              sessionFile: "/tmp/agents/opus/sessions/s-opus.jsonl",
+              mtime: 200,
+              firstUserMessage: "hi",
+            },
+          ];
+        }
+        return [];
+      },
+    );
   });
 
   it("discovers sessions across configured agents and keeps agentId in key", async () => {
-    const respond = await runSessionsUsage(BASE_USAGE_RANGE);
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-usage-configured-agents-"));
 
-    expect(vi.mocked(discoverAllSessions)).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(discoverAllSessions).mock.calls[0]?.[0]?.agentId).toBe("main");
-    expect(vi.mocked(discoverAllSessions).mock.calls[1]?.[0]?.agentId).toBe("opus");
+    try {
+      await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
+        const respond = await runSessionsUsage(BASE_USAGE_RANGE);
 
-    const sessions = expectSuccessfulSessionsUsage(respond);
-    expect(sessions).toHaveLength(2);
+        expect(vi.mocked(discoverAllSessions)).toHaveBeenCalledTimes(2);
+        expect(vi.mocked(discoverAllSessions).mock.calls[0]?.[0]?.agentId).toBe("main");
+        expect(vi.mocked(discoverAllSessions).mock.calls[1]?.[0]?.agentId).toBe("opus");
 
-    // Sorted by most recent first (mtime=200 -> opus first).
-    expect(sessions[0].key).toBe("agent:opus:s-opus");
-    expect(sessions[0].agentId).toBe("opus");
-    expect(sessions[1].key).toBe("agent:main:s-main");
-    expect(sessions[1].agentId).toBe("main");
+        const sessions = expectSuccessfulSessionsUsage(respond);
+        expect(sessions).toHaveLength(2);
+
+        // Sorted by most recent first (mtime=200 -> opus first).
+        expect(sessions[0].key).toBe("agent:opus:s-opus");
+        expect(sessions[0].agentId).toBe("opus");
+        expect(sessions[1].key).toBe("agent:main:s-main");
+        expect(sessions[1].agentId).toBe("main");
+      });
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps usage for deleted agents when session transcripts remain on disk", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-usage-deleted-agent-"));
+
+    try {
+      await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
+        fs.mkdirSync(path.join(stateDir, "agents", "main", "sessions"), { recursive: true });
+        fs.mkdirSync(path.join(stateDir, "agents", "retired", "sessions"), { recursive: true });
+
+        vi.mocked(loadConfig).mockReturnValue({
+          agents: {
+            list: [{ id: "main", default: true }],
+          },
+          session: {},
+        });
+
+        vi.mocked(discoverAllSessions).mockImplementation(
+          async (params?: { agentId?: string; sessionsDir?: string }) => {
+            if (params?.agentId === "main") {
+              return [
+                {
+                  sessionId: "s-main",
+                  sessionFile: path.join(stateDir, "agents", "main", "sessions", "s-main.jsonl"),
+                  mtime: 100,
+                  firstUserMessage: "hello",
+                },
+              ];
+            }
+            if (params?.agentId === "retired") {
+              return [
+                {
+                  sessionId: "s-retired",
+                  sessionFile: path.join(
+                    stateDir,
+                    "agents",
+                    "retired",
+                    "sessions",
+                    "s-retired.jsonl",
+                  ),
+                  mtime: 200,
+                  firstUserMessage: "historical",
+                },
+              ];
+            }
+            return [];
+          },
+        );
+
+        const respond = await runSessionsUsage(BASE_USAGE_RANGE);
+        const sessions = expectSuccessfulSessionsUsage(respond);
+
+        expect(vi.mocked(discoverAllSessions).mock.calls.map((call) => call[0]?.agentId)).toEqual([
+          "main",
+          "retired",
+        ]);
+        expect(sessions.map((session) => session.key)).toEqual([
+          "agent:retired:s-retired",
+          "agent:main:s-main",
+        ]);
+      });
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps usage for deleted agent dirs that do not round-trip through normalizeAgentId", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-usage-retired-agent-dir-"));
+    const retiredSessionsDir = path.join(stateDir, "agents", "Retired Agent", "sessions");
+
+    try {
+      await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
+        fs.mkdirSync(path.join(stateDir, "agents", "main", "sessions"), { recursive: true });
+        fs.mkdirSync(retiredSessionsDir, { recursive: true });
+
+        vi.mocked(loadConfig).mockReturnValue({
+          agents: {
+            list: [{ id: "main", default: true }],
+          },
+          session: {},
+        });
+
+        vi.mocked(discoverAllSessions).mockImplementation(
+          async (params?: { agentId?: string; sessionsDir?: string }) => {
+            if (params?.agentId === "main") {
+              return [
+                {
+                  sessionId: "s-main",
+                  sessionFile: path.join(stateDir, "agents", "main", "sessions", "s-main.jsonl"),
+                  mtime: 100,
+                  firstUserMessage: "hello",
+                },
+              ];
+            }
+            if (params?.agentId === "retired-agent" && params?.sessionsDir === retiredSessionsDir) {
+              return [
+                {
+                  sessionId: "s-retired",
+                  sessionFile: path.join(retiredSessionsDir, "s-retired.jsonl"),
+                  mtime: 200,
+                  firstUserMessage: "historical",
+                },
+              ];
+            }
+            return [];
+          },
+        );
+
+        const respond = await runSessionsUsage(BASE_USAGE_RANGE);
+        const sessions = expectSuccessfulSessionsUsage(respond);
+
+        expect(
+          vi
+            .mocked(discoverAllSessions)
+            .mock.calls.some(
+              (call) =>
+                call[0]?.agentId === "retired-agent" && call[0]?.sessionsDir === retiredSessionsDir,
+            ),
+        ).toBe(true);
+        expect(sessions.map((session) => session.key)).toEqual([
+          "agent:retired-agent:s-retired",
+          "agent:main:s-main",
+        ]);
+      });
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores non-fatal disk scan errors and still scans configured agents", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-usage-disk-scan-error-"));
+
+    try {
+      await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
+        vi.mocked(resolveAgentSessionDirsFromAgentsDir).mockRejectedValueOnce(
+          Object.assign(new Error("blocked"), { code: "EACCES" }),
+        );
+
+        const respond = await runSessionsUsage(BASE_USAGE_RANGE);
+        const sessions = expectSuccessfulSessionsUsage(respond);
+
+        expect(vi.mocked(discoverAllSessions)).toHaveBeenCalledTimes(2);
+        expect(vi.mocked(discoverAllSessions).mock.calls.map((call) => call[0]?.agentId)).toEqual([
+          "main",
+          "opus",
+        ]);
+        expect(sessions).toHaveLength(2);
+      });
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("resolves store entries by sessionId when queried via discovered agent-prefixed key", async () => {
@@ -189,6 +395,56 @@ describe("sessions.usage", () => {
     }
   });
 
+  it("resolves transcript-only discovered keys from non-round-tripping deleted agent dirs", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-usage-discovered-key-"));
+    const retiredSessionsDir = path.join(stateDir, "agents", "Retired Agent", "sessions");
+    const retiredSessionFile = path.join(retiredSessionsDir, "s-retired.jsonl");
+
+    try {
+      await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
+        fs.mkdirSync(retiredSessionsDir, { recursive: true });
+        fs.writeFileSync(retiredSessionFile, "", "utf-8");
+
+        vi.mocked(loadConfig).mockReturnValue({
+          agents: {
+            list: [{ id: "main", default: true }],
+          },
+          session: {},
+        });
+
+        vi.mocked(discoverAllSessions).mockImplementation(
+          async (params?: { agentId?: string; sessionsDir?: string }) => {
+            if (params?.agentId === "retired-agent" && params?.sessionsDir === retiredSessionsDir) {
+              return [
+                {
+                  sessionId: "s-retired",
+                  sessionFile: retiredSessionFile,
+                  mtime: 200,
+                  firstUserMessage: "historical",
+                },
+              ];
+            }
+            return [];
+          },
+        );
+
+        const respond = await runSessionsUsage({
+          ...BASE_USAGE_RANGE,
+          key: "agent:retired-agent:s-retired",
+        });
+        const sessions = expectSuccessfulSessionsUsage(respond);
+
+        expect(sessions).toHaveLength(1);
+        expect(sessions[0]?.key).toBe("agent:retired-agent:s-retired");
+        expect(vi.mocked(loadSessionCostSummary).mock.calls[0]?.[0]?.sessionFile).toBe(
+          retiredSessionFile,
+        );
+      });
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects traversal-style keys in specific session usage lookups", async () => {
     const respond = await runSessionsUsage({
       ...BASE_USAGE_RANGE,
@@ -201,22 +457,98 @@ describe("sessions.usage", () => {
     expect(error?.message).toContain("Invalid session reference");
   });
 
-  it("passes parsed agentId into sessions.usage.timeseries", async () => {
-    await runSessionsUsageTimeseries({
-      key: "agent:opus:s-opus",
-    });
+  it("passes discovered sessionFile into sessions.usage.timeseries for retired agent dirs", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-usage-timeseries-retired-"));
+    const retiredSessionsDir = path.join(stateDir, "agents", "Retired Agent", "sessions");
+    const retiredSessionFile = path.join(retiredSessionsDir, "s-retired.jsonl");
 
-    expect(vi.mocked(loadSessionUsageTimeSeries)).toHaveBeenCalled();
-    expect(vi.mocked(loadSessionUsageTimeSeries).mock.calls[0]?.[0]?.agentId).toBe("opus");
+    try {
+      await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
+        fs.mkdirSync(retiredSessionsDir, { recursive: true });
+        fs.writeFileSync(retiredSessionFile, "", "utf-8");
+
+        vi.mocked(loadConfig).mockReturnValue({
+          agents: {
+            list: [{ id: "main", default: true }],
+          },
+          session: {},
+        });
+        vi.mocked(discoverAllSessions).mockImplementation(
+          async (params?: { agentId?: string; sessionsDir?: string }) => {
+            if (params?.agentId === "retired-agent" && params?.sessionsDir === retiredSessionsDir) {
+              return [
+                {
+                  sessionId: "s-retired",
+                  sessionFile: retiredSessionFile,
+                  mtime: 200,
+                  firstUserMessage: "historical",
+                },
+              ];
+            }
+            return [];
+          },
+        );
+
+        await runSessionsUsageTimeseries({
+          key: "agent:retired-agent:s-retired",
+        });
+
+        expect(vi.mocked(loadSessionUsageTimeSeries)).toHaveBeenCalled();
+        expect(vi.mocked(loadSessionUsageTimeSeries).mock.calls[0]?.[0]?.agentId).toBe(
+          "retired-agent",
+        );
+        expect(vi.mocked(loadSessionUsageTimeSeries).mock.calls[0]?.[0]?.sessionFile).toBe(
+          retiredSessionFile,
+        );
+      });
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 
-  it("passes parsed agentId into sessions.usage.logs", async () => {
-    await runSessionsUsageLogs({
-      key: "agent:opus:s-opus",
-    });
+  it("passes discovered sessionFile into sessions.usage.logs for retired agent dirs", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-usage-logs-retired-"));
+    const retiredSessionsDir = path.join(stateDir, "agents", "Retired Agent", "sessions");
+    const retiredSessionFile = path.join(retiredSessionsDir, "s-retired.jsonl");
 
-    expect(vi.mocked(loadSessionLogs)).toHaveBeenCalled();
-    expect(vi.mocked(loadSessionLogs).mock.calls[0]?.[0]?.agentId).toBe("opus");
+    try {
+      await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
+        fs.mkdirSync(retiredSessionsDir, { recursive: true });
+        fs.writeFileSync(retiredSessionFile, "", "utf-8");
+
+        vi.mocked(loadConfig).mockReturnValue({
+          agents: {
+            list: [{ id: "main", default: true }],
+          },
+          session: {},
+        });
+        vi.mocked(discoverAllSessions).mockImplementation(
+          async (params?: { agentId?: string; sessionsDir?: string }) => {
+            if (params?.agentId === "retired-agent" && params?.sessionsDir === retiredSessionsDir) {
+              return [
+                {
+                  sessionId: "s-retired",
+                  sessionFile: retiredSessionFile,
+                  mtime: 200,
+                  firstUserMessage: "historical",
+                },
+              ];
+            }
+            return [];
+          },
+        );
+
+        await runSessionsUsageLogs({
+          key: "agent:retired-agent:s-retired",
+        });
+
+        expect(vi.mocked(loadSessionLogs)).toHaveBeenCalled();
+        expect(vi.mocked(loadSessionLogs).mock.calls[0]?.[0]?.agentId).toBe("retired-agent");
+        expect(vi.mocked(loadSessionLogs).mock.calls[0]?.[0]?.sessionFile).toBe(retiredSessionFile);
+      });
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("rejects traversal-style keys in timeseries/log lookups", async () => {
