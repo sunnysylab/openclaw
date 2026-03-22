@@ -170,8 +170,6 @@ describe("resolvePluginTools optional tools", () => {
     expect(loadOpenClawPluginsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         env,
-        activate: false,
-        cache: false,
       }),
     );
   });
@@ -190,9 +188,35 @@ describe("resolvePluginTools optional tools", () => {
         runtimeOptions: {
           allowGatewaySubagentBinding: true,
         },
-        activate: false,
-        cache: false,
       }),
     );
+  });
+
+  it("reuses a provided registry instead of loading plugins again", () => {
+    const registry = {
+      tools: [
+        {
+          pluginId: "optional-demo",
+          optional: true,
+          source: "/tmp/optional-demo.js",
+          factory: () => makeTool("optional_tool"),
+        },
+      ],
+      diagnostics: [] as Array<{
+        level: string;
+        pluginId: string;
+        source: string;
+        message: string;
+      }>,
+    };
+
+    const tools = resolvePluginTools({
+      context: createContext() as never,
+      registry: registry as never,
+      toolAllowlist: ["optional_tool"],
+    });
+
+    expect(tools.map((tool) => tool.name)).toEqual(["optional_tool"]);
+    expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
   });
 });
