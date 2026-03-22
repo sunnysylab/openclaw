@@ -6,7 +6,7 @@ import { listImageGenerationProviders } from "./provider-registry.js";
 const loadOpenClawPluginsMock = vi.fn(() => ({ imageGenerationProviders: [] }));
 
 vi.mock("../plugins/loader.js", () => ({
-  loadOpenClawPlugins: (...args: unknown[]) => loadOpenClawPluginsMock(...args),
+  loadOpenClawPlugins: (params: unknown) => loadOpenClawPluginsMock(params),
 }));
 
 describe("image generation provider registry", () => {

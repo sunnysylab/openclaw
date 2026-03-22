@@ -6,7 +6,7 @@ import { listSpeechProviders } from "./provider-registry.js";
 const loadOpenClawPluginsMock = vi.fn(() => ({ speechProviders: [] }));
 
 vi.mock("../plugins/loader.js", () => ({
-  loadOpenClawPlugins: (...args: unknown[]) => loadOpenClawPluginsMock(...args),
+  loadOpenClawPlugins: (params: unknown) => loadOpenClawPluginsMock(params),
 }));
 
 describe("speech provider registry", () => {

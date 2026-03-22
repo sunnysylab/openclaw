@@ -6,7 +6,7 @@ import { buildMediaUnderstandingRegistry } from "./index.js";
 const loadOpenClawPluginsMock = vi.fn(() => ({ mediaUnderstandingProviders: [] }));
 
 vi.mock("../../plugins/loader.js", () => ({
-  loadOpenClawPlugins: (...args: unknown[]) => loadOpenClawPluginsMock(...args),
+  loadOpenClawPlugins: (params: unknown) => loadOpenClawPluginsMock(params),
 }));
 
 describe("media-understanding provider loader", () => {
