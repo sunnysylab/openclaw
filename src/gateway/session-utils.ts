@@ -221,10 +221,10 @@ function resolveEstimatedSessionCostUsd(params: {
   if (explicitCostUsd !== undefined) {
     return explicitCostUsd;
   }
-  const input = resolvePositiveNumber(params.entry?.inputTokens);
-  const output = resolvePositiveNumber(params.entry?.outputTokens);
-  const cacheRead = resolvePositiveNumber(params.entry?.cacheRead);
-  const cacheWrite = resolvePositiveNumber(params.entry?.cacheWrite);
+  const input = resolveNonNegativeNumber(params.entry?.inputTokens);
+  const output = resolveNonNegativeNumber(params.entry?.outputTokens);
+  const cacheRead = resolveNonNegativeNumber(params.entry?.cacheRead);
+  const cacheWrite = resolveNonNegativeNumber(params.entry?.cacheWrite);
   if (
     input === undefined &&
     output === undefined &&

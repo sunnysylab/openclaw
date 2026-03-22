@@ -131,8 +131,28 @@ export async function persistSessionUsageUpdate(params: {
             updatedAt: Date.now(),
           };
 
+          patch.totalTokens = totalTokens;
+          patch.totalTokensFresh =
+            typeof totalTokens === "number" && (totalTokens > 0 || !entry.totalTokensFresh);
+
           if (modelChanged) {
             patch.totalTokensEstimate = undefined;
+          } else if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
+            patch.totalTokensEstimate = totalTokens;
+            if (totalTokens === 0 && entry.totalTokensFresh) {
+              if (entry.totalTokensEstimate !== undefined) {
+                patch.totalTokensEstimate = entry.totalTokensEstimate;
+              } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+                patch.totalTokensEstimate = entry.totalTokens;
+              }
+            }
+          } else {
+            if (entry.totalTokensEstimate !== undefined) {
+              patch.totalTokensEstimate = entry.totalTokensEstimate;
+            } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+              // Refresh or backfill estimate baseline from the last known fresh total.
+              patch.totalTokensEstimate = entry.totalTokens;
+            }
           }
 
           if (hasUsage) {
@@ -148,30 +168,6 @@ export async function persistSessionUsageUpdate(params: {
             patch.estimatedCostUsd = existingEstimatedCostUsd + runEstimatedCostUsd;
           } else if (entry.estimatedCostUsd !== undefined) {
             patch.estimatedCostUsd = entry.estimatedCostUsd;
-          }
-
-          // Missing a last-call snapshot (and promptTokens fallback) means
-          // context utilization is stale/unknown.
-          patch.totalTokens = totalTokens;
-          patch.totalTokensFresh =
-            typeof totalTokens === "number" && (totalTokens > 0 || !entry.totalTokensFresh);
-
-          if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
-            patch.totalTokensEstimate = totalTokens;
-            if (totalTokens === 0 && !modelChanged && entry.totalTokensFresh) {
-              if (entry.totalTokensEstimate !== undefined) {
-                patch.totalTokensEstimate = entry.totalTokensEstimate;
-              } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
-                patch.totalTokensEstimate = entry.totalTokens;
-              }
-            }
-          } else if (!modelChanged) {
-            if (entry.totalTokensEstimate !== undefined) {
-              patch.totalTokensEstimate = entry.totalTokensEstimate;
-            } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
-              // Refresh or backfill estimate baseline from the last known fresh total.
-              patch.totalTokensEstimate = entry.totalTokens;
-            }
           }
 
           return applyCliSessionIdToSessionPatch(params, entry, patch);
