@@ -5,6 +5,10 @@ import { getActivePluginRegistry } from "../../plugins/runtime.js";
 import type { MediaUnderstandingProvider } from "../types.js";
 import { deepgramProvider } from "./deepgram/index.js";
 import { groqProvider } from "./groq/index.js";
+import {
+  describeImageWithModel,
+  describeImagesWithModel,
+} from "./image.js";
 
 const PROVIDERS: MediaUnderstandingProvider[] = [groqProvider, deepgramProvider];
 
@@ -47,6 +51,28 @@ export function buildMediaUnderstandingRegistry(
       : loadOpenClawPlugins({ config: cfg });
   for (const entry of pluginRegistry?.mediaUnderstandingProviders ?? []) {
     mergeProviderIntoRegistry(registry, entry.provider);
+  }
+  // Auto-register media-understanding for config providers with image-capable models (#51392)
+  const configProviders = cfg?.models?.providers;
+  if (configProviders && typeof configProviders === "object") {
+    for (const [providerKey, providerCfg] of Object.entries(configProviders)) {
+      if (!providerKey?.trim()) continue;
+      const normalizedKey = normalizeMediaProviderId(providerKey);
+      if (registry.has(normalizedKey)) continue;
+      const models = (providerCfg as { models?: Array<{ input?: string[] }> })?.models ?? [];
+      const hasImageModel = models.some(
+        (m) => Array.isArray(m?.input) && m.input.includes("image"),
+      );
+      if (hasImageModel) {
+        const autoProvider: MediaUnderstandingProvider = {
+          id: normalizedKey,
+          capabilities: ["image"],
+          describeImage: describeImageWithModel,
+          describeImages: describeImagesWithModel,
+        };
+        mergeProviderIntoRegistry(registry, autoProvider);
+      }
+    }
   }
   if (overrides) {
     for (const [key, provider] of Object.entries(overrides)) {
