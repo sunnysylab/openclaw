@@ -1097,7 +1097,7 @@ export function buildGatewaySessionRow(params: {
 
   const totalTokensFresh =
     (typeof freshTotal === "number" && Number.isFinite(freshTotal) && freshTotal >= 0) ||
-    (totalTokens === transcriptTotal && transcriptFresh);
+    (totalTokens === transcriptTotal &&  transcriptFresh && freshTotal !== undefined);
   const childSessions = resolveChildSessionKeys(key, store);
   const estimatedCostUsd =
     resolveEstimatedSessionCostUsd({

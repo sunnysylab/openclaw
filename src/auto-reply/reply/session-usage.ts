@@ -132,7 +132,6 @@ export async function persistSessionUsageUpdate(params: {
           };
 
           patch.totalTokens = totalTokens;
-          const prevFresh = entry.totalTokensFresh;
           const prevEstimate = entry.totalTokensEstimate;
           const prevTotal = entry.totalTokens;
           const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
@@ -192,8 +191,9 @@ export async function persistSessionUsageUpdate(params: {
     return;
   }
 
-  // Clear usage if explicitly missing (e.g. zero-usage fallback)
-  // Also update model/context if provided.
+  // A run completed with model/context info but no usage data at all (e.g.
+  // because the provider failed or the run was aborted before any API calls
+  // were made). Clear usage but preserve model/context if provided.
   try {
     await updateSessionStoreEntry({
       storePath,
