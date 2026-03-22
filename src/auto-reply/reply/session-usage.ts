@@ -136,13 +136,13 @@ export async function persistSessionUsageUpdate(params: {
           }
 
           if (hasUsage) {
-            patch.inputTokens = params.usage?.input ?? 0;
-            patch.outputTokens = params.usage?.output ?? 0;
+            patch.inputTokens = params.usage?.input;
+            patch.outputTokens = params.usage?.output;
             // Cache counters should reflect the latest context snapshot when
             // available, not accumulated per-call totals across a whole run.
             const cacheUsage = params.lastCallUsage ?? params.usage;
-            patch.cacheRead = cacheUsage?.cacheRead ?? 0;
-            patch.cacheWrite = cacheUsage?.cacheWrite ?? 0;
+            patch.cacheRead = cacheUsage?.cacheRead;
+            patch.cacheWrite = cacheUsage?.cacheWrite;
           }
           if (runEstimatedCostUsd !== undefined) {
             patch.estimatedCostUsd = existingEstimatedCostUsd + runEstimatedCostUsd;

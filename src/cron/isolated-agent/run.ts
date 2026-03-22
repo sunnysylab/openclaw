@@ -816,8 +816,8 @@ export async function runCronIsolatedAgentTurn(params: {
         cronSession.sessionEntry.totalTokens = undefined;
         cronSession.sessionEntry.totalTokensFresh = false;
       }
-      cronSession.sessionEntry.cacheRead = usage?.cacheRead ?? 0;
-      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite ?? 0;
+      cronSession.sessionEntry.cacheRead = usage?.cacheRead;
+      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite;
       if (runEstimatedCostUsd !== undefined) {
         cronSession.sessionEntry.estimatedCostUsd =
           (resolveNonNegativeNumber(cronSession.sessionEntry.estimatedCostUsd) ?? 0) +
