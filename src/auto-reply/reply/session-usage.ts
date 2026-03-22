@@ -157,7 +157,7 @@ export async function persistSessionUsageUpdate(params: {
 
           if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
             patch.totalTokensEstimate = totalTokens;
-            if (totalTokens === 0 && !modelChanged) {
+            if (totalTokens === 0 && !modelChanged && entry.totalTokensFresh) {
               if (entry.totalTokensEstimate !== undefined) {
                 patch.totalTokensEstimate = entry.totalTokensEstimate;
               } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {

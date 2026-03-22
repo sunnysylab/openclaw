@@ -102,8 +102,8 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.systemPromptReport = result.meta.systemPromptReport;
   }
   if (hasExplicitUsage(usage) || (typeof promptTokens === "number" && promptTokens >= 0)) {
-    const input = usage?.input ?? 0;
-    const output = usage?.output ?? 0;
+    const input = usage?.input;
+    const output = usage?.output;
     const totalTokens = deriveSessionTotalTokens({
       usage,
       contextTokens,
@@ -124,7 +124,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
       next.totalTokensFresh = true;
-      if (totalTokens > 0 || next.totalTokensEstimate === undefined) {
+      if (totalTokens > 0 || !entry.totalTokensFresh) {
         next.totalTokensEstimate = totalTokens;
       }
     } else {

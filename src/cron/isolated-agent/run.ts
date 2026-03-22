@@ -782,8 +782,8 @@ export async function runCronIsolatedAgentTurn(params: {
       }
     }
     if (hasExplicitUsage(usage) || (typeof promptTokens === "number" && promptTokens >= 0)) {
-      const input = usage?.input ?? 0;
-      const output = usage?.output ?? 0;
+      const input = usage?.input;
+      const output = usage?.output;
       const totalTokens = deriveSessionTotalTokens({
         usage,
         contextTokens,
@@ -808,7 +808,7 @@ export async function runCronIsolatedAgentTurn(params: {
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
         cronSession.sessionEntry.totalTokensFresh = true;
-        if (totalTokens > 0 || cronSession.sessionEntry.totalTokensEstimate === undefined) {
+        if (totalTokens > 0 || !cronSession.sessionEntry.totalTokensFresh) {
           cronSession.sessionEntry.totalTokensEstimate = totalTokens;
         }
         telemetryUsage.total_tokens = totalTokens;
