@@ -329,11 +329,7 @@ function pickChatModelRemains(modelRemains: unknown[]): Record<string, unknown> 
   const chatRecord = records.find((r) => {
     const name = typeof r.model_name === "string" ? r.model_name : "";
     const total = parseFiniteNumber(r.current_interval_total_count);
-    return (
-      name.toLowerCase().startsWith("minimax-m") &&
-      total !== undefined &&
-      total > 0
-    );
+    return name.toLowerCase().startsWith("minimax-m") && total !== undefined && total > 0;
   });
 
   if (chatRecord) {
@@ -429,9 +425,7 @@ export async function fetchMinimaxUsage(
     parseEpoch(pickNumber(usageRecord, RESET_KEYS)) ??
     parseEpoch(pickString(payload, RESET_KEYS)) ??
     parseEpoch(pickNumber(payload, RESET_KEYS));
-  const windowLabel = chatRemains
-    ? deriveWindowLabel(chatRemains)
-    : deriveWindowLabel(usageRecord);
+  const windowLabel = chatRemains ? deriveWindowLabel(chatRemains) : deriveWindowLabel(usageRecord);
   const windows: UsageWindow[] = [
     {
       label: windowLabel,
@@ -441,9 +435,7 @@ export async function fetchMinimaxUsage(
   ];
 
   const modelName =
-    chatRemains && typeof chatRemains.model_name === "string"
-      ? chatRemains.model_name
-      : undefined;
+    chatRemains && typeof chatRemains.model_name === "string" ? chatRemains.model_name : undefined;
   const plan =
     pickString(usageRecord, PLAN_KEYS) ??
     pickString(payload, PLAN_KEYS) ??
