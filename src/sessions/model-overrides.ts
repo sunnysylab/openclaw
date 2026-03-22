@@ -61,15 +61,43 @@ export function applyModelOverrideToSessionEntry(params: {
     }
   }
 
-  // contextTokens are derived from the active session model. When the selected
-  // model changes (or runtime model is already stale), the cached window can
-  // pin the session to an older/smaller limit until another run refreshes it.
-  if (
-    entry.contextTokens !== undefined &&
-    (selectionUpdated || (runtimePresent && !runtimeAligned))
-  ) {
-    delete entry.contextTokens;
-    updated = true;
+  // Token metrics and contextTokens are derived from the active session model.
+  // When the selected model changes (or runtime model is already stale), the
+  // cached window or prompt snapshots can pin the session to an older/smaller
+  // limit until another run refreshes it.
+  if (selectionUpdated || (runtimePresent && !runtimeAligned)) {
+    if (entry.contextTokens !== undefined) {
+      delete entry.contextTokens;
+      updated = true;
+    }
+    if (entry.totalTokens !== undefined) {
+      delete entry.totalTokens;
+      updated = true;
+    }
+    if (entry.totalTokensFresh !== undefined) {
+      delete entry.totalTokensFresh;
+      updated = true;
+    }
+    if (entry.totalTokensEstimate !== undefined) {
+      delete entry.totalTokensEstimate;
+      updated = true;
+    }
+    if (entry.inputTokens !== undefined) {
+      delete entry.inputTokens;
+      updated = true;
+    }
+    if (entry.outputTokens !== undefined) {
+      delete entry.outputTokens;
+      updated = true;
+    }
+    if (entry.cacheRead !== undefined) {
+      delete entry.cacheRead;
+      updated = true;
+    }
+    if (entry.cacheWrite !== undefined) {
+      delete entry.cacheWrite;
+      updated = true;
+    }
   }
 
   if (profileOverride) {

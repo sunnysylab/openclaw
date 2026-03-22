@@ -48,6 +48,13 @@ function stripRuntimeModelState(entry?: SessionEntry): SessionEntry | undefined 
     modelProvider: undefined,
     contextTokens: undefined,
     systemPromptReport: undefined,
+    totalTokens: undefined,
+    totalTokensFresh: false,
+    totalTokensEstimate: undefined,
+    inputTokens: undefined,
+    outputTokens: undefined,
+    cacheRead: undefined,
+    cacheWrite: undefined,
   };
 }
 
@@ -331,6 +338,7 @@ export async function performGatewaySessionReset(params: {
       outputTokens: 0,
       totalTokens: 0,
       totalTokensFresh: true,
+      totalTokensEstimate: 0,
     };
     store[primaryKey] = nextEntry;
     return nextEntry;
