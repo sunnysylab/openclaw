@@ -170,6 +170,8 @@ describe("resolvePluginTools optional tools", () => {
     expect(loadOpenClawPluginsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         env,
+        activate: false,
+        cache: false,
       }),
     );
   });
@@ -188,6 +190,8 @@ describe("resolvePluginTools optional tools", () => {
         runtimeOptions: {
           allowGatewaySubagentBinding: true,
         },
+        activate: false,
+        cache: false,
       }),
     );
   });

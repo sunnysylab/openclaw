@@ -69,6 +69,8 @@ export function resolvePluginTools(params: {
       : undefined,
     env,
     logger: createPluginLoaderLogger(log),
+    activate: false,
+    cache: false,
   });
 
   const tools: AnyAgentTool[] = [];
