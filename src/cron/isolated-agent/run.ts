@@ -764,9 +764,14 @@ export async function runCronIsolatedAgentTurn(params: {
       const prevTotal = cronSession.sessionEntry.totalTokens;
       const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
+      const lastCallUsage = finalRunResult.meta?.agentMeta?.lastCallUsage;
+      const hasFreshContextSnapshot =
+        Boolean(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
+
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
-        cronSession.sessionEntry.totalTokensFresh = totalTokens > 0 || prevWasZero;
+        cronSession.sessionEntry.totalTokensFresh =
+          totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
         if (cronSession.sessionEntry.totalTokensFresh) {
           cronSession.sessionEntry.totalTokensEstimate = totalTokens;
         } else if (totalTokens === 0 && !modelChanged) {

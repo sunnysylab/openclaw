@@ -138,7 +138,8 @@ export async function persistSessionUsageUpdate(params: {
           const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
           patch.totalTokensFresh =
-            typeof totalTokens === "number" && (totalTokens > 0 || prevWasZero);
+            typeof totalTokens === "number" &&
+            (totalTokens > 0 || hasFreshContextSnapshot || prevWasZero);
 
           if (modelChanged) {
             patch.totalTokensEstimate = undefined;

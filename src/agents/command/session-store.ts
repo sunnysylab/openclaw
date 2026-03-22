@@ -128,9 +128,13 @@ export async function updateSessionStoreAfterAgentRun(params: {
     const prevTotal = entry.totalTokens;
     const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
+    const lastCallUsage = result.meta.agentMeta?.lastCallUsage;
+    const hasFreshContextSnapshot =
+      Boolean(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
+
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
-      next.totalTokensFresh = totalTokens > 0 || prevWasZero;
+      next.totalTokensFresh = totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
       if (next.totalTokensFresh) {
         next.totalTokensEstimate = totalTokens;
       } else if (totalTokens === 0 && !modelChanged) {
