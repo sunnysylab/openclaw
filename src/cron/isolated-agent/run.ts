@@ -799,8 +799,8 @@ export async function runCronIsolatedAgentTurn(params: {
           }),
         }),
       );
-      cronSession.sessionEntry.inputTokens = input;
-      cronSession.sessionEntry.outputTokens = output;
+      cronSession.sessionEntry.inputTokens = input ?? cronSession.sessionEntry.inputTokens;
+      cronSession.sessionEntry.outputTokens = output ?? cronSession.sessionEntry.outputTokens;
       const telemetryUsage: NonNullable<CronRunTelemetry["usage"]> = {
         input_tokens: input,
         output_tokens: output,
@@ -816,8 +816,8 @@ export async function runCronIsolatedAgentTurn(params: {
         cronSession.sessionEntry.totalTokens = undefined;
         cronSession.sessionEntry.totalTokensFresh = false;
       }
-      cronSession.sessionEntry.cacheRead = usage?.cacheRead;
-      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite;
+      cronSession.sessionEntry.cacheRead = usage?.cacheRead ?? cronSession.sessionEntry.cacheRead;
+      cronSession.sessionEntry.cacheWrite = usage?.cacheWrite ?? cronSession.sessionEntry.cacheWrite;
       if (runEstimatedCostUsd !== undefined) {
         cronSession.sessionEntry.estimatedCostUsd =
           (resolveNonNegativeNumber(cronSession.sessionEntry.estimatedCostUsd) ?? 0) +

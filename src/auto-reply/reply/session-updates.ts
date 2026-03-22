@@ -283,7 +283,7 @@ export async function incrementCompactionCount(params: {
     updatedAt: now,
   };
   // If tokensAfter is provided, update the cached token counts to reflect post-compaction state
-  if (tokensAfter != null && tokensAfter > 0) {
+  if (tokensAfter != null && tokensAfter >= 0) {
     updates.totalTokens = tokensAfter;
     updates.totalTokensFresh = true;
     updates.totalTokensEstimate = tokensAfter;

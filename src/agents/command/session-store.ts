@@ -119,8 +119,8 @@ export async function updateSessionStoreAfterAgentRun(params: {
         }),
       }),
     );
-    next.inputTokens = input;
-    next.outputTokens = output;
+    next.inputTokens = input ?? entry.inputTokens;
+    next.outputTokens = output ?? entry.outputTokens;
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
       next.totalTokensFresh = totalTokens > 0 || entry.totalTokensFresh === false;
@@ -131,8 +131,8 @@ export async function updateSessionStoreAfterAgentRun(params: {
       next.totalTokens = undefined;
       next.totalTokensFresh = false;
     }
-    next.cacheRead = usage?.cacheRead;
-    next.cacheWrite = usage?.cacheWrite;
+    next.cacheRead = usage?.cacheRead ?? entry.cacheRead;
+    next.cacheWrite = usage?.cacheWrite ?? entry.cacheWrite;
     if (runEstimatedCostUsd !== undefined) {
       next.estimatedCostUsd =
         (resolveNonNegativeNumber(entry.estimatedCostUsd) ?? 0) + runEstimatedCostUsd;
