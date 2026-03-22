@@ -475,6 +475,7 @@ const DiscordVoiceSchema = z
 export const DiscordAccountSchema = z
   .object({
     name: z.string().optional(),
+    agentId: z.string().optional(),
     capabilities: z.array(z.string()).optional(),
     markdown: MarkdownConfigSchema,
     enabled: z.boolean().optional(),
