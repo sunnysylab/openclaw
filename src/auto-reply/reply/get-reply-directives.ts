@@ -400,12 +400,12 @@ export async function resolveReplyDirectives(params: {
     directives.verboseLevel ??
     (sessionEntry?.verboseLevel as VerboseLevel | undefined) ??
     (agentCfg?.verboseDefault as VerboseLevel | undefined);
+  const agentReasoningDefault = agentEntry?.reasoningDefault as ReasoningLevel | undefined;
+  const hasAgentReasoningDefault = agentReasoningDefault !== undefined;
   let resolvedReasoningLevel: ReasoningLevel =
     directives.reasoningLevel ??
     (sessionEntry?.reasoningLevel as ReasoningLevel | undefined) ??
     "off";
-  const agentReasoningDefault = agentEntry?.reasoningDefault as ReasoningLevel | undefined;
-  const hasAgentReasoningDefault = agentReasoningDefault !== undefined;
   const resolvedElevatedLevel = elevatedAllowed
     ? (directives.elevatedLevel ??
       (sessionEntry?.elevatedLevel as ElevatedLevel | undefined) ??
@@ -468,6 +468,8 @@ export async function resolveReplyDirectives(params: {
   if (!reasoningExplicitlySet && resolvedReasoningLevel === "off" && !thinkingActive) {
     if (hasAgentReasoningDefault) {
       resolvedReasoningLevel = agentReasoningDefault;
+    } else if (agentCfg?.reasoningDefault) {
+      resolvedReasoningLevel = agentCfg.reasoningDefault as ReasoningLevel;
     } else {
       resolvedReasoningLevel = await modelState.resolveDefaultReasoningLevel();
     }
