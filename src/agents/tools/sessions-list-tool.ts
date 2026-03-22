@@ -206,6 +206,7 @@ export function createSessionsListTool(opts?: {
           totalTokens: typeof entry.totalTokens === "number" ? entry.totalTokens : undefined,
           totalTokensEstimate:
             typeof entry.totalTokensEstimate === "number" ? entry.totalTokensEstimate : undefined,
+          totalTokensFresh: typeof entry.totalTokensFresh === "boolean" ? entry.totalTokensFresh : undefined,
           estimatedCostUsd:
             typeof entry.estimatedCostUsd === "number" ? entry.estimatedCostUsd : undefined,
           status: typeof entry.status === "string" ? entry.status : undefined,
