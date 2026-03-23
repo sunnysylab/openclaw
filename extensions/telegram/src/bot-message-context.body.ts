@@ -14,18 +14,24 @@ import {
 } from "openclaw/plugin-sdk/channel-inbound";
 import { resolveControlCommandGate } from "openclaw/plugin-sdk/command-auth";
 import { hasControlCommand } from "openclaw/plugin-sdk/command-auth";
+import {
+  ALLOWED_INGEST_HOOKS,
+  resolveChannelGroupPolicy,
+} from "openclaw/plugin-sdk/config-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import type {
   TelegramDirectConfig,
   TelegramGroupConfig,
   TelegramTopicConfig,
 } from "openclaw/plugin-sdk/config-runtime";
+import { getGlobalHookRunner } from "openclaw/plugin-sdk/plugin-runtime";
 import {
   recordPendingHistoryEntryIfEnabled,
   type HistoryEntry,
 } from "openclaw/plugin-sdk/reply-history";
 import type { MsgContext } from "openclaw/plugin-sdk/reply-runtime";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
+import { sanitizeUserText } from "openclaw/plugin-sdk/text-runtime";
 import type { NormalizedAllowFrom } from "./bot-access.js";
 import { isSenderAllowed } from "./bot-access.js";
 import type {
@@ -35,6 +41,8 @@ import type {
 } from "./bot-message-context.types.js";
 import {
   buildSenderLabel,
+  buildSenderName,
+  buildTelegramGroupFrom,
   buildTelegramGroupPeerId,
   expandTextLinks,
   extractTelegramLocation,
@@ -84,6 +92,7 @@ export async function resolveTelegramInboundBody(params: {
   allMedia: TelegramMediaRef[];
   isGroup: boolean;
   chatId: number | string;
+  accountId?: string;
   senderId: string;
   senderUsername: string;
   resolvedThreadId?: number;
@@ -105,6 +114,7 @@ export async function resolveTelegramInboundBody(params: {
     allMedia,
     isGroup,
     chatId,
+    accountId,
     senderId,
     senderUsername,
     resolvedThreadId,
@@ -271,6 +281,96 @@ export async function resolveTelegramInboundBody(params: {
           }
         : null,
     });
+
+    // Silent ingest: run hooks on non-mentioned group messages
+    // Respect wildcard fallback: exact group config first, then groups["*"]
+    const { groupConfig: resolvedGroupConfig, defaultConfig: wildcardGroupConfig } =
+      resolveChannelGroupPolicy({
+        cfg,
+        channel: "telegram",
+        groupId: String(chatId),
+        accountId,
+      });
+    const ingestConfig =
+      topicConfig?.ingest ??
+      (resolvedGroupConfig as { ingest?: unknown } | undefined)?.ingest ??
+      (wildcardGroupConfig as { ingest?: unknown } | undefined)?.ingest;
+    if (ingestConfig && typeof ingestConfig === "object") {
+      const { enabled, hooks } = ingestConfig as { enabled: boolean; hooks: string[] };
+      if (enabled && hooks.length > 0 && rawBody && rawBody.trim().length > 0) {
+        const hookRunner = getGlobalHookRunner();
+        if (hookRunner && hookRunner.hasHooks("message_ingest")) {
+          const validHooks = hooks.filter((h: string): h is string =>
+            ALLOWED_INGEST_HOOKS.includes(h as (typeof ALLOWED_INGEST_HOOKS)[number]),
+          );
+          if (validHooks.length > 0) {
+            const messageIdForHook =
+              typeof msg.message_id === "number" ? String(msg.message_id) : undefined;
+            // Use canonical IDs matching the normal message pipeline
+            const canonicalTo = `telegram:${chatId}`;
+            const canonicalFrom = buildTelegramGroupFrom(chatId, resolvedThreadId);
+            const ingestConversationId = buildTelegramGroupPeerId(chatId, resolvedThreadId);
+            const sanitizedMetadata = {
+              to: canonicalTo,
+              provider: "telegram",
+              surface: "telegram",
+              threadId: resolvedThreadId,
+              originatingChannel: "telegram",
+              originatingTo: canonicalTo,
+              messageId: messageIdForHook,
+              senderId: senderId || undefined,
+              senderName: sanitizeUserText(buildSenderName(msg)),
+              senderUsername: sanitizeUserText(senderUsername),
+            };
+            const ingestEvent = {
+              from: canonicalFrom,
+              content: rawBody,
+              timestamp: msg.date ? msg.date * 1000 : undefined,
+              metadata: sanitizedMetadata,
+            };
+            const ingestCtx = {
+              channelId: "telegram",
+              accountId: accountId,
+              conversationId: ingestConversationId,
+            };
+            // Dispatch to each configured plugin id specifically.
+            // ingest.hooks items are plugin ids validated against ALLOWED_INGEST_HOOKS.
+            // Only plugins that are installed + registered for message_ingest receive the event.
+            const HOOK_TIMEOUT_MS = 5000;
+            for (const pluginId of validHooks) {
+              if (!hookRunner.hasHooksForPlugin("message_ingest", pluginId)) {
+                logVerbose(`telegram: ingest plugin "${pluginId}" not registered, skipping`);
+                continue;
+              }
+              logVerbose(
+                `telegram: ingest dispatching to "${pluginId}" for ${ingestConversationId}`,
+              );
+              let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+              const timeoutPromise = new Promise<void>((_, reject) => {
+                timeoutHandle = setTimeout(
+                  () => reject(new Error("Hook timeout")),
+                  HOOK_TIMEOUT_MS,
+                );
+              });
+              void Promise.race([
+                hookRunner.runMessageIngestForPlugin(pluginId, ingestEvent, ingestCtx),
+                timeoutPromise,
+              ])
+                .catch((err: unknown) => {
+                  const errorMsg = err instanceof Error ? err.message : "Unknown error";
+                  logVerbose(`telegram: ingest hook "${pluginId}" failed: ${errorMsg}`);
+                })
+                .finally(() => {
+                  if (timeoutHandle !== undefined) {
+                    clearTimeout(timeoutHandle);
+                  }
+                });
+            }
+          }
+        }
+      }
+    }
+
     return null;
   }
 

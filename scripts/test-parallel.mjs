@@ -923,12 +923,22 @@ const defaultWorkerBudget =
                 };
 
 // Keep worker counts predictable for local runs; trim macOS CI workers to avoid worker crashes/OOM.
-// In CI on linux/windows, prefer Vitest defaults to avoid cross-test interference from lower worker counts.
+// Linux CI currently hits V8 heap OOM in the broad unit-fast lane under Vitest defaults,
+// so cap only CI unit-lane workers while keeping other CI lanes at framework defaults.
+const ciUnitMaxWorkers = Math.max(1, parseEnvNumber("OPENCLAW_TEST_CI_UNIT_MAX_WORKERS", 3));
 const maxWorkersForRun = (name) => {
   if (resolvedOverride) {
     return resolvedOverride;
   }
   if (isCI && !isMacOS) {
+    if (
+      name === "unit" ||
+      name === "unit-fast" ||
+      name === "unit-isolated" ||
+      name.startsWith("unit-heavy-")
+    ) {
+      return ciUnitMaxWorkers;
+    }
     return null;
   }
   if (isCI && isMacOS) {
