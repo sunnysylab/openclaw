@@ -1692,18 +1692,20 @@ export async function runEmbeddedAttempt(
   let restoreSkillEnv: (() => void) | undefined;
   process.chdir(effectiveWorkspace);
   try {
+    const preferWorkspaceSkillPaths = effectiveWorkspace !== resolvedWorkspace;
     const { shouldLoadSkillEntries, skillEntries } = resolveEmbeddedRunSkillEntries({
       workspaceDir: effectiveWorkspace,
       config: params.config,
       skillsSnapshot: params.skillsSnapshot,
+      preferWorkspaceEntries: preferWorkspaceSkillPaths,
     });
-    restoreSkillEnv = params.skillsSnapshot
-      ? applySkillEnvOverridesFromSnapshot({
-          snapshot: params.skillsSnapshot,
+    restoreSkillEnv = shouldLoadSkillEntries
+      ? applySkillEnvOverrides({
+          skills: skillEntries ?? [],
           config: params.config,
         })
-      : applySkillEnvOverrides({
-          skills: skillEntries ?? [],
+      : applySkillEnvOverridesFromSnapshot({
+          snapshot: params.skillsSnapshot,
           config: params.config,
         });
 
@@ -1712,6 +1714,7 @@ export async function runEmbeddedAttempt(
       entries: shouldLoadSkillEntries ? skillEntries : undefined,
       config: params.config,
       workspaceDir: effectiveWorkspace,
+      preferEntries: preferWorkspaceSkillPaths,
     });
 
     const sessionLabel = params.sessionKey ?? params.sessionId;
