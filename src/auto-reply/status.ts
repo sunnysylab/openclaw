@@ -477,11 +477,9 @@ export function buildStatusMessage(args: StatusArgs): string {
       const candidate = logUsage.promptTokens || logUsage.total;
       if (
         logUsage.totalTokensFresh &&
-        (freshTotal === undefined || entry?.totalTokensFresh === undefined) &&
-        (candidate > totalTokens || totalTokens === 0)
+        (freshTotal === undefined || entry?.totalTokensFresh === undefined)
       ) {
-        // Session transcript is authoritative — prefer it over stale/estimated/legacy totals,
-        // but only if it actually looks newer/larger than what we have in the store.
+        // Session transcript is authoritative — prefer it over stale/estimated/legacy totals.
         totalTokens = candidate;
       }
       if (!entry?.model && logUsage.model) {

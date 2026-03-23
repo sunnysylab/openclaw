@@ -488,8 +488,7 @@ export async function initSessionState(params: {
     !alreadyForked
   ) {
     const parentEntry = sessionStore[parentSessionKey];
-    const parentTokens =
-      resolveFreshSessionTotalTokens(parentEntry) ?? parentEntry.totalTokensEstimate ?? 0;
+    const parentTokens = resolveFreshSessionTotalTokens(parentEntry) ?? 0;
     if (parentForkMaxTokens > 0 && parentTokens > parentForkMaxTokens) {
       // Parent context is too large — forking would create a thread session
       // that immediately overflows the model's context window. Start fresh
