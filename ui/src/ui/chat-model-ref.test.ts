@@ -44,7 +44,30 @@ describe("chat-model-ref helpers", () => {
   });
 
   it("resolves server session data to qualified option values", () => {
-    expect(resolveServerChatModelValue("gpt-5-mini", "openai")).toBe("openai/gpt-5-mini");
-    expect(resolveServerChatModelValue("alias-only", null)).toBe("alias-only");
+    expect(resolveServerChatModelValue("gpt-5-mini", "openai", catalog)).toBe("openai/gpt-5-mini");
+    expect(resolveServerChatModelValue("alias-only", null, catalog)).toBe("alias-only");
+  });
+
+  it("preserves a distinct provider for slash-containing server model ids", () => {
+    expect(resolveServerChatModelValue("anthropic/claude-haiku-4.5", "openrouter", catalog)).toBe(
+      "openrouter/anthropic/claude-haiku-4.5",
+    );
+  });
+
+  it("preserves same-provider prefixes for native slash-containing model ids", () => {
+    expect(resolveServerChatModelValue("openrouter/auto", "openrouter", catalog)).toBe(
+      "openrouter/openrouter/auto",
+    );
+  });
+
+  it("keeps bare server aliases when the current provider does not own that catalog model", () => {
+    const ambiguousCatalog: ModelCatalogEntry[] = [
+      { id: "glm-5", name: "GLM-5", provider: "zai" },
+      { id: "glm-5", name: "GLM-5", provider: "modelstudio" },
+    ];
+
+    expect(resolveServerChatModelValue("glm-5", "astroncodingplan", ambiguousCatalog)).toBe(
+      "glm-5",
+    );
   });
 });

@@ -19,6 +19,18 @@ export function buildQualifiedChatModelValue(model: string, provider?: string | 
   return trimmedProvider ? `${trimmedProvider}/${trimmedModel}` : trimmedModel;
 }
 
+export function buildResolvedChatModelValue(model: string, provider?: string | null): string {
+  const trimmedModel = model.trim();
+  if (!trimmedModel) {
+    return "";
+  }
+  const trimmedProvider = provider?.trim();
+  if (!trimmedProvider) {
+    return trimmedModel;
+  }
+  return buildQualifiedChatModelValue(trimmedModel, trimmedProvider);
+}
+
 export function createChatModelOverride(value: string): ChatModelOverride | null {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -65,11 +77,30 @@ export function normalizeChatModelOverrideValue(
 export function resolveServerChatModelValue(
   model?: string | null,
   provider?: string | null,
+  catalog: ModelCatalogEntry[] = [],
 ): string {
   if (typeof model !== "string") {
     return "";
   }
-  return buildQualifiedChatModelValue(model, provider);
+  const trimmedModel = model.trim();
+  if (!trimmedModel) {
+    return "";
+  }
+  if (trimmedModel.includes("/")) {
+    return buildResolvedChatModelValue(trimmedModel, provider);
+  }
+  const trimmedProvider = provider?.trim();
+  if (!trimmedProvider) {
+    return trimmedModel;
+  }
+  const hasExactCatalogMatch = catalog.some(
+    (entry) =>
+      entry.id.trim().toLowerCase() === trimmedModel.toLowerCase() &&
+      entry.provider?.trim().toLowerCase() === trimmedProvider.toLowerCase(),
+  );
+  return hasExactCatalogMatch
+    ? buildResolvedChatModelValue(trimmedModel, trimmedProvider)
+    : trimmedModel;
 }
 
 export function formatChatModelDisplay(value: string): string {

@@ -98,7 +98,7 @@ describe("handleSendChat", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps slash-command model changes in sync with the chat header cache", async () => {
+  it("caches uniquely resolved slash-command model changes as qualified refs", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
