@@ -14,7 +14,9 @@ function normalizeImageGenerationProviderId(id: string | undefined): string | un
 function resolvePluginImageGenerationProviders(
   cfg?: OpenClawConfig,
 ): ImageGenerationProviderPlugin[] {
-  const registry = cfg ? resolveEffectivePluginRegistry({ config: cfg }) : getActivePluginRegistry();
+  const registry = cfg
+    ? resolveEffectivePluginRegistry({ config: cfg })
+    : getActivePluginRegistry();
   return registry?.imageGenerationProviders?.map((entry) => entry.provider) ?? [];
 }
 

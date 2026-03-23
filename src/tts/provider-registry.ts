@@ -29,7 +29,9 @@ export function normalizeSpeechProviderId(
 }
 
 function resolveSpeechProviderPluginEntries(cfg?: OpenClawConfig): SpeechProviderPlugin[] {
-  const registry = cfg ? resolveEffectivePluginRegistry({ config: cfg }) : getActivePluginRegistry();
+  const registry = cfg
+    ? resolveEffectivePluginRegistry({ config: cfg })
+    : getActivePluginRegistry();
   return registry?.speechProviders?.map((entry) => entry.provider) ?? [];
 }
 

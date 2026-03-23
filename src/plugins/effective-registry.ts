@@ -1,8 +1,8 @@
 import type { OpenClawConfig } from "../config/config.js";
 import { loadOpenClawPlugins } from "./loader.js";
+import type { PluginRegistry } from "./registry.js";
 import { getActivePluginRegistry, hasLoadedPluginRegistry } from "./runtime.js";
 import type { CreatePluginRuntimeOptions } from "./runtime/index.js";
-import type { PluginRegistry } from "./registry.js";
 import type { PluginLogger } from "./types.js";
 
 export function resolveEffectivePluginRegistry(params: {
