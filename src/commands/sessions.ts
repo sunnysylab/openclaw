@@ -5,7 +5,7 @@ import { loadSessionStore, resolveFreshSessionTotalTokens } from "../config/sess
 import { classifySessionKey } from "../gateway/session-utils.js";
 import { info } from "../globals.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
-import type { RuntimeEnv } from "../runtime.js";
+import { type RuntimeEnv, writeRuntimeJson } from "../runtime.js";
 import { isRich, theme } from "../terminal/theme.js";
 import { resolveSessionStoreTargetsOrExit } from "./session-store-targets.js";
 import {
@@ -142,36 +142,31 @@ export async function sessionsCommand(
   if (opts.json) {
     const multi = targets.length > 1;
     const aggregate = aggregateAgents || multi;
-    runtime.log(
-      JSON.stringify(
-        {
-          path: aggregate ? null : (targets[0]?.storePath ?? null),
-          stores: aggregate
-            ? targets.map((target) => ({
-                agentId: target.agentId,
-                path: target.storePath,
-              }))
-            : undefined,
-          allAgents: aggregateAgents ? true : undefined,
-          count: rows.length,
-          activeMinutes: activeMinutes ?? null,
-          sessions: rows.map((r) => {
-            const model = resolveSessionDisplayModel(cfg, r, displayDefaults);
-            const freshTotal = resolveFreshSessionTotalTokens(r);
-            return {
-              ...r,
-              totalTokens: freshTotal ?? r.totalTokensEstimate ?? null,
-              totalTokensFresh: r.totalTokensFresh ?? (typeof r.totalTokens === "number" && r.totalTokens > 0),
-              contextTokens:
-                r.contextTokens ?? lookupContextTokens(model) ?? configContextTokens ?? null,
-              model,
-            };
-          }),
-        },
-        null,
-        2,
-      ),
-    );
+    writeRuntimeJson(runtime, {
+      path: aggregate ? null : (targets[0]?.storePath ?? null),
+      stores: aggregate
+        ? targets.map((target) => ({
+            agentId: target.agentId,
+            path: target.storePath,
+          }))
+        : undefined,
+      allAgents: aggregateAgents ? true : undefined,
+      count: rows.length,
+      activeMinutes: activeMinutes ?? null,
+      sessions: rows.map((r) => {
+        const model = resolveSessionDisplayModel(cfg, r, displayDefaults);
+        const freshTotal = resolveFreshSessionTotalTokens(r);
+        return {
+          ...r,
+          totalTokens: freshTotal ?? r.totalTokensEstimate ?? null,
+          totalTokensFresh:
+            r.totalTokensFresh ?? (typeof r.totalTokens === "number" && r.totalTokens > 0),
+          contextTokens:
+            r.contextTokens ?? lookupContextTokens(model) ?? configContextTokens ?? null,
+          model,
+        };
+      }),
+    });
     return;
   }
 
