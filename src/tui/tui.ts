@@ -736,6 +736,7 @@ export async function runTui(opts: TuiOptions) {
       chatLog,
       tui,
       opts,
+      config,
       state,
       deliverDefault,
       openOverlay,
