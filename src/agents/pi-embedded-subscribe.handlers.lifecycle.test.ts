@@ -162,7 +162,16 @@ describe("handleAgentEnd", () => {
     handleAgentEnd(ctx);
 
     expect(ctx.log.warn).not.toHaveBeenCalled();
-    expect(ctx.log.debug).toHaveBeenCalledWith("embedded run agent end: runId=run-1 isError=false");
+    expect(ctx.log.debug).toHaveBeenCalledWith(
+      "embedded run agent end: runId=run-1 isError=false",
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          kind: "run",
+          runId: "run-1",
+          status: "ok",
+        }),
+      }),
+    );
   });
 
   it("flushes orphaned tool media as a media-only block reply", () => {
