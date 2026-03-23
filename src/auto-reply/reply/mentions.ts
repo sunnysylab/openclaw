@@ -27,6 +27,7 @@ const mentionStripRegexCompileCache = new Map<string, RegExp[]>();
 const MAX_MENTION_REGEX_COMPILE_CACHE_KEYS = 512;
 const mentionPatternWarningCache = new Set<string>();
 const MAX_MENTION_PATTERN_WARNING_KEYS = 512;
+const NEVER_MATCH_MENTION_PATTERN = String.raw`(?!)`;
 const log = createSubsystemLogger("mentions");
 
 export const CURRENT_MESSAGE_MARKER = "[Current message - respond to this]";
@@ -38,8 +39,15 @@ function normalizeMentionPattern(pattern: string): string {
   return pattern.split(BACKSPACE_CHAR).join("\\b");
 }
 
-function normalizeMentionPatterns(patterns: string[]): string[] {
-  return patterns.map(normalizeMentionPattern);
+function normalizeMentionPatterns(patterns: ReadonlyArray<unknown>): string[] {
+  const normalized: string[] = [];
+  for (const pattern of patterns) {
+    if (typeof pattern !== "string") {
+      continue;
+    }
+    normalized.push(normalizeMentionPattern(pattern));
+  }
+  return normalized;
 }
 
 function warnRejectedMentionPattern(
@@ -100,21 +108,57 @@ function compileMentionPatternsCached(params: {
   return cacheMentionRegexes(params.cache, cacheKey, compiled.regexes);
 }
 
-function resolveMentionPatterns(cfg: OpenClawConfig | undefined, agentId?: string): string[] {
+type MentionPatternResolution = {
+  patterns: ReadonlyArray<unknown>;
+  hadExplicitOverride: boolean;
+  explicitOverrideWasArray: boolean;
+  explicitOverrideItemCount: number;
+};
+
+function resolveMentionPatterns(
+  cfg: OpenClawConfig | undefined,
+  agentId?: string,
+): MentionPatternResolution {
   if (!cfg) {
-    return [];
+    return {
+      patterns: [],
+      hadExplicitOverride: false,
+      explicitOverrideWasArray: false,
+      explicitOverrideItemCount: 0,
+    };
   }
   const agentConfig = agentId ? resolveAgentConfig(cfg, agentId) : undefined;
   const agentGroupChat = agentConfig?.groupChat;
   if (agentGroupChat && Object.hasOwn(agentGroupChat, "mentionPatterns")) {
-    return agentGroupChat.mentionPatterns ?? [];
+    return {
+      patterns: Array.isArray(agentGroupChat.mentionPatterns) ? agentGroupChat.mentionPatterns : [],
+      hadExplicitOverride: true,
+      explicitOverrideWasArray: Array.isArray(agentGroupChat.mentionPatterns),
+      explicitOverrideItemCount: Array.isArray(agentGroupChat.mentionPatterns)
+        ? agentGroupChat.mentionPatterns.length
+        : 0,
+    };
   }
   const globalGroupChat = cfg.messages?.groupChat;
   if (globalGroupChat && Object.hasOwn(globalGroupChat, "mentionPatterns")) {
-    return globalGroupChat.mentionPatterns ?? [];
+    return {
+      patterns: Array.isArray(globalGroupChat.mentionPatterns)
+        ? globalGroupChat.mentionPatterns
+        : [],
+      hadExplicitOverride: true,
+      explicitOverrideWasArray: Array.isArray(globalGroupChat.mentionPatterns),
+      explicitOverrideItemCount: Array.isArray(globalGroupChat.mentionPatterns)
+        ? globalGroupChat.mentionPatterns.length
+        : 0,
+    };
   }
   const derived = deriveMentionPatterns(agentConfig?.identity);
-  return derived.length > 0 ? derived : [];
+  return {
+    patterns: derived.length > 0 ? derived : [],
+    hadExplicitOverride: false,
+    explicitOverrideWasArray: false,
+    explicitOverrideItemCount: 0,
+  };
 }
 
 function resolveFallbackProviderMentionStripRegexes(providerId?: string | null): RegExp[] {
@@ -129,12 +173,40 @@ function resolveFallbackProviderMentionStripRegexes(providerId?: string | null):
 }
 
 export function buildMentionRegexes(cfg: OpenClawConfig | undefined, agentId?: string): RegExp[] {
-  const patterns = normalizeMentionPatterns(resolveMentionPatterns(cfg, agentId));
-  return compileMentionPatternsCached({
+  const resolved = resolveMentionPatterns(cfg, agentId);
+  const patterns = normalizeMentionPatterns(resolved.patterns);
+  const compiled = compileMentionPatternsCached({
     patterns,
     flags: "i",
     cache: mentionMatchRegexCompileCache,
     warnRejected: true,
+  });
+  const shouldFailClosed =
+    resolved.hadExplicitOverride &&
+    (!resolved.explicitOverrideWasArray ||
+      (resolved.explicitOverrideItemCount > 0 && patterns.length === 0));
+  if (compiled.length > 0 || !shouldFailClosed) {
+    return compiled;
+  }
+  const derivedIdentity = cfg && agentId ? resolveAgentConfig(cfg, agentId)?.identity : undefined;
+  const derivedPatterns = normalizeMentionPatterns(deriveMentionPatterns(derivedIdentity));
+  if (derivedPatterns.length > 0) {
+    return compileMentionPatternsCached({
+      patterns: derivedPatterns,
+      flags: "i",
+      cache: mentionMatchRegexCompileCache,
+      warnRejected: true,
+    });
+  }
+  log.warn("Configured group mention patterns resolved to no usable regexes; failing closed", {
+    agentId: agentId ?? null,
+    rawPatternCount: resolved.patterns.length,
+  });
+  return compileMentionPatternsCached({
+    patterns: [NEVER_MATCH_MENTION_PATTERN],
+    flags: "i",
+    cache: mentionMatchRegexCompileCache,
+    warnRejected: false,
   });
 }
 
@@ -210,8 +282,9 @@ export function stripMentions(
   let result = text;
   const providerId = ctx.Provider ? normalizeChannelId(ctx.Provider) : null;
   const providerMentions = providerId ? getChannelPlugin(providerId)?.mentions : undefined;
+  const resolved = resolveMentionPatterns(cfg, agentId);
   const configRegexes = compileMentionPatternsCached({
-    patterns: normalizeMentionPatterns(resolveMentionPatterns(cfg, agentId)),
+    patterns: normalizeMentionPatterns(resolved.patterns),
     flags: "gi",
     cache: mentionStripRegexCompileCache,
     warnRejected: true,
