@@ -481,10 +481,6 @@ function extractTranscriptUsageCost(raw: unknown): number | undefined {
   return typeof total === "number" && Number.isFinite(total) && total >= 0 ? total : undefined;
 }
 
-function resolvePositiveUsageNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
-}
-
 function resolveNonNegativeUsageNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
