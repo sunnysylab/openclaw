@@ -113,6 +113,10 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "sessions.abort",
     "browser.request",
     "push.test",
+    "push.web.vapidPublicKey",
+    "push.web.subscribe",
+    "push.web.unsubscribe",
+    "push.web.test",
     "node.pending.enqueue",
   ],
   [ADMIN_SCOPE]: [
