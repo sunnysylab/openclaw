@@ -159,6 +159,35 @@
       "hasChildren": false
     },
     {
+      "path": "acp.sessionLane",
+      "kind": "core",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "storage"
+      ],
+      "label": "ACP Session Lane",
+      "help": "ACP per-session lane controls for serial actor tasks such as initialize, status, cancel, and close.",
+      "hasChildren": true
+    },
+    {
+      "path": "acp.sessionLane.taskTimeoutMs",
+      "kind": "core",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "performance",
+        "storage"
+      ],
+      "label": "ACP Session Lane Task Timeout (ms)",
+      "help": "Maximum milliseconds a single ACP session-lane task may hold the lane before OpenClaw releases it and lets the next queued task run. Default: 600000. Set 0 to disable.",
+      "hasChildren": false
+    },
+    {
       "path": "acp.stream",
       "kind": "core",
       "type": "object",
