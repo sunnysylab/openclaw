@@ -1034,37 +1034,32 @@ function resolveGatewaySessionTotalTokens(params: {
     return freshTotal;
   }
 
-  // 2. Fall back to a fresh, non-zero transcript total. This covers cases where
-  // the store is stale but the transcript has current context data (e.g. after
-  // a compaction or a prompt-only run that the store hasn't seen yet).
-  if (transcriptFresh && transcriptTotal !== undefined && transcriptTotal > 0) {
-    return transcriptTotal;
-  }
-
-  // 3. Fall back to the display estimate. This preserves the last known good
-  // count through provider-reported zero usage (the vLLM fix).
-  if (estimate !== undefined) {
-    return estimate;
-  }
-
-  // 4. Fall back to a fresh transcript total even if it's zero. This ensures
-  // session resets are accurately reflected when no estimate is available.
+  // 2. Fall back to a fresh transcript total. This ensures that authoritative
+  // context data (including an explicit zero after /reset) is preferred over
+  // stale or estimated values in the store.
   if (transcriptFresh && transcriptTotal !== undefined) {
     return transcriptTotal;
   }
 
-  // 5. Fall back to a positive legacy store total.
+  // 3. Fall back to the display estimate. This preserves the last known good
+  // count through provider-reported zero usage (the vLLM fix) and store-only
+  // updates like compaction.
+  if (estimate !== undefined) {
+    return estimate;
+  }
+
+  // 4. Fall back to a positive legacy store total.
   const legacyPositive = resolvePositiveNumber(legacyTotal);
   if (legacyPositive !== undefined) {
     return legacyPositive;
   }
 
-  // 6. Fall back to any transcript total (even if stale) as a last resort.
+  // 5. Fall back to any transcript total (even if stale) as a last resort.
   if (transcriptTotal !== undefined) {
     return transcriptTotal;
   }
 
-  // 7. Finally, use any legacy store total.
+  // 6. Finally, use any legacy store total.
   return resolveNonNegativeNumber(legacyTotal);
 }
 
