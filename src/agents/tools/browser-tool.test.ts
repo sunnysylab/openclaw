@@ -238,7 +238,10 @@ describe("browser tool snapshot maxChars", () => {
     const tool = createBrowserTool();
     await tool.execute?.("call-1", { action: "profiles" });
 
-    expect(browserClientMocks.browserProfiles).toHaveBeenCalledWith(undefined);
+    expect(browserClientMocks.browserProfiles).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ timeoutMs: undefined }),
+    );
   });
 
   it("passes refs mode through to browser snapshot", async () => {
@@ -372,6 +375,25 @@ describe("browser tool snapshot maxChars", () => {
     expect(browserClientMocks.browserStatus).not.toHaveBeenCalled();
   });
 
+  it("does not resolve host browser config for node proxy requests", async () => {
+    mockSingleBrowserProxyNode();
+    browserConfigMocks.resolveBrowserConfig.mockImplementation(() => {
+      throw new Error("bad host browser config");
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", { action: "status", target: "node" });
+
+    expect(gatewayMocks.callGatewayTool).toHaveBeenCalledWith(
+      "node.invoke",
+      { timeoutMs: 25000 },
+      expect.objectContaining({
+        nodeId: "node-1",
+        command: "browser.proxy",
+      }),
+    );
+    expect(browserConfigMocks.resolveBrowserConfig).not.toHaveBeenCalled();
+  });
+
   it("gives node.invoke extra slack beyond the default proxy timeout", async () => {
     mockSingleBrowserProxyNode();
     gatewayMocks.callGatewayTool.mockResolvedValueOnce({
@@ -423,6 +445,217 @@ describe("browser tool snapshot maxChars", () => {
       expect.objectContaining({ profile: "user" }),
     );
     expect(gatewayMocks.callGatewayTool).not.toHaveBeenCalled();
+  });
+
+  it("passes top-level timeoutMs through to host status", async () => {
+    setResolvedBrowserProfiles({
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", { action: "status", profile: "user", timeoutMs: 60000 });
+
+    expect(browserClientMocks.browserStatus).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+  });
+
+  it("passes top-level timeoutMs through to host tabs", async () => {
+    setResolvedBrowserProfiles({
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", { action: "tabs", profile: "user", timeoutMs: 60000 });
+
+    expect(browserClientMocks.browserTabs).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+  });
+
+  it("uses the longer default timeout only for host existing-session status", async () => {
+    setResolvedBrowserProfiles({
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", { action: "status", profile: "user" });
+
+    expect(browserClientMocks.browserStatus).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ profile: "user", timeoutMs: 45_000 }),
+    );
+  });
+
+  it("uses the longer default timeout for host profiles when defaultProfile is existing-session", async () => {
+    setResolvedBrowserProfiles(
+      {
+        user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+      },
+      "user",
+    );
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", { action: "status" });
+
+    expect(browserClientMocks.browserStatus).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ profile: undefined, timeoutMs: 45_000 }),
+    );
+  });
+
+  it("uses the longer default timeout for host profiles when listing profiles with an existing-session profile present", async () => {
+    setResolvedBrowserProfiles({
+      openclaw: { cdpPort: 18800, color: "#FF4500" },
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", { action: "profiles" });
+
+    expect(browserClientMocks.browserProfiles).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ timeoutMs: 45_000 }),
+    );
+  });
+
+  it("keeps sandbox status on the client fast-fail defaults when timeoutMs is omitted", async () => {
+    const tool = createBrowserTool({ sandboxBridgeUrl: "http://127.0.0.1:9999" });
+    await tool.execute?.("call-1", { action: "status", target: "sandbox" });
+
+    expect(browserClientMocks.browserStatus).toHaveBeenCalledWith(
+      "http://127.0.0.1:9999",
+      expect.objectContaining({ profile: undefined, timeoutMs: undefined }),
+    );
+  });
+
+  it("passes top-level timeoutMs through to host start and follow-up status", async () => {
+    setResolvedBrowserProfiles({
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", { action: "start", profile: "user", timeoutMs: 60000 });
+
+    expect(browserClientMocks.browserStart).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+    expect(browserClientMocks.browserStatus).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+  });
+
+  it("passes top-level timeoutMs through to host stop and follow-up status", async () => {
+    setResolvedBrowserProfiles({
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", { action: "stop", profile: "user", timeoutMs: 60000 });
+
+    expect(browserClientMocks.browserStop).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+    expect(browserClientMocks.browserStatus).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+  });
+
+  it("passes top-level timeoutMs through to host open", async () => {
+    setResolvedBrowserProfiles({
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", {
+      action: "open",
+      profile: "user",
+      url: "https://example.com",
+      timeoutMs: 60000,
+    });
+
+    expect(browserClientMocks.browserOpenTab).toHaveBeenCalledWith(
+      undefined,
+      "https://example.com",
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+  });
+
+  it("passes top-level timeoutMs through to host focus", async () => {
+    setResolvedBrowserProfiles({
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", {
+      action: "focus",
+      profile: "user",
+      targetId: "tab-1",
+      timeoutMs: 60000,
+    });
+
+    expect(browserClientMocks.browserFocusTab).toHaveBeenCalledWith(
+      undefined,
+      "tab-1",
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+  });
+
+  it("passes top-level timeoutMs through to host close", async () => {
+    setResolvedBrowserProfiles({
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", {
+      action: "close",
+      profile: "user",
+      targetId: "tab-1",
+      timeoutMs: 60000,
+    });
+
+    expect(browserClientMocks.browserCloseTab).toHaveBeenCalledWith(
+      undefined,
+      "tab-1",
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+  });
+
+  it("passes top-level timeoutMs through to host close without a targetId", async () => {
+    setResolvedBrowserProfiles({
+      user: { driver: "existing-session", attachOnly: true, color: "#00AA00" },
+    });
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", {
+      action: "close",
+      profile: "user",
+      timeoutMs: 60000,
+    });
+
+    expect(browserActionsMocks.browserAct).toHaveBeenCalledWith(
+      undefined,
+      { kind: "close" },
+      expect.objectContaining({ profile: "user", timeoutMs: 60000 }),
+    );
+  });
+
+  it("passes top-level timeoutMs through to the proxy close fallback", async () => {
+    mockSingleBrowserProxyNode();
+    const tool = createBrowserTool();
+    await tool.execute?.("call-1", {
+      action: "close",
+      target: "node",
+      timeoutMs: 60000,
+    });
+
+    expect(gatewayMocks.callGatewayTool).toHaveBeenCalledWith(
+      "node.invoke",
+      { timeoutMs: 65000 },
+      expect.objectContaining({
+        params: expect.objectContaining({
+          method: "POST",
+          path: "/act",
+          body: { kind: "close" },
+          timeoutMs: 60000,
+        }),
+      }),
+    );
   });
 });
 

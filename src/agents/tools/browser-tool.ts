@@ -279,18 +279,78 @@ function resolveBrowserBaseUrl(params: {
   return undefined;
 }
 
+function resolveBrowserProfileContext(profileName: string | undefined) {
+  const cfg = loadConfig();
+  const resolved = resolveBrowserConfig(cfg.browser, cfg);
+  return {
+    resolved,
+    profile: profileName ? resolveProfile(resolved, profileName) : undefined,
+  };
+}
+
 function shouldPreferHostForProfile(profileName: string | undefined) {
   if (!profileName) {
     return false;
   }
-  const cfg = loadConfig();
-  const resolved = resolveBrowserConfig(cfg.browser, cfg);
-  const profile = resolveProfile(resolved, profileName);
+  const { profile } = resolveBrowserProfileContext(profileName);
   if (!profile) {
     return false;
   }
-  const capabilities = getBrowserProfileCapabilities(profile);
-  return capabilities.usesChromeMcp;
+  return getBrowserProfileCapabilities(profile).usesChromeMcp;
+}
+
+const DEFAULT_HOST_EXISTING_SESSION_MANAGE_TIMEOUT_MS = 45_000;
+const HOST_EXISTING_SESSION_MANAGE_ACTIONS = new Set([
+  "status",
+  "start",
+  "stop",
+  "profiles",
+  "tabs",
+  "open",
+  "focus",
+  "close",
+]);
+
+function shouldUseHostExistingSessionManageTimeout(params: {
+  action: string;
+  profileName?: string;
+}) {
+  const { resolved, profile } = resolveBrowserProfileContext(params.profileName);
+  const effectiveProfile = profile ?? resolveProfile(resolved, resolved.defaultProfile);
+
+  if (effectiveProfile && getBrowserProfileCapabilities(effectiveProfile).usesChromeMcp) {
+    return true;
+  }
+
+  if (params.action === "profiles") {
+    return Object.keys(resolved.profiles).some((name) => {
+      const candidate = resolveProfile(resolved, name);
+      return candidate ? getBrowserProfileCapabilities(candidate).usesChromeMcp : false;
+    });
+  }
+
+  return false;
+}
+
+function resolveBrowserToolManageTimeoutMs(params: {
+  action: string;
+  requestedTimeoutMs?: number;
+  baseUrl?: string;
+  hasProxyRequest: boolean;
+  usesHostExistingSessionFlow: boolean;
+}) {
+  if (typeof params.requestedTimeoutMs === "number") {
+    return params.requestedTimeoutMs;
+  }
+  if (params.hasProxyRequest || params.baseUrl) {
+    return undefined;
+  }
+  if (!params.usesHostExistingSessionFlow) {
+    return undefined;
+  }
+  return HOST_EXISTING_SESSION_MANAGE_ACTIONS.has(params.action)
+    ? DEFAULT_HOST_EXISTING_SESSION_MANAGE_TIMEOUT_MS
+    : undefined;
 }
 
 export function createBrowserTool(opts?: {
@@ -321,14 +381,18 @@ export function createBrowserTool(opts?: {
       const action = readStringParam(params, "action", { required: true });
       const profile = readStringParam(params, "profile");
       const requestedNode = readStringParam(params, "node");
+      const requestedTimeoutMs =
+        typeof params.timeoutMs === "number" && Number.isFinite(params.timeoutMs)
+          ? Math.max(1, Math.floor(params.timeoutMs))
+          : undefined;
       let target = readStringParam(params, "target") as "sandbox" | "host" | "node" | undefined;
 
       if (requestedNode && target && target !== "node") {
         throw new Error('node is only supported with target="node".');
       }
-      // User-browser profiles (existing-session) are host-only.
-      const isUserBrowserProfile = shouldPreferHostForProfile(profile);
-      if (isUserBrowserProfile) {
+      // Existing-session profiles are host-only.
+      const usesHostOnlyProfile = shouldPreferHostForProfile(profile);
+      if (usesHostOnlyProfile) {
         if (requestedNode || target === "node") {
           throw new Error(`profile="${profile}" only supports the local host browser.`);
         }
@@ -380,6 +444,20 @@ export function createBrowserTool(opts?: {
             return proxy.result;
           }
         : null;
+      const usesHostExistingSessionFlow =
+        typeof requestedTimeoutMs !== "number" && !proxyRequest && !baseUrl
+          ? shouldUseHostExistingSessionManageTimeout({
+              action,
+              profileName: profile,
+            })
+          : false;
+      const toolTimeoutMs = resolveBrowserToolManageTimeoutMs({
+        action,
+        requestedTimeoutMs,
+        baseUrl,
+        hasProxyRequest: Boolean(proxyRequest),
+        usesHostExistingSessionFlow,
+      });
 
       switch (action) {
         case "status":
@@ -389,55 +467,68 @@ export function createBrowserTool(opts?: {
                 method: "GET",
                 path: "/",
                 profile,
+                timeoutMs: toolTimeoutMs,
               }),
             );
           }
-          return jsonResult(await browserStatus(baseUrl, { profile }));
+          return jsonResult(await browserStatus(baseUrl, { profile, timeoutMs: toolTimeoutMs }));
         case "start":
           if (proxyRequest) {
             await proxyRequest({
               method: "POST",
               path: "/start",
               profile,
+              timeoutMs: toolTimeoutMs,
             });
             return jsonResult(
               await proxyRequest({
                 method: "GET",
                 path: "/",
                 profile,
+                timeoutMs: toolTimeoutMs,
               }),
             );
           }
-          await browserStart(baseUrl, { profile });
-          return jsonResult(await browserStatus(baseUrl, { profile }));
+          await browserStart(baseUrl, { profile, timeoutMs: toolTimeoutMs });
+          return jsonResult(await browserStatus(baseUrl, { profile, timeoutMs: toolTimeoutMs }));
         case "stop":
           if (proxyRequest) {
             await proxyRequest({
               method: "POST",
               path: "/stop",
               profile,
+              timeoutMs: toolTimeoutMs,
             });
             return jsonResult(
               await proxyRequest({
                 method: "GET",
                 path: "/",
                 profile,
+                timeoutMs: toolTimeoutMs,
               }),
             );
           }
-          await browserStop(baseUrl, { profile });
-          return jsonResult(await browserStatus(baseUrl, { profile }));
+          await browserStop(baseUrl, { profile, timeoutMs: toolTimeoutMs });
+          return jsonResult(await browserStatus(baseUrl, { profile, timeoutMs: toolTimeoutMs }));
         case "profiles":
           if (proxyRequest) {
             const result = await proxyRequest({
               method: "GET",
               path: "/profiles",
+              timeoutMs: toolTimeoutMs,
             });
             return jsonResult(result);
           }
-          return jsonResult({ profiles: await browserProfiles(baseUrl) });
+          return jsonResult({
+            profiles: await browserProfiles(baseUrl, { timeoutMs: toolTimeoutMs }),
+          });
         case "tabs":
-          return await executeTabsAction({ baseUrl, profile, proxyRequest });
+          return await executeTabsAction({
+            baseUrl,
+            profile,
+            timeoutMs: toolTimeoutMs,
+            proxyRequest,
+          });
         case "open": {
           const targetUrl = readTargetUrlParam(params);
           if (proxyRequest) {
@@ -446,10 +537,14 @@ export function createBrowserTool(opts?: {
               path: "/tabs/open",
               profile,
               body: { url: targetUrl },
+              timeoutMs: toolTimeoutMs,
             });
             return jsonResult(result);
           }
-          const opened = await browserOpenTab(baseUrl, targetUrl, { profile });
+          const opened = await browserOpenTab(baseUrl, targetUrl, {
+            profile,
+            timeoutMs: toolTimeoutMs,
+          });
           trackSessionBrowserTab({
             sessionKey: opts?.agentSessionKey,
             targetId: opened.targetId,
@@ -468,10 +563,11 @@ export function createBrowserTool(opts?: {
               path: "/tabs/focus",
               profile,
               body: { targetId },
+              timeoutMs: toolTimeoutMs,
             });
             return jsonResult(result);
           }
-          await browserFocusTab(baseUrl, targetId, { profile });
+          await browserFocusTab(baseUrl, targetId, { profile, timeoutMs: toolTimeoutMs });
           return jsonResult({ ok: true });
         }
         case "close": {
@@ -482,17 +578,22 @@ export function createBrowserTool(opts?: {
                   method: "DELETE",
                   path: `/tabs/${encodeURIComponent(targetId)}`,
                   profile,
+                  timeoutMs: toolTimeoutMs,
                 })
               : await proxyRequest({
                   method: "POST",
                   path: "/act",
                   profile,
                   body: { kind: "close" },
+                  timeoutMs: toolTimeoutMs,
                 });
             return jsonResult(result);
           }
           if (targetId) {
-            await browserCloseTab(baseUrl, targetId, { profile });
+            await browserCloseTab(baseUrl, targetId, {
+              profile,
+              timeoutMs: toolTimeoutMs,
+            });
             untrackSessionBrowserTab({
               sessionKey: opts?.agentSessionKey,
               targetId,
@@ -500,7 +601,7 @@ export function createBrowserTool(opts?: {
               profile,
             });
           } else {
-            await browserAct(baseUrl, { kind: "close" }, { profile });
+            await browserAct(baseUrl, { kind: "close" }, { profile, timeoutMs: toolTimeoutMs });
           }
           return jsonResult({ ok: true });
         }
