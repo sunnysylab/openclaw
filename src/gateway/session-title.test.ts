@@ -92,4 +92,24 @@ describe("deriveSessionTitle", () => {
     } as SessionEntry;
     expect(deriveSessionTitle(entry)).toBe("abcd1234 (2024-03-15)");
   });
+
+  test("truncates at word boundary when possible", () => {
+    const entry = {
+      sessionId: "abc123",
+      updatedAt: Date.now(),
+    } as SessionEntry;
+    const longMsg = "This message has many words and should be truncated at a word boundary nicely";
+    const result = deriveSessionTitle(entry, longMsg);
+    expect(result).toBeDefined();
+    expect(result!.endsWith("…")).toBe(true);
+    expect(result!.includes("  ")).toBe(false);
+  });
+
+  test("falls back to sessionId prefix without date when updatedAt missing", () => {
+    const entry = {
+      sessionId: "abcd1234-5678-90ef-ghij-klmnopqrstuv",
+      updatedAt: 0,
+    } as SessionEntry;
+    expect(deriveSessionTitle(entry)).toBe("abcd1234");
+  });
 });
