@@ -18,7 +18,7 @@ import {
   resolveAuthProfileOrder,
   resolveAuthStorePathForDisplay,
 } from "./auth-profiles.js";
-import { resolveEnvApiKey, type EnvApiKeyResult } from "./model-auth-env.js";
+import { resolveEnvApiKey } from "./model-auth-env.js";
 import {
   CUSTOM_LOCAL_AUTH_MARKER,
   isKnownEnvApiKeyMarker,

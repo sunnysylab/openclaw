@@ -181,6 +181,10 @@
       "destination": "/providers/qianfan"
     },
     {
+      "source": "/aiping",
+      "destination": "/providers/aiping"
+    },
+    {
       "source": "/mattermost",
       "destination": "/channels/mattermost"
     },
@@ -1190,6 +1194,7 @@
                   "providers/kilocode",
                   "providers/litellm",
                   "providers/glm",
+                  "providers/aiping",
                   "providers/minimax",
                   "providers/modelstudio",
                   "providers/moonshot",
