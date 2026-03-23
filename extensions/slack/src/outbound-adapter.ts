@@ -17,6 +17,7 @@ import {
   sendPayloadMediaSequenceAndFinalize,
   sendTextMediaPayload,
 } from "openclaw/plugin-sdk/reply-payload";
+import { HEARTBEAT_TOKEN, stripHeartbeatToken } from "openclaw/plugin-sdk/reply-runtime";
 import { parseSlackBlocksInput } from "./blocks-input.js";
 import { buildSlackInteractiveBlocks, type SlackBlock } from "./blocks-render.js";
 import { sendMessageSlack, type SlackSendIdentity } from "./send.js";
@@ -108,8 +109,22 @@ async function sendSlackOutboundMessage(params: {
     };
   }
 
+  // Safety-net: strip stray HEARTBEAT_OK tokens that escaped upstream normalization.
+  let finalText = hookResult.text;
+  if (finalText.includes(HEARTBEAT_TOKEN)) {
+    const stripped = stripHeartbeatToken(finalText, { mode: "message" });
+    if (stripped.shouldSkip && !params.mediaUrl) {
+      return {
+        messageId: "heartbeat-stripped",
+        channelId: params.to,
+        meta: { heartbeatStripped: true },
+      };
+    }
+    finalText = stripped.text;
+  }
+
   const slackIdentity = resolveSlackSendIdentity(params.identity);
-  const result = await send(params.to, hookResult.text, {
+  const result = await send(params.to, finalText, {
     cfg: params.cfg,
     threadTs,
     accountId: params.accountId ?? undefined,

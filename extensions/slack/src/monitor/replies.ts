@@ -6,7 +6,12 @@ import {
 import type { ChunkMode } from "openclaw/plugin-sdk/reply-runtime";
 import { chunkMarkdownTextWithMode } from "openclaw/plugin-sdk/reply-runtime";
 import { createReplyReferencePlanner } from "openclaw/plugin-sdk/reply-runtime";
-import { isSilentReplyText, SILENT_REPLY_TOKEN } from "openclaw/plugin-sdk/reply-runtime";
+import {
+  HEARTBEAT_TOKEN,
+  isSilentReplyText,
+  SILENT_REPLY_TOKEN,
+  stripHeartbeatToken,
+} from "openclaw/plugin-sdk/reply-runtime";
 import type { ReplyPayload } from "openclaw/plugin-sdk/reply-runtime";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { parseSlackBlocksInput } from "../blocks-input.js";
@@ -55,7 +60,13 @@ export async function deliverReplies(params: {
       if (trimmed && isSilentReplyText(trimmed, SILENT_REPLY_TOKEN)) {
         continue;
       }
-      await sendMessageSlack(params.target, trimmed, {
+      // Safety-net: strip stray HEARTBEAT_OK tokens that escaped upstream normalization.
+      let effectiveText = trimmed;
+      if (effectiveText && effectiveText.includes(HEARTBEAT_TOKEN)) {
+        const stripped = stripHeartbeatToken(effectiveText, { mode: "message" });
+        effectiveText = stripped.shouldSkip ? "" : stripped.text;
+      }
+      await sendMessageSlack(params.target, effectiveText, {
         token: params.token,
         threadTs,
         accountId: params.accountId,
@@ -74,6 +85,14 @@ export async function deliverReplies(params: {
             const trimmed = value.trim();
             if (!trimmed || isSilentReplyText(trimmed, SILENT_REPLY_TOKEN)) {
               return [];
+            }
+            // Safety-net: strip stray HEARTBEAT_OK tokens that escaped upstream normalization.
+            if (trimmed.includes(HEARTBEAT_TOKEN)) {
+              const stripped = stripHeartbeatToken(trimmed, { mode: "message" });
+              if (stripped.shouldSkip) {
+                return [];
+              }
+              return [stripped.text];
             }
             return [trimmed];
           }
