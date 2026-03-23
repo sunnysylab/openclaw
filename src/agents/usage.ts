@@ -152,7 +152,11 @@ export function derivePromptTokens(usage?: {
   if (!usage) {
     return undefined;
   }
-  if (usage.input === undefined && usage.cacheRead === undefined && usage.cacheWrite === undefined) {
+  if (
+    usage.input === undefined &&
+    usage.cacheRead === undefined &&
+    usage.cacheWrite === undefined
+  ) {
     return undefined;
   }
   const input = usage.input ?? 0;

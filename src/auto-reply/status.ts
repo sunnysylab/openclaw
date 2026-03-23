@@ -461,7 +461,9 @@ export function buildStatusMessage(args: StatusArgs): string {
   let cacheWrite = entry?.cacheWrite;
   const freshTotal = resolveFreshSessionTotalTokens(entry);
   let totalTokens =
-    freshTotal ?? entry?.totalTokensEstimate ?? (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
+    freshTotal ??
+    entry?.totalTokensEstimate ??
+    (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
 
   // Prefer prompt-size tokens from the session transcript when it looks larger
   // (cached prompt tokens are often missing from agent meta/store).

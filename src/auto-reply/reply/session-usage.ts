@@ -168,8 +168,10 @@ export async function persistSessionUsageUpdate(params: {
           const useFallback = !modelChanged && !hasCurrentUsage;
 
           if (hasCurrentUsage || hasFreshContextSnapshot) {
-            patch.inputTokens = params.usage?.input ?? (useFallback ? entry.inputTokens : undefined);
-            patch.outputTokens = params.usage?.output ?? (useFallback ? entry.outputTokens : undefined);
+            patch.inputTokens =
+              params.usage?.input ?? (useFallback ? entry.inputTokens : undefined);
+            patch.outputTokens =
+              params.usage?.output ?? (useFallback ? entry.outputTokens : undefined);
             // Cache counters should reflect the latest context snapshot when
             // available, not accumulated per-call totals across a whole run.
             const cacheUsage = params.lastCallUsage ?? params.usage;

@@ -99,7 +99,8 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
   }
 
   const report = await resolveContextReport(params);
-  const totalTokens = resolveFreshSessionTotalTokens(params.sessionEntry) ?? params.sessionEntry?.totalTokensEstimate;
+  const totalTokens =
+    resolveFreshSessionTotalTokens(params.sessionEntry) ?? params.sessionEntry?.totalTokensEstimate;
   const session = {
     totalTokens: totalTokens ?? null,
     totalTokensFresh:

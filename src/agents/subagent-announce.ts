@@ -1,4 +1,3 @@
-import { resolveTotalTokens } from "../shared/subagents-format.js";
 import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
@@ -18,6 +17,7 @@ import { normalizeAccountId, normalizeMainKey } from "../routing/session-key.js"
 import { defaultRuntime } from "../runtime.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
 import { extractTextFromChatContent } from "../shared/chat-content.js";
+import { resolveTotalTokens } from "../shared/subagents-format.js";
 import {
   type DeliveryContext,
   deliveryContextFromSession,

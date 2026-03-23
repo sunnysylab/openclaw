@@ -63,12 +63,7 @@ import {
   type FailoverReason,
 } from "../pi-embedded-helpers.js";
 import { ensureRuntimePluginsLoaded } from "../runtime-plugins.js";
-import {
-  derivePromptTokens,
-  hasExplicitUsage,
-  normalizeUsage,
-  type UsageLike,
-} from "../usage.js";
+import { derivePromptTokens, hasExplicitUsage, normalizeUsage, type UsageLike } from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
 import { buildEmbeddedCompactionRuntimeContext } from "./compaction-runtime-context.js";
 import { runContextEngineMaintenance } from "./context-engine-maintenance.js";
