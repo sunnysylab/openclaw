@@ -474,7 +474,15 @@ async function _drainReconnectQueueCore(opts: {
 
   // Move expired entries to failed
   for (const entry of expired) {
-    await moveToFailed(entry.id, opts.stateDir);
+    try {
+      await moveToFailed(entry.id, opts.stateDir);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        opts.log.info(`reconnect drain: expired entry ${entry.id} already gone, skipping`);
+        continue;
+      }
+      throw err;
+    }
     opts.log.warn(
       `WhatsApp reconnect drain: expired entry ${entry.id} (TTL exceeded or max retries)`,
     );
@@ -503,7 +511,19 @@ async function _drainReconnectQueueCore(opts: {
       encoding: "utf-8",
       mode: 0o600,
     });
-    await fs.promises.rename(tmp, filePath);
+    try {
+      await fs.promises.rename(tmp, filePath);
+    } catch (err: unknown) {
+      // Clean up the tmp file we just wrote
+      await fs.promises.unlink(tmp).catch(() => {});
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        opts.log.info(
+          `reconnect drain: entry ${entry.id} already acked by concurrent recovery, skipping`,
+        );
+        continue;
+      }
+      throw err;
+    }
   }
 
   // Deliver only the eligible entries for this account (scoped drain).
