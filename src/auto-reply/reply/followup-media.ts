@@ -6,7 +6,7 @@ import {
 } from "../../media-understanding/attachments.js";
 import { buildInboundMediaNote } from "../media-note.js";
 import type { MsgContext } from "../templating.js";
-import { parseInlineDirectives } from "./directive-handling.js";
+import { parseInlineDirectives } from "./directive-handling.parse.js";
 import type { FollowupMediaContext, FollowupRun } from "./queue/types.js";
 
 const MEDIA_ONLY_PLACEHOLDER = "[User sent media without caption]";
