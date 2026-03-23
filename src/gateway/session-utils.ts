@@ -326,7 +326,7 @@ function resolveTranscriptUsageFallback(params: {
     },
   });
   return {
-    totalTokens: resolvePositiveNumber(snapshot.totalTokens),
+    totalTokens: resolveNonNegativeNumber(snapshot.totalTokens),
     totalTokensFresh: snapshot.totalTokensFresh === true,
     contextTokens: resolvePositiveNumber(contextTokens),
     estimatedCostUsd,
@@ -1034,18 +1034,18 @@ function resolveGatewaySessionTotalTokens(params: {
     return freshTotal;
   }
 
-  // 2. Fall back to a fresh transcript total. This ensures that authoritative
-  // context data (including an explicit zero after /reset) is preferred over
-  // stale or estimated values in the store.
-  if (transcriptFresh && transcriptTotal !== undefined) {
-    return transcriptTotal;
-  }
-
-  // 3. Fall back to the display estimate. This preserves the last known good
+  // 2. Fall back to the display estimate. This preserves the last known good
   // count through provider-reported zero usage (the vLLM fix) and store-only
   // updates like compaction.
   if (estimate !== undefined) {
     return estimate;
+  }
+
+  // 3. Fall back to a fresh transcript total. This covers cases where
+  // the store is stale or missing an estimate but the transcript has current
+  // context data (e.g. session resets or prompt-only runs).
+  if (transcriptFresh && transcriptTotal !== undefined) {
+    return transcriptTotal;
   }
 
   // 4. Fall back to a positive legacy store total.

@@ -485,6 +485,10 @@ function resolvePositiveUsageNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+function resolveNonNegativeUsageNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
 function extractLatestUsageFromTranscriptChunk(
   chunk: string,
 ): SessionTranscriptUsageSnapshot | null {
@@ -523,7 +527,7 @@ function extractLatestUsageFromTranscriptChunk(
             ? parsed.usage
             : undefined;
       const usage = normalizeUsage(usageRaw);
-      const totalTokens = resolvePositiveUsageNumber(deriveSessionTotalTokens({ usage }));
+      const totalTokens = resolveNonNegativeUsageNumber(deriveSessionTotalTokens({ usage }));
       const costUsd = extractTranscriptUsageCost(usageRaw);
       const modelProvider =
         typeof message.provider === "string"
