@@ -11,6 +11,11 @@ import type { OpenClawApp } from "./app.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
 import { loadAgents } from "./controllers/agents.ts";
+import {
+  loadBrowserSessions,
+  startBrowserPolling,
+  stopBrowserPolling,
+} from "./controllers/browser.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadConfig, loadConfigSchema } from "./controllers/config.ts";
 import { loadCronJobs, loadCronRuns, loadCronStatus } from "./controllers/cron.ts";
@@ -22,6 +27,11 @@ import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import { loadSkills } from "./controllers/skills.ts";
+import {
+  loadTerminalSessions,
+  startTerminalPolling,
+  stopTerminalPolling,
+} from "./controllers/terminal.ts";
 import { loadUsage } from "./controllers/usage.ts";
 import {
   inferBasePathFromPathname,
@@ -281,6 +291,12 @@ export async function refreshActiveTab(host: SettingsHost) {
     await loadConfigSchema(host as unknown as OpenClawApp);
     await loadConfig(host as unknown as OpenClawApp);
   }
+  if (host.tab === "browser") {
+    await loadBrowserSessions(host as unknown as Parameters<typeof loadBrowserSessions>[0]);
+  }
+  if (host.tab === "terminal") {
+    await loadTerminalSessions(host as unknown as Parameters<typeof loadTerminalSessions>[0]);
+  }
   if (host.tab === "debug") {
     await loadDebug(host as unknown as OpenClawApp);
     host.eventLog = host.eventLogBuffer;
@@ -445,6 +461,16 @@ function applyTabSelection(
     startDebugPolling(host as unknown as Parameters<typeof startDebugPolling>[0]);
   } else {
     stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
+  }
+  if (next === "browser") {
+    startBrowserPolling(host as unknown as Parameters<typeof startBrowserPolling>[0]);
+  } else {
+    stopBrowserPolling(host as unknown as Parameters<typeof stopBrowserPolling>[0]);
+  }
+  if (next === "terminal") {
+    startTerminalPolling(host as unknown as Parameters<typeof startTerminalPolling>[0]);
+  } else {
+    stopTerminalPolling(host as unknown as Parameters<typeof stopTerminalPolling>[0]);
   }
 
   if (options.refreshPolicy === "always" || host.connected) {
