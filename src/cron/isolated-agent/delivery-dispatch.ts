@@ -1,5 +1,5 @@
 import { countActiveDescendantRuns } from "../../agents/subagent-registry.js";
-import { SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
+import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import { createOutboundSendDeps, type CliDeps } from "../../cli/outbound-send-deps.js";
 import type { OpenClawConfig } from "../../config/config.js";
@@ -111,6 +111,24 @@ export type DispatchCronDeliveryState = {
   synthesizedText?: string;
   deliveryPayloads: ReplyPayload[];
 };
+
+function isDirectSilentReplyOnly(payloads: readonly ReplyPayload[]): boolean {
+  if (payloads.length !== 1) {
+    return false;
+  }
+  const [payload] = payloads;
+  if (!payload || !isSilentReplyText(payload.text, SILENT_REPLY_TOKEN)) {
+    return false;
+  }
+  return !(
+    payload.mediaUrl ||
+    (payload.mediaUrls?.length ?? 0) > 0 ||
+    payload.interactive ||
+    payload.btw ||
+    payload.audioAsVoice === true ||
+    Object.keys(payload.channelData ?? {}).length > 0
+  );
+}
 
 const TRANSIENT_DIRECT_CRON_DELIVERY_ERROR_PATTERNS: readonly RegExp[] = [
   /\berrorcode=unavailable\b/i,
@@ -340,6 +358,18 @@ export async function dispatchCronDelivery(
       if (payloadsForDelivery.length === 0) {
         return null;
       }
+      if (isDirectSilentReplyOnly(payloadsForDelivery)) {
+        deliveryAttempted = true;
+        delivered = false;
+        return params.withRunSession({
+          status: "ok",
+          summary,
+          outputText,
+          delivered: false,
+          deliveryAttempted: true,
+          ...params.telemetry,
+        });
+      }
       if (params.isAborted()) {
         return params.withRunSession({
           status: "error",
@@ -522,7 +552,7 @@ export async function dispatchCronDelivery(
       hadDescendants &&
       synthesizedText.trim() === initialSynthesizedText &&
       isLikelyInterimCronMessage(initialSynthesizedText) &&
-      initialSynthesizedText.toUpperCase() !== SILENT_REPLY_TOKEN.toUpperCase()
+      !isSilentReplyText(initialSynthesizedText, SILENT_REPLY_TOKEN)
     ) {
       // Descendants existed but no post-orchestration synthesis arrived AND
       // no descendant fallback reply was available. Suppress stale parent
@@ -537,12 +567,13 @@ export async function dispatchCronDelivery(
         ...params.telemetry,
       });
     }
-    if (synthesizedText.toUpperCase() === SILENT_REPLY_TOKEN.toUpperCase()) {
+    if (isSilentReplyText(synthesizedText, SILENT_REPLY_TOKEN)) {
       return params.withRunSession({
         status: "ok",
         summary,
         outputText,
-        delivered: true,
+        delivered: false,
+        deliveryAttempted: true,
         ...params.telemetry,
       });
     }
