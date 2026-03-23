@@ -1,12 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const runDuckDuckGoSearch = vi.fn(async (params: Record<string, unknown>) => params);
+const { runDuckDuckGoSearch } = vi.hoisted(() => ({
+  runDuckDuckGoSearch: vi.fn(async (params: Record<string, unknown>) => params),
+}));
 
 vi.mock("./ddg-client.js", () => ({
   runDuckDuckGoSearch,
 }));
 
 describe("duckduckgo web search provider", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    runDuckDuckGoSearch.mockReset();
+    runDuckDuckGoSearch.mockImplementation(async (params: Record<string, unknown>) => params);
+  });
+
   it("exposes keyless metadata and enables the plugin in config", async () => {
     const { createDuckDuckGoWebSearchProvider } = await import("./ddg-search-provider.js");
 
@@ -17,6 +25,7 @@ describe("duckduckgo web search provider", () => {
     const applied = provider.applySelectionConfig({});
 
     expect(provider.id).toBe("duckduckgo");
+    expect(provider.label).toBe("DuckDuckGo Search (experimental)");
     expect(provider.requiresCredential).toBe(false);
     expect(provider.credentialPath).toBe("");
     expect(applied.plugins?.entries?.duckduckgo?.enabled).toBe(true);
