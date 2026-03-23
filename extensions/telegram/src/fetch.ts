@@ -118,6 +118,8 @@ function createDnsResultOrderLookup(
   };
 }
 
+const TELEGRAM_KEEPALIVE_INITIAL_DELAY_MS = 30_000;
+
 function buildTelegramConnectOptions(params: {
   autoSelectFamily: boolean | null;
   dnsResultOrder: TelegramDnsResultOrder | null;
@@ -126,14 +128,21 @@ function buildTelegramConnectOptions(params: {
   autoSelectFamily?: boolean;
   autoSelectFamilyAttemptTimeout?: number;
   family?: number;
+  keepAlive?: boolean;
+  keepAliveInitialDelay?: number;
   lookup?: LookupFunction;
-} | null {
+} {
   const connect: {
     autoSelectFamily?: boolean;
     autoSelectFamilyAttemptTimeout?: number;
     family?: number;
+    keepAlive?: boolean;
+    keepAliveInitialDelay?: number;
     lookup?: LookupFunction;
-  } = {};
+  } = {
+    keepAlive: true,
+    keepAliveInitialDelay: TELEGRAM_KEEPALIVE_INITIAL_DELAY_MS,
+  };
 
   if (params.forceIpv4) {
     connect.family = 4;
@@ -148,7 +157,7 @@ function buildTelegramConnectOptions(params: {
     connect.lookup = lookup;
   }
 
-  return Object.keys(connect).length > 0 ? connect : null;
+  return connect;
 }
 
 function shouldBypassEnvProxyForTelegramApi(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -202,16 +211,11 @@ function resolveTelegramDispatcherPolicy(params: {
   const explicitProxyUrl = params.proxyUrl?.trim();
   if (explicitProxyUrl) {
     return {
-      policy: connect
-        ? {
-            mode: "explicit-proxy",
-            proxyUrl: explicitProxyUrl,
-            proxyTls: { ...connect },
-          }
-        : {
-            mode: "explicit-proxy",
-            proxyUrl: explicitProxyUrl,
-          },
+      policy: {
+        mode: "explicit-proxy",
+        proxyUrl: explicitProxyUrl,
+        proxyTls: { ...connect },
+      },
       mode: "explicit-proxy",
     };
   }
@@ -219,7 +223,8 @@ function resolveTelegramDispatcherPolicy(params: {
     return {
       policy: {
         mode: "env-proxy",
-        ...(connect ? { connect: { ...connect }, proxyTls: { ...connect } } : {}),
+        connect: { ...connect },
+        proxyTls: { ...connect },
       },
       mode: "env-proxy",
     };
@@ -227,7 +232,7 @@ function resolveTelegramDispatcherPolicy(params: {
   return {
     policy: {
       mode: "direct",
-      ...(connect ? { connect: { ...connect } } : {}),
+      connect: { ...connect },
     },
     mode: "direct",
   };
