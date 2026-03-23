@@ -730,14 +730,71 @@ export function isBillingAssistantError(msg: AssistantMessage | undefined): bool
   return isBillingErrorMessage(msg.errorMessage ?? "");
 }
 
+/**
+ * Match an **HTTP** status code embedded in a wrapped error message.
+ *
+ * Only matches the "error NNN:" format (with a colon/whitespace after the
+ * digits) which is used when the status originates from an HTTP response:
+ * - Ollama: "Ollama API error 400: ..."
+ *
+ * Deliberately does NOT match parenthesised codes like "error (400)" because
+ * some providers (e.g. MiniMax VLM) use their own internal status codes in
+ * that format, which are unrelated to HTTP status.
+ */
+const EMBEDDED_HTTP_STATUS_RE = /\berror\s+(\d{3})\s*:/i;
+
+function extractEmbeddedHttpStatus(raw: string): number | null {
+  const match = raw.match(EMBEDDED_HTTP_STATUS_RE);
+  if (!match) {
+    return null;
+  }
+  const code = Number(match[1]);
+  return code >= 100 && code < 600 ? code : null;
+}
+
+/**
+ * Returns true for 4xx status codes that represent permanent client errors
+ * (auth, billing, bad request, etc.) which should NOT trigger model fallback.
+ * Excludes 408 (Request Timeout) and 499 (Client Closed Request) which are
+ * retryable per classifyFailoverReasonFromHttpStatus().
+ */
+function isPermanent4xx(code: number): boolean {
+  return code >= 400 && code < 500 && code !== 408 && code !== 499;
+}
+
 function isJsonApiInternalServerError(raw: string): boolean {
   if (!raw) {
     return false;
   }
   const value = raw.toLowerCase();
-  // Anthropic often wraps transient 500s in JSON payloads like:
+  // Providers wrap transient 5xx errors in JSON payloads like:
   // {"type":"error","error":{"type":"api_error","message":"Internal server error"}}
-  return value.includes('"type":"api_error"') && value.includes("internal server error");
+  // Non-standard providers (e.g. MiniMax) may use different message text:
+  // {"type":"api_error","message":"unknown error, 520 (1000)"}
+  // Any api_error type indicates a provider-side failure regardless of message text.
+  //
+  // However, proxies (e.g. Ollama) may wrap client-side 4xx failures in api_error
+  // payloads like "Ollama API error 400: {\"type\":\"api_error\",...}".
+  // extractLeadingHttpStatus only catches codes at the start of the string, so we
+  // also scan for embedded status codes to avoid misclassifying permanent 4xx errors
+  // as retryable timeouts.
+  //
+  // Note: 408 and 499 are retryable (timeout/overload) per
+  // classifyFailoverReasonFromHttpStatus(), so we must NOT exclude them here.
+  if (!value.includes('"type":"api_error"')) {
+    return false;
+  }
+  // Check leading status first (fast path).
+  const leadingStatus = extractLeadingHttpStatus(raw.trim());
+  if (leadingStatus && isPermanent4xx(leadingStatus.code)) {
+    return false;
+  }
+  // Check embedded status for wrapped error formats (e.g. "Ollama API error 400: ...").
+  const embeddedCode = extractEmbeddedHttpStatus(raw);
+  if (embeddedCode !== null && isPermanent4xx(embeddedCode)) {
+    return false;
+  }
+  return true;
 }
 
 export function parseImageDimensionError(raw: string): {
