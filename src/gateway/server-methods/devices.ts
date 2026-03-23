@@ -170,8 +170,9 @@ export const deviceHandlers: GatewayRequestHandlers = {
       return;
     }
     const { deviceId } = params as { deviceId: string };
+    const isDeviceTokenAuth = Boolean(client?.connect?.auth?.deviceToken);
     const callerDeviceId = client?.connect?.device?.id;
-    if (callerDeviceId && callerDeviceId !== deviceId) {
+    if (isDeviceTokenAuth && callerDeviceId && callerDeviceId !== deviceId) {
       context.logGateway.warn(
         `device pairing removal denied device=${deviceId} reason=device-ownership-mismatch`,
       );
@@ -209,13 +210,13 @@ export const deviceHandlers: GatewayRequestHandlers = {
       role: string;
       scopes?: string[];
     };
-    // Ownership guard first — cheap, no DB call, blocks IDOR before
-    // any target-device lookup or scope resolution. Admin-scoped callers
-    // are exempt because they legitimately manage all devices.
+    // Ownership guard — only for device-token callers (from the pairing
+    // flow). Shared-secret operators (CLI, Control UI) attach a device
+    // identity but authenticate via auth.token, not auth.deviceToken, and
+    // legitimately manage all devices.
+    const isDeviceTokenAuth = Boolean(client?.connect?.auth?.deviceToken);
     const callerDeviceId = client?.connect?.device?.id;
-    const callerScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
-    const isAdminCaller = callerScopes.includes("operator.admin");
-    if (callerDeviceId && callerDeviceId !== deviceId && !isAdminCaller) {
+    if (isDeviceTokenAuth && callerDeviceId && callerDeviceId !== deviceId) {
       logDeviceTokenRotationDenied({
         log: context.logGateway,
         deviceId,
@@ -244,6 +245,7 @@ export const deviceHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+    const callerScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
     const requestedScopes = normalizeDeviceAuthScopes(
       scopes ?? pairedDevice.tokens?.[role.trim()]?.scopes ?? pairedDevice.scopes,
     );

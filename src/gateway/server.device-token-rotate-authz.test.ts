@@ -267,14 +267,14 @@ describe("gateway device.token.rotate/revoke ownership guard (IDOR)", () => {
     }
   });
 
-  test("allows an admin-scoped device caller to rotate another device's token", async () => {
+  test("allows a shared-secret caller (with device identity) to rotate any device's token", async () => {
     const started = await startServerWithClient("secret");
     const device = await issuePairingScopedTokenForAdminApprovedDevice("idor-admin-rotate");
 
     try {
-      // Admin-scoped callers (with operator.admin) are exempt from the
-      // ownership guard and can rotate any device's token. The default
-      // connectOk creates a device identity with operator.admin scopes.
+      // Shared-secret callers (auth.token) bypass the ownership guard even
+      // when they have a device identity — the guard only applies to callers
+      // authenticated via auth.deviceToken (from the pairing flow).
       await connectOk(started.ws);
 
       const rotate = await rpcReq<{ token?: string }>(started.ws, "device.token.rotate", {
