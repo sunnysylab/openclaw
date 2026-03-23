@@ -63,7 +63,12 @@ import {
   type FailoverReason,
 } from "../pi-embedded-helpers.js";
 import { ensureRuntimePluginsLoaded } from "../runtime-plugins.js";
-import { derivePromptTokens, normalizeUsage, type UsageLike } from "../usage.js";
+import {
+  derivePromptTokens,
+  hasExplicitUsage,
+  normalizeUsage,
+  type UsageLike,
+} from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
 import { buildEmbeddedCompactionRuntimeContext } from "./compaction-runtime-context.js";
 import { runContextEngineMaintenance } from "./context-engine-maintenance.js";
@@ -252,6 +257,7 @@ function buildErrorAgentMeta(params: {
   const lastCallUsage = params.lastAssistant
     ? normalizeUsage(params.lastAssistant.usage as UsageLike)
     : undefined;
+  const hasAuthoritativeUsage = hasExplicitUsage(lastCallUsage);
   const promptTokens = derivePromptTokens(params.lastRunPromptUsage);
   return {
     sessionId: params.sessionId,
@@ -259,8 +265,8 @@ function buildErrorAgentMeta(params: {
     model: params.model,
     // Only include usage fields when we have actual data from prior API calls.
     ...(usage ? { usage } : {}),
-    ...(lastCallUsage ? { lastCallUsage } : {}),
-    ...(typeof promptTokens === "number" && (promptTokens > 0 || lastCallUsage)
+    ...(hasAuthoritativeUsage ? { lastCallUsage } : {}),
+    ...(typeof promptTokens === "number" && (promptTokens > 0 || hasAuthoritativeUsage)
       ? { promptTokens }
       : {}),
   };
