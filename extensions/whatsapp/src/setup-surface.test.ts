@@ -31,8 +31,8 @@ vi.mock("openclaw/plugin-sdk/setup", async () => {
   };
 });
 
-vi.mock("./accounts.js", async () => {
-  const actual = await vi.importActual<typeof import("./accounts.js")>("./accounts.js");
+vi.mock("./accounts.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./accounts.js")>();
   return {
     ...actual,
     listWhatsAppAccountIds: listWhatsAppAccountIdsMock,

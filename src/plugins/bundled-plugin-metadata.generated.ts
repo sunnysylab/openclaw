@@ -200,6 +200,71 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
     },
   },
   {
+    dirName: "azure-blob",
+    idHint: "azure-blob",
+    source: {
+      source: "./index.ts",
+      built: "index.js",
+    },
+    packageName: "@openclaw/azure-blob",
+    packageVersion: "2026.3.14",
+    packageDescription: "OpenClaw plugin to read files from Azure Blob Storage",
+    packageManifest: {
+      extensions: ["./index.ts"],
+    },
+    manifest: {
+      id: "azure-blob",
+      configSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          connectionString: {
+            type: ["string", "object"],
+          },
+          accountName: {
+            type: "string",
+          },
+          accountKey: {
+            type: ["string", "object"],
+          },
+          accountUrl: {
+            type: "string",
+          },
+          defaultContainer: {
+            type: "string",
+          },
+        },
+      },
+      name: "Azure Blob Storage",
+      description:
+        "List containers, list blobs, and read blob contents from Azure Storage via agent tools.",
+      uiHints: {
+        connectionString: {
+          label: "Azure Storage connection string",
+          help: "Full connection string (fallback: AZURE_STORAGE_CONNECTION_STRING).",
+          sensitive: true,
+        },
+        accountName: {
+          label: "Storage account name",
+          help: "Used with account key when no connection string is set (fallback: AZURE_STORAGE_ACCOUNT_NAME).",
+        },
+        accountKey: {
+          label: "Storage account key",
+          help: "Shared key for the account (fallback: AZURE_STORAGE_ACCOUNT_KEY).",
+          sensitive: true,
+        },
+        accountUrl: {
+          label: "Blob service URL",
+          help: "Override blob endpoint (sovereign clouds, custom domain). Default: https://{account}.blob.core.windows.net",
+        },
+        defaultContainer: {
+          label: "Default container",
+          help: "Optional default container when the tool omits containerName.",
+        },
+      },
+    },
+  },
+  {
     dirName: "bluebubbles",
     idHint: "bluebubbles",
     source: {
