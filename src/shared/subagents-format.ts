@@ -60,15 +60,21 @@ export function resolveTotalTokens(entry?: TokenUsageLike) {
   ) {
     return entry.totalTokens;
   }
-  if (typeof entry.totalTokensEstimate === "number" && Number.isFinite(entry.totalTokensEstimate)) {
-    return entry.totalTokensEstimate;
+  const input = typeof entry.inputTokens === "number" ? (entry.inputTokens as number) : 0;
+  const output = typeof entry.outputTokens === "number" ? (entry.outputTokens as number) : 0;
+  const total = input + output;
+  if (total > 0) {
+    return total;
   }
-  const hasInput = typeof entry.inputTokens === "number";
-  const hasOutput = typeof entry.outputTokens === "number";
-  if (hasInput || hasOutput) {
-    const input = hasInput ? (entry.inputTokens as number) : 0;
-    const output = hasOutput ? (entry.outputTokens as number) : 0;
-    return input + output;
+  if (typeof total === "number" && !Number.isFinite(total)) {
+    return undefined;
+  }
+  if (
+    typeof entry.totalTokensEstimate === "number" &&
+    Number.isFinite(entry.totalTokensEstimate) &&
+    entry.totalTokensEstimate > 0
+  ) {
+    return entry.totalTokensEstimate;
   }
   return undefined;
 }
