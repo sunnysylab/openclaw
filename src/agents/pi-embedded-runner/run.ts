@@ -260,7 +260,9 @@ function buildErrorAgentMeta(params: {
     // Only include usage fields when we have actual data from prior API calls.
     ...(usage ? { usage } : {}),
     ...(lastCallUsage ? { lastCallUsage } : {}),
-    ...(typeof promptTokens === "number" ? { promptTokens } : {}),
+    ...(typeof promptTokens === "number" && (promptTokens > 0 || lastCallUsage)
+      ? { promptTokens }
+      : {}),
   };
 }
 
