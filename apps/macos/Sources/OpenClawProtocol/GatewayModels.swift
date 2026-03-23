@@ -10,6 +10,7 @@ public enum ErrorCode: String, Codable, Sendable {
     case agentTimeout = "AGENT_TIMEOUT"
     case invalidRequest = "INVALID_REQUEST"
     case unavailable = "UNAVAILABLE"
+    case sessionNotFound = "SESSION_NOT_FOUND"
 }
 
 public struct ConnectParams: Codable, Sendable {
