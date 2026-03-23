@@ -17,6 +17,10 @@ function resolveCachedPreferredTmpDir(): string {
   return cachedPreferredTmpDir;
 }
 
+/**
+ * Build list of allowed local media root directories.
+ * Uses a glob-like pattern to allow all workspace-* subdirectories.
+ */
 function buildMediaLocalRoots(
   stateDir: string,
   options: BuildMediaLocalRootsOptions = {},
@@ -27,6 +31,7 @@ function buildMediaLocalRoots(
     preferredTmpDir,
     path.join(resolvedStateDir, "media"),
     path.join(resolvedStateDir, "workspace"),
+    path.join(resolvedStateDir, "workspace-*"), // Allow all workspace-* directories
     path.join(resolvedStateDir, "sandboxes"),
   ];
 }
