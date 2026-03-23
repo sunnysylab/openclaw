@@ -546,7 +546,7 @@ export function buildStatusMessage(args: StatusArgs): string {
     ? (args.groupActivation ?? entry?.groupActivation ?? "mention")
     : undefined;
 
-  const displayTotal = totalTokens ?? entry?.totalTokensEstimate;
+  const displayTotal = totalTokens;
   const contextLine = [
     `Context: ${formatTokens(displayTotal, contextTokens ?? null)}`,
     `🧹 Compactions: ${entry?.compactionCount ?? 0}`,
