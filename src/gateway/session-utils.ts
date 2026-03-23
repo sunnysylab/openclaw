@@ -1015,6 +1015,59 @@ export function resolveSessionModelIdentityRef(
   return { provider: resolved.provider, model: resolved.model };
 }
 
+/**
+ * Resolves the token total for a gateway session listing by following a
+ * priority-ordered fallback chain that handles vLLM zero-usage, stale store
+ * entries, and legacy total counters.
+ */
+function resolveGatewaySessionTotalTokens(params: {
+  freshTotal?: number;
+  estimate?: number;
+  transcriptTotal?: number;
+  transcriptFresh?: boolean;
+  legacyTotal?: number;
+}): number | undefined {
+  const { freshTotal, estimate, transcriptTotal, transcriptFresh, legacyTotal } = params;
+
+  // 1. Prefer an explicit fresh total from the session store.
+  if (freshTotal !== undefined) {
+    return freshTotal;
+  }
+
+  // 2. Fall back to a fresh, non-zero transcript total. This covers cases where
+  // the store is stale but the transcript has current context data (e.g. after
+  // a compaction or a prompt-only run that the store hasn't seen yet).
+  if (transcriptFresh && transcriptTotal !== undefined && transcriptTotal > 0) {
+    return transcriptTotal;
+  }
+
+  // 3. Fall back to the display estimate. This preserves the last known good
+  // count through provider-reported zero usage (the vLLM fix).
+  if (estimate !== undefined) {
+    return estimate;
+  }
+
+  // 4. Fall back to a fresh transcript total even if it's zero. This ensures
+  // session resets are accurately reflected when no estimate is available.
+  if (transcriptFresh && transcriptTotal !== undefined) {
+    return transcriptTotal;
+  }
+
+  // 5. Fall back to a positive legacy store total.
+  const legacyPositive = resolvePositiveNumber(legacyTotal);
+  if (legacyPositive !== undefined) {
+    return legacyPositive;
+  }
+
+  // 6. Fall back to any transcript total (even if stale) as a last resort.
+  if (transcriptTotal !== undefined) {
+    return transcriptTotal;
+  }
+
+  // 7. Finally, use any legacy store total.
+  return resolveNonNegativeNumber(legacyTotal);
+}
+
 export function buildGatewaySessionRow(params: {
   cfg: OpenClawConfig;
   storePath: string;
@@ -1090,16 +1143,13 @@ export function buildGatewaySessionRow(params: {
 
   const freshTotalValue = resolveNonNegativeNumber(freshTotal);
   const estimateValue = resolveNonNegativeNumber(entry?.totalTokensEstimate);
-  const totalTokens =
-    freshTotalValue ??
-    (transcriptFresh && transcriptTotal !== undefined && transcriptTotal > 0
-      ? transcriptTotal
-      : undefined) ??
-    estimateValue ??
-    (transcriptFresh ? transcriptTotal : undefined) ??
-    resolvePositiveNumber(entry?.totalTokens) ??
-    transcriptTotal ??
-    resolveNonNegativeNumber(entry?.totalTokens);
+  const totalTokens = resolveGatewaySessionTotalTokens({
+    freshTotal: freshTotalValue,
+    estimate: estimateValue,
+    transcriptTotal,
+    transcriptFresh,
+    legacyTotal: entry?.totalTokens,
+  });
 
   const totalTokensFresh =
     freshTotalValue !== undefined || (transcriptFresh && totalTokens === transcriptTotal);
