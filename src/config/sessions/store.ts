@@ -458,6 +458,10 @@ function updateSessionStoreWriteCaches(params: {
       sizeBytes: fileStat?.sizeBytes,
     })
   ) {
+    rememberLoadedSessionStoreSnapshot({
+      store: params.store,
+      serializedFromDisk: params.serialized,
+    });
     dropSessionStoreObjectCache(params.storePath);
     return;
   }
