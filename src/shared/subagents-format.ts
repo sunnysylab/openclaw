@@ -60,6 +60,13 @@ export function resolveTotalTokens(entry?: TokenUsageLike) {
   ) {
     return entry.totalTokens;
   }
+  if (
+    typeof entry.totalTokensEstimate === "number" &&
+    Number.isFinite(entry.totalTokensEstimate) &&
+    entry.totalTokensEstimate > 0
+  ) {
+    return entry.totalTokensEstimate;
+  }
   const input = typeof entry.inputTokens === "number" ? (entry.inputTokens as number) : 0;
   const output = typeof entry.outputTokens === "number" ? (entry.outputTokens as number) : 0;
   const total = input + output;
@@ -68,13 +75,6 @@ export function resolveTotalTokens(entry?: TokenUsageLike) {
   }
   if (typeof total === "number" && !Number.isFinite(total)) {
     return undefined;
-  }
-  if (
-    typeof entry.totalTokensEstimate === "number" &&
-    Number.isFinite(entry.totalTokensEstimate) &&
-    entry.totalTokensEstimate > 0
-  ) {
-    return entry.totalTokensEstimate;
   }
   return undefined;
 }

@@ -477,14 +477,15 @@ export function buildStatusMessage(args: StatusArgs): string {
     );
     if (logUsage) {
       const candidate = logUsage.promptTokens || logUsage.total;
+      const hasZeroEstimate = entry?.totalTokensEstimate === 0;
       if (
         logUsage.totalTokensFresh &&
         freshTotal === undefined &&
-        entry?.totalTokensEstimate === undefined &&
+        (entry?.totalTokensEstimate === undefined || (candidate > 0 && hasZeroEstimate)) &&
         entry?.totalTokensFresh === undefined
       ) {
         // Session transcript is authoritative only when the store has no fresh data
-        // and no preserved estimate (e.g. legacy entries or missing store state).
+        // and no preserved estimate (or a zero estimate being overridden by fresh usage).
         totalTokens = candidate;
       }
       if (!entry?.model && logUsage.model) {
