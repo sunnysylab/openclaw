@@ -15,7 +15,7 @@ export { SUPPORTED_LOCALES, isSupportedLocale };
 
 class I18nManager {
   private locale: Locale = DEFAULT_LOCALE;
-  private translations: Partial<Record<Locale, TranslationMap>> = { [DEFAULT_LOCALE]: en };
+  private translations: Record<string, TranslationMap> = { [DEFAULT_LOCALE]: en };
   private subscribers: Set<Subscriber> = new Set();
 
   constructor() {
@@ -102,6 +102,10 @@ class I18nManager {
   public subscribe(sub: Subscriber) {
     this.subscribers.add(sub);
     return () => this.subscribers.delete(sub);
+  }
+
+  public refresh() {
+    this.notify();
   }
 
   private notify() {
