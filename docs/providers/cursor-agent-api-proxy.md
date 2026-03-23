@@ -75,9 +75,14 @@ Edit the config file to add a custom provider:
   models: {
     providers: {
       cursor: {
-        type: "openai",
         baseUrl: "http://localhost:4646/v1",
         apiKey: "not-needed",
+        models: [
+          { id: "auto", name: "Auto" },
+          { id: "opus-4.6", name: "Claude Opus 4.6" },
+          { id: "sonnet-4.5", name: "Claude Sonnet 4.5" },
+          { id: "composer-1.5", name: "Composer 1.5" },
+        ],
       },
     },
   },
@@ -92,6 +97,7 @@ Edit the config file to add a custom provider:
 <Note>
 Set `apiKey` to `"not-needed"` when authentication is handled by `agent login`.
 To forward a specific Cursor API Key per-request, set it here instead.
+The `models` array lists available models. Run `agent --list-models` to see all options.
 </Note>
 
 ## Models
@@ -142,7 +148,7 @@ cursor-agent-api uninstall    # remove
 
 - This is a **community tool**, not officially supported by Cursor or OpenClaw
 - Requires an active Cursor subscription (Pro / Business) with the CLI authenticated
-- The proxy runs locally and does not send data to any third-party servers
+- The proxy runs locally, but requests are forwarded to Cursor's servers via the `agent` CLI (same as using Cursor IDE)
 - Streaming responses are fully supported
 
 ## See Also

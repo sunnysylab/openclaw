@@ -74,9 +74,14 @@ curl http://localhost:4646/health
   models: {
     providers: {
       cursor: {
-        type: "openai",
         baseUrl: "http://localhost:4646/v1",
         apiKey: "not-needed",
+        models: [
+          { id: "auto", name: "Auto" },
+          { id: "opus-4.6", name: "Claude Opus 4.6" },
+          { id: "sonnet-4.5", name: "Claude Sonnet 4.5" },
+          { id: "composer-1.5", name: "Composer 1.5" },
+        ],
       },
     },
   },
@@ -91,6 +96,7 @@ curl http://localhost:4646/health
 <Note>
 已通过 `agent login` 认证时，`apiKey` 设为 `"not-needed"` 即可。
 如需按请求转发特定的 Cursor API Key，填在这里。
+`models` 数组列出可用模型。运行 `agent --list-models` 查看所有选项。
 </Note>
 
 ## 模型
@@ -141,7 +147,7 @@ cursor-agent-api uninstall    # 移除
 
 - 这是一个**社区工具**，并非由 Cursor 或 OpenClaw 官方支持
 - 需要有效的 Cursor 订阅（Pro / Business）并已认证 CLI
-- 代理在本地运行，不会将数据发送到任何第三方服务器
+- 代理在本地运行，但请求会通过 `agent` CLI 转发到 Cursor 服务器（与使用 Cursor IDE 相同）
 - 完全支持流式响应
 
 ## 另请参阅
