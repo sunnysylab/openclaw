@@ -31,9 +31,13 @@ import {
 const PROVIDER_ID = "openai-codex";
 const OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const OPENAI_CODEX_GPT_54_MODEL_ID = "gpt-5.4";
+const OPENAI_CODEX_GPT_54_MINI_MODEL_ID = "gpt-5.4-mini";
 const OPENAI_CODEX_GPT_54_CONTEXT_TOKENS = 1_050_000;
 const OPENAI_CODEX_GPT_54_MAX_TOKENS = 128_000;
+const OPENAI_CODEX_GPT_54_MINI_CONTEXT_TOKENS = 128_000;
+const OPENAI_CODEX_GPT_54_MINI_MAX_TOKENS = 128_000;
 const OPENAI_CODEX_GPT_54_TEMPLATE_MODEL_IDS = ["gpt-5.3-codex", "gpt-5.2-codex"] as const;
+const OPENAI_CODEX_GPT_54_MINI_TEMPLATE_MODEL_IDS = ["gpt-5.1-codex-mini"] as const;
 const OPENAI_CODEX_GPT_53_MODEL_ID = "gpt-5.3-codex";
 const OPENAI_CODEX_GPT_53_SPARK_MODEL_ID = "gpt-5.3-codex-spark";
 const OPENAI_CODEX_GPT_53_SPARK_CONTEXT_TOKENS = 128_000;
@@ -48,6 +52,7 @@ const OPENAI_CODEX_XHIGH_MODEL_IDS = [
 ] as const;
 const OPENAI_CODEX_MODERN_MODEL_IDS = [
   OPENAI_CODEX_GPT_54_MODEL_ID,
+  OPENAI_CODEX_GPT_54_MINI_MODEL_ID,
   "gpt-5.2",
   "gpt-5.2-codex",
   OPENAI_CODEX_GPT_53_MODEL_ID,
@@ -94,6 +99,17 @@ function resolveCodexForwardCompatModel(
     patch = {
       contextWindow: OPENAI_CODEX_GPT_54_CONTEXT_TOKENS,
       maxTokens: OPENAI_CODEX_GPT_54_MAX_TOKENS,
+    };
+  } else if (lower === OPENAI_CODEX_GPT_54_MINI_MODEL_ID) {
+    templateIds = OPENAI_CODEX_GPT_54_MINI_TEMPLATE_MODEL_IDS;
+    patch = {
+      api: "openai-codex-responses",
+      provider: PROVIDER_ID,
+      baseUrl: OPENAI_CODEX_BASE_URL,
+      reasoning: true,
+      input: ["text", "image"],
+      contextWindow: OPENAI_CODEX_GPT_54_MINI_CONTEXT_TOKENS,
+      maxTokens: OPENAI_CODEX_GPT_54_MINI_MAX_TOKENS,
     };
   } else if (lower === OPENAI_CODEX_GPT_53_SPARK_MODEL_ID) {
     templateIds = [OPENAI_CODEX_GPT_53_MODEL_ID, ...OPENAI_CODEX_TEMPLATE_MODEL_IDS];
@@ -263,6 +279,11 @@ export function buildOpenAICodexProviderPlugin(): ProviderPlugin {
         providerId: PROVIDER_ID,
         templateIds: OPENAI_CODEX_GPT_54_TEMPLATE_MODEL_IDS,
       });
+      const gpt54MiniTemplate = findCatalogTemplate({
+        entries: ctx.entries,
+        providerId: PROVIDER_ID,
+        templateIds: OPENAI_CODEX_GPT_54_MINI_TEMPLATE_MODEL_IDS,
+      });
       const sparkTemplate = findCatalogTemplate({
         entries: ctx.entries,
         providerId: PROVIDER_ID,
@@ -274,6 +295,13 @@ export function buildOpenAICodexProviderPlugin(): ProviderPlugin {
               ...gpt54Template,
               id: OPENAI_CODEX_GPT_54_MODEL_ID,
               name: OPENAI_CODEX_GPT_54_MODEL_ID,
+            }
+          : undefined,
+        gpt54MiniTemplate
+          ? {
+              ...gpt54MiniTemplate,
+              id: OPENAI_CODEX_GPT_54_MINI_MODEL_ID,
+              name: OPENAI_CODEX_GPT_54_MINI_MODEL_ID,
             }
           : undefined,
         sparkTemplate
