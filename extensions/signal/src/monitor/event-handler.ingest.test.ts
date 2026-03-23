@@ -32,14 +32,18 @@ const mockRunMessageIngestForPlugin = vi.fn().mockResolvedValue(undefined);
 const mockHasHooksForPlugin = vi.fn().mockReturnValue(true);
 const mockHasHooks = vi.fn().mockReturnValue(true);
 
-vi.mock("../../../../src/plugins/hook-runner-global.js", () => ({
-  getGlobalHookRunner: () => ({
-    runMessageIngest: vi.fn().mockResolvedValue(undefined),
-    runMessageIngestForPlugin: mockRunMessageIngestForPlugin,
-    hasHooks: mockHasHooks,
-    hasHooksForPlugin: mockHasHooksForPlugin,
-  }),
-}));
+vi.mock("openclaw/plugin-sdk/plugin-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/plugin-runtime")>();
+  return {
+    ...actual,
+    getGlobalHookRunner: () => ({
+      runMessageIngest: vi.fn().mockResolvedValue(undefined),
+      runMessageIngestForPlugin: mockRunMessageIngestForPlugin,
+      hasHooks: mockHasHooks,
+      hasHooksForPlugin: mockHasHooksForPlugin,
+    }),
+  };
+});
 
 import { createSignalEventHandler } from "./event-handler.js";
 
