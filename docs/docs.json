@@ -1805,6 +1805,7 @@
                   "zh-CN/providers/anthropic",
                   "zh-CN/providers/bedrock",
                   "zh-CN/providers/claude-max-api-proxy",
+                  "zh-CN/providers/cloudflare-ai-gateway",
                   "zh-CN/providers/cursor-agent-api-proxy",
                   "zh-CN/providers/deepgram",
                   "zh-CN/providers/github-copilot",

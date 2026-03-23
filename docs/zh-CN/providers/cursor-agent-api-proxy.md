@@ -74,6 +74,7 @@ curl http://localhost:4646/health
   models: {
     providers: {
       cursor: {
+        api: "openai-completions",
         baseUrl: "http://localhost:4646/v1",
         apiKey: "not-needed",
         models: [
