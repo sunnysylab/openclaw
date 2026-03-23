@@ -9,6 +9,7 @@ import { lookupCachedContextTokens } from "../../agents/context-cache.js";
 import { lookupContextTokens } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { runWithModelFallback } from "../../agents/model-fallback.js";
+import { resolveAgentLane } from "../../config/agent-limits.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { TypingMode } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
@@ -256,6 +257,7 @@ export function createFollowupRunner(params: {
                 workspaceDir: queued.run.workspaceDir,
                 config: queued.run.config,
                 skillsSnapshot: queued.run.skillsSnapshot,
+                lane: resolveAgentLane(queued.run.config, queued.run.agentId),
                 prompt: queued.prompt,
                 extraSystemPrompt: queued.run.extraSystemPrompt,
                 ownerNumbers: queued.run.ownerNumbers,
