@@ -170,9 +170,13 @@ export const deviceHandlers: GatewayRequestHandlers = {
       return;
     }
     const { deviceId } = params as { deviceId: string };
-    const isDeviceTokenAuth = Boolean(client?.connect?.auth?.deviceToken);
     const callerDeviceId = client?.connect?.device?.id;
-    if (isDeviceTokenAuth && callerDeviceId && callerDeviceId !== deviceId) {
+    const removeCallerScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+    if (
+      callerDeviceId &&
+      callerDeviceId !== deviceId &&
+      !removeCallerScopes.includes("operator.admin")
+    ) {
       context.logGateway.warn(
         `device pairing removal denied device=${deviceId} reason=device-ownership-mismatch`,
       );
@@ -210,13 +214,13 @@ export const deviceHandlers: GatewayRequestHandlers = {
       role: string;
       scopes?: string[];
     };
-    // Ownership guard — only for device-token callers (from the pairing
-    // flow). Shared-secret operators (CLI, Control UI) attach a device
-    // identity but authenticate via auth.token, not auth.deviceToken, and
-    // legitimately manage all devices.
-    const isDeviceTokenAuth = Boolean(client?.connect?.auth?.deviceToken);
+    // Ownership guard — blocks non-admin device callers from rotating
+    // other devices' tokens (IDOR). Admin-scoped callers (CLI, Control UI,
+    // admin mobile) legitimately manage all devices and are exempt.
     const callerDeviceId = client?.connect?.device?.id;
-    if (isDeviceTokenAuth && callerDeviceId && callerDeviceId !== deviceId) {
+    const callerScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+    const isAdminCaller = callerScopes.includes("operator.admin");
+    if (callerDeviceId && callerDeviceId !== deviceId && !isAdminCaller) {
       logDeviceTokenRotationDenied({
         log: context.logGateway,
         deviceId,
@@ -245,7 +249,6 @@ export const deviceHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const callerScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
     const requestedScopes = normalizeDeviceAuthScopes(
       scopes ?? pairedDevice.tokens?.[role.trim()]?.scopes ?? pairedDevice.scopes,
     );
