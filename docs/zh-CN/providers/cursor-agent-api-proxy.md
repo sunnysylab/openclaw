@@ -31,7 +31,13 @@ title: "Cursor Agent API 代理"
 
 ```bash
 # 1. 安装并认证 Cursor CLI
+# macOS / Linux / WSL:
 curl https://cursor.com/install -fsS | bash
+
+# Windows PowerShell:
+irm 'https://cursor.com/install?win32=true' | iex
+
+# 然后认证：
 agent login
 agent --list-models   # 确认 CLI 可用
 
@@ -61,22 +67,29 @@ curl http://localhost:4646/health
 
 ### 编辑配置文件
 
+添加自定义 provider 配置：
+
 ```json5
 {
-  env: {
-    OPENAI_API_KEY: "not-needed",
-    OPENAI_BASE_URL: "http://localhost:4646/v1",
+  models: {
+    providers: {
+      cursor: {
+        type: "openai",
+        baseUrl: "http://localhost:4646/v1",
+        apiKey: "not-needed",
+      },
+    },
   },
   agents: {
     defaults: {
-      model: { primary: "openai/auto" },
+      model: { primary: "cursor/auto" },
     },
   },
 }
 ```
 
 <Note>
-已通过 `agent login` 认证时，`OPENAI_API_KEY` 设为 `"not-needed"` 即可。
+已通过 `agent login` 认证时，`apiKey` 设为 `"not-needed"` 即可。
 如需按请求转发特定的 Cursor API Key，填在这里。
 </Note>
 

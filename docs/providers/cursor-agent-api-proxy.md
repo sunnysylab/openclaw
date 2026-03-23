@@ -32,7 +32,13 @@ Requires Node.js 20+ and an active Cursor subscription.
 
 ```bash
 # 1. Install and authenticate the Cursor CLI
+# macOS / Linux / WSL:
 curl https://cursor.com/install -fsS | bash
+
+# Windows PowerShell:
+irm 'https://cursor.com/install?win32=true' | iex
+
+# Then authenticate:
 agent login
 agent --list-models   # verify it works
 
@@ -62,25 +68,30 @@ When running `openclaw onboard`, at the **Model/Auth** step:
 
 ### Existing setup
 
-Edit the config file:
+Edit the config file to add a custom provider:
 
 ```json5
 {
-  env: {
-    OPENAI_API_KEY: "not-needed",
-    OPENAI_BASE_URL: "http://localhost:4646/v1",
+  models: {
+    providers: {
+      cursor: {
+        type: "openai",
+        baseUrl: "http://localhost:4646/v1",
+        apiKey: "not-needed",
+      },
+    },
   },
   agents: {
     defaults: {
-      model: { primary: "openai/auto" },
+      model: { primary: "cursor/auto" },
     },
   },
 }
 ```
 
 <Note>
-Set `OPENAI_API_KEY` to `"not-needed"` when authentication is handled by `agent login`.
-To forward a specific Cursor API Key per-request, put it here instead.
+Set `apiKey` to `"not-needed"` when authentication is handled by `agent login`.
+To forward a specific Cursor API Key per-request, set it here instead.
 </Note>
 
 ## Models
