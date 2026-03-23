@@ -117,12 +117,20 @@ export function isLocalDirectRequest(
   req?: IncomingMessage,
   trustedProxies?: string[],
   allowRealIpFallback = false,
+  opts?: { allowTailscale?: boolean },
 ): boolean {
   if (!req) {
     return false;
   }
   const clientIp = resolveRequestClientIp(req, trustedProxies, allowRealIpFallback) ?? "";
-  if (!isLoopbackAddress(clientIp)) {
+  let loopback = isLoopbackAddress(clientIp);
+  // When allowRealIpFallback is true, also check the raw socket address.
+  // This handles Tailscale Serve where the socket is ::1 (loopback)
+  // but XFF resolves to the client's Tailscale IP (100.x.x.x).
+  if (!loopback && allowRealIpFallback) {
+    loopback = isLoopbackAddress(req.socket?.remoteAddress ?? "");
+  }
+  if (!loopback) {
     return false;
   }
 
@@ -133,7 +141,10 @@ export function isLocalDirectRequest(
   );
 
   const remoteIsTrustedProxy = isTrustedProxyAddress(req.socket?.remoteAddress, trustedProxies);
-  return isLocalishHost(req.headers?.host) && (!hasForwarded || remoteIsTrustedProxy);
+  return (
+    isLocalishHost(req.headers?.host, { allowTailscale: opts?.allowTailscale }) &&
+    (!hasForwarded || remoteIsTrustedProxy)
+  );
 }
 
 function getTailscaleUser(req?: IncomingMessage): TailscaleUser | null {
@@ -376,6 +387,7 @@ export async function authorizeGatewayConnect(
     req,
     trustedProxies,
     params.allowRealIpFallback === true,
+    { allowTailscale: auth.allowTailscale },
   );
 
   if (auth.mode === "trusted-proxy") {

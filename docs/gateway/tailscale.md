@@ -107,6 +107,21 @@ openclaw gateway --tailscale funnel --auth password
 - `gateway.bind: "auto"` prefers loopback; use `tailnet` if you want Tailnet-only.
 - Serve/Funnel only expose the **Gateway control UI + WS**. Nodes connect over
   the same Gateway WS endpoint, so Serve can work for node access.
+- **Canvas behind Serve**: Tailscale Serve connects from loopback and injects
+  `X-Forwarded-For` with the client's Tailscale IP. The Gateway needs to
+  trust loopback as a proxy and fall back to the socket address for the
+  loopback check. Add `trustedProxies` and `allowRealIpFallback` to fix
+  Canvas/A2UI 401 errors:
+
+  ```json5
+  {
+    gateway: {
+      trustedProxies: ["127.0.0.1", "::1"],
+      allowRealIpFallback: true,
+      tailscale: { mode: "serve" },
+    },
+  }
+  ```
 
 ## Browser control (remote Gateway + local browser)
 

@@ -174,8 +174,21 @@ export function resolveClientIp(params: {
     return forwardedIp;
   }
   if (params.allowRealIpFallback) {
-    return parseRealIp(params.realIp);
+    const realIp = parseRealIp(params.realIp);
+    if (realIp) {
+      return realIp;
+    }
   }
+
+  // When no forwarding headers are present at all, the request is directly
+  // from the trusted-proxy host itself (not a proxied client request).
+  // Return the socket address so callers can identify it as local.
+  // Use strict undefined checks so that blank headers (empty strings sent by
+  // a misconfigured proxy) still fail closed.
+  if (params.forwardedFor === undefined && params.realIp === undefined) {
+    return remote;
+  }
+
   return undefined;
 }
 
@@ -351,14 +364,22 @@ export function isLoopbackHost(host: string): boolean {
 /**
  * Local-facing host check for inbound requests:
  * - loopback hosts (localhost/127.x/::1 and mapped forms)
- * - Tailscale Serve/Funnel hostnames (*.ts.net)
+ * - Tailscale Serve/Funnel hostnames (*.ts.net) — only when Tailscale is active
+ *
+ * The `allowTailscale` flag gates the `.ts.net` Host-header branch so that
+ * a co-resident process cannot spoof a Tailscale hostname when Tailscale is
+ * not configured.  Callers that do not pass the flag get loopback-only
+ * behaviour (safe default).
  */
-export function isLocalishHost(hostHeader?: string): boolean {
+export function isLocalishHost(hostHeader?: string, opts?: { allowTailscale?: boolean }): boolean {
   const host = resolveHostName(hostHeader);
   if (!host) {
     return false;
   }
-  return isLoopbackHost(host) || host.endsWith(".ts.net");
+  if (isLoopbackHost(host)) {
+    return true;
+  }
+  return opts?.allowTailscale === true && host.endsWith(".ts.net");
 }
 
 /**

@@ -28,16 +28,29 @@ describe("resolveHostName", () => {
 });
 
 describe("isLocalishHost", () => {
-  it("accepts loopback and tailscale serve/funnel host headers", () => {
-    const accepted = [
-      "localhost",
-      "127.0.0.1:18789",
-      "[::1]:18789",
-      "[::ffff:127.0.0.1]:18789",
-      "gateway.tailnet.ts.net",
-    ];
+  it("accepts loopback hosts without allowTailscale", () => {
+    const accepted = ["localhost", "127.0.0.1:18789", "[::1]:18789", "[::ffff:127.0.0.1]:18789"];
     for (const host of accepted) {
       expect(isLocalishHost(host), host).toBe(true);
+    }
+  });
+
+  it("rejects *.ts.net hosts when allowTailscale is not set (default)", () => {
+    expect(isLocalishHost("gateway.tailnet.ts.net")).toBe(false);
+    expect(isLocalishHost("gateway.tailnet.ts.net", {})).toBe(false);
+    expect(isLocalishHost("gateway.tailnet.ts.net", { allowTailscale: false })).toBe(false);
+    expect(isLocalishHost("gateway.tailnet.ts.net", { allowTailscale: undefined })).toBe(false);
+  });
+
+  it("accepts *.ts.net hosts when allowTailscale is true", () => {
+    expect(isLocalishHost("gateway.tailnet.ts.net", { allowTailscale: true })).toBe(true);
+    expect(isLocalishHost("machine.example.ts.net", { allowTailscale: true })).toBe(true);
+  });
+
+  it("loopback hosts pass regardless of allowTailscale flag", () => {
+    for (const host of ["localhost", "127.0.0.1:18789", "[::1]:18789"]) {
+      expect(isLocalishHost(host, { allowTailscale: false }), host).toBe(true);
+      expect(isLocalishHost(host, { allowTailscale: true }), host).toBe(true);
     }
   });
 
@@ -45,6 +58,13 @@ describe("isLocalishHost", () => {
     const rejected = ["example.com", "192.168.1.10", "203.0.113.5:18789"];
     for (const host of rejected) {
       expect(isLocalishHost(host), host).toBe(false);
+    }
+  });
+
+  it("rejects non-local hosts even with allowTailscale", () => {
+    const rejected = ["example.com", "192.168.1.10", "attacker.ts.net.evil.com"];
+    for (const host of rejected) {
+      expect(isLocalishHost(host, { allowTailscale: true }), host).toBe(false);
     }
   });
 });
@@ -232,8 +252,22 @@ describe("resolveClientIp", () => {
       expected: undefined,
     },
     {
-      name: "fails closed when trusted proxy omits forwarding headers",
+      name: "returns socket address when trusted proxy omits forwarding headers (direct local request)",
       remoteAddr: "127.0.0.1",
+      trustedProxies: ["127.0.0.1"],
+      expected: "127.0.0.1",
+    },
+    {
+      name: "fails closed when trusted proxy sends empty X-Forwarded-For",
+      remoteAddr: "127.0.0.1",
+      forwardedFor: "",
+      trustedProxies: ["127.0.0.1"],
+      expected: undefined,
+    },
+    {
+      name: "fails closed when trusted proxy sends empty X-Real-IP",
+      remoteAddr: "127.0.0.1",
+      realIp: "",
       trustedProxies: ["127.0.0.1"],
       expected: undefined,
     },

@@ -5,6 +5,7 @@ import {
   authorizeGatewayConnect,
   authorizeHttpGatewayConnect,
   authorizeWsControlUiGatewayConnect,
+  isLocalDirectRequest,
   resolveGatewayAuth,
 } from "./auth.js";
 
@@ -631,5 +632,81 @@ describe("trusted-proxy auth", () => {
 
     expect(res.ok).toBe(true);
     expect(res.user).toBe("nick@example.com");
+  });
+});
+
+describe("isLocalDirectRequest", () => {
+  function makeReq(
+    host: string,
+    remoteAddress = "127.0.0.1",
+    headers: Record<string, string> = {},
+  ) {
+    return {
+      socket: { remoteAddress },
+      headers: { host, ...headers },
+    } as never;
+  }
+
+  it("returns true for direct loopback request without proxy headers", () => {
+    const req = makeReq("localhost:18789");
+    expect(isLocalDirectRequest(req, ["127.0.0.1"])).toBe(true);
+  });
+
+  it("returns false when resolved IP is not loopback (Tailscale XFF without fallback)", () => {
+    const req = makeReq("gateway.tail0947c7.ts.net", "::1", {
+      "x-forwarded-for": "100.75.251.23",
+      "x-forwarded-proto": "https",
+      "x-forwarded-host": "gateway.tail0947c7.ts.net",
+    });
+    expect(isLocalDirectRequest(req, ["127.0.0.1", "::1"], false)).toBe(false);
+  });
+
+  it("returns true via socket fallback when allowRealIpFallback is true (Tailscale Serve)", () => {
+    const req = makeReq("gateway.tail0947c7.ts.net", "::1", {
+      "x-forwarded-for": "100.75.251.23",
+      "x-forwarded-proto": "https",
+      "x-forwarded-host": "gateway.tail0947c7.ts.net",
+    });
+    expect(isLocalDirectRequest(req, ["127.0.0.1", "::1"], true, { allowTailscale: true })).toBe(
+      true,
+    );
+  });
+
+  it("returns false when socket is not loopback even with allowRealIpFallback", () => {
+    const req = makeReq("gateway.example.com", "192.168.1.50", {
+      "x-forwarded-for": "203.0.113.10",
+    });
+    expect(isLocalDirectRequest(req, ["192.168.1.50"], true)).toBe(false);
+  });
+
+  it("rejects ts.net host when allowTailscale is not set", () => {
+    const req = makeReq("gateway.tailnet.ts.net");
+    expect(isLocalDirectRequest(req)).toBe(false);
+    expect(isLocalDirectRequest(req, undefined, false, {})).toBe(false);
+    expect(isLocalDirectRequest(req, undefined, false, { allowTailscale: false })).toBe(false);
+  });
+
+  it("accepts ts.net host when allowTailscale is true", () => {
+    const req = makeReq("gateway.tailnet.ts.net");
+    expect(isLocalDirectRequest(req, undefined, false, { allowTailscale: true })).toBe(true);
+  });
+
+  it("rejects ts.net host from non-loopback even with allowTailscale", () => {
+    const req = makeReq("gateway.tailnet.ts.net", "192.168.1.50");
+    expect(isLocalDirectRequest(req, undefined, false, { allowTailscale: true })).toBe(false);
+  });
+
+  it("accepts loopback host regardless of allowTailscale", () => {
+    const req = makeReq("localhost");
+    expect(isLocalDirectRequest(req)).toBe(true);
+    expect(isLocalDirectRequest(req, undefined, false, { allowTailscale: false })).toBe(true);
+    expect(isLocalDirectRequest(req, undefined, false, { allowTailscale: true })).toBe(true);
+  });
+
+  it("rejects ts.net host when forwarding headers present and remote is not trusted proxy", () => {
+    const req = makeReq("gateway.tailnet.ts.net", "127.0.0.1", {
+      "x-forwarded-for": "10.0.0.1",
+    });
+    expect(isLocalDirectRequest(req, undefined, false, { allowTailscale: true })).toBe(false);
   });
 });
