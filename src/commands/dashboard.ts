@@ -75,7 +75,13 @@ export async function dashboardCommand(
     ? `${links.httpUrl}#token=${encodeURIComponent(token)}`
     : links.httpUrl;
 
-  runtime.log(`Dashboard URL: ${dashboardUrl}`);
+  // Always log the base URL without the token fragment to avoid leaking
+  // bearer credentials into console-captured log files (readable via logs.tail
+  // by operator.read-scoped devices).
+  runtime.log(`Dashboard URL: ${links.httpUrl}`);
+  if (includeTokenInUrl) {
+    runtime.log("Token auto-auth included in browser/clipboard URL.");
+  }
   if (resolvedToken.tokenSecretRefConfigured && token) {
     runtime.log(
       "Token auto-auth is disabled for SecretRef-managed gateway.auth.token; use your external token source if prompted.",
@@ -99,14 +105,19 @@ export async function dashboardCommand(
       opened = await openUrl(dashboardUrl);
     }
     if (!opened) {
+      // Never pass the token to the SSH hint — the hint is logged via
+      // runtime.log which flows into console-captured log files readable
+      // by operator.read-scoped devices via logs.tail.
       hint = formatControlUiSshHint({
         port,
         basePath,
-        token: includeTokenInUrl ? token || undefined : undefined,
       });
     }
   } else {
-    hint = "Browser launch disabled (--no-open). Use the URL above.";
+    hint =
+      copied && includeTokenInUrl
+        ? "Browser launch disabled (--no-open). Token-authenticated URL copied to clipboard."
+        : "Browser launch disabled (--no-open). Use the URL above.";
   }
 
   if (opened) {

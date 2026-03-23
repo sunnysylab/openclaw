@@ -96,6 +96,34 @@ describe("dashboardCommand", () => {
     );
   });
 
+  it("never logs the gateway token in the dashboard URL (CVE regression)", async () => {
+    const secretToken = "super-secret-bearer-token";
+    mockSnapshot(secretToken);
+    copyToClipboardMock.mockResolvedValue(true);
+    detectBrowserOpenSupportMock.mockResolvedValue({ ok: true });
+    openUrlMock.mockResolvedValue(true);
+
+    await dashboardCommand(runtime);
+
+    // Clipboard and browser should still receive the tokenized URL.
+    expect(copyToClipboardMock).toHaveBeenCalledWith(
+      `http://127.0.0.1:18789/#token=${secretToken}`,
+    );
+    expect(openUrlMock).toHaveBeenCalledWith(`http://127.0.0.1:18789/#token=${secretToken}`);
+
+    // The logged output must never contain the token — it flows into
+    // console-captured log files readable by operator.read-scoped devices.
+    for (const call of runtime.log.mock.calls) {
+      const line = String(call[0]);
+      expect(line).not.toContain(secretToken);
+      expect(line).not.toContain("#token=");
+    }
+
+    // Base URL should be logged without the fragment.
+    expect(runtime.log).toHaveBeenCalledWith("Dashboard URL: http://127.0.0.1:18789/");
+    expect(runtime.log).toHaveBeenCalledWith("Token auto-auth included in browser/clipboard URL.");
+  });
+
   it("prints SSH hint when browser cannot open", async () => {
     mockSnapshot("shhhh");
     copyToClipboardMock.mockResolvedValue(false);
@@ -111,7 +139,35 @@ describe("dashboardCommand", () => {
     expect(runtime.log).toHaveBeenCalledWith("ssh hint");
   });
 
-  it("respects --no-open and skips browser attempts", async () => {
+  it("never passes token to SSH hint (CVE regression — SSH path)", async () => {
+    const secretToken = "super-secret-bearer-token";
+    mockSnapshot(secretToken);
+    copyToClipboardMock.mockResolvedValue(false);
+    detectBrowserOpenSupportMock.mockResolvedValue({
+      ok: false,
+      reason: "ssh",
+    });
+    formatControlUiSshHintMock.mockReturnValue("ssh hint without token");
+
+    await dashboardCommand(runtime);
+
+    // formatControlUiSshHint must NOT receive the token — the returned
+    // hint string is written to runtime.log, which flows into the same
+    // console-captured log file readable by operator.read-scoped devices.
+    expect(formatControlUiSshHintMock).toHaveBeenCalledWith({
+      port: 18789,
+      basePath: undefined,
+    });
+
+    // Double-check: no logged line contains the secret.
+    for (const call of runtime.log.mock.calls) {
+      const line = String(call[0]);
+      expect(line).not.toContain(secretToken);
+      expect(line).not.toContain("#token=");
+    }
+  });
+
+  it("respects --no-open and tells user token URL is in clipboard", async () => {
     mockSnapshot();
     copyToClipboardMock.mockResolvedValue(true);
 
@@ -119,6 +175,17 @@ describe("dashboardCommand", () => {
 
     expect(detectBrowserOpenSupportMock).not.toHaveBeenCalled();
     expect(openUrlMock).not.toHaveBeenCalled();
+    expect(runtime.log).toHaveBeenCalledWith(
+      "Browser launch disabled (--no-open). Token-authenticated URL copied to clipboard.",
+    );
+  });
+
+  it("respects --no-open with plain URL hint when clipboard fails", async () => {
+    mockSnapshot();
+    copyToClipboardMock.mockResolvedValue(false);
+
+    await dashboardCommand(runtime, { noOpen: true });
+
     expect(runtime.log).toHaveBeenCalledWith(
       "Browser launch disabled (--no-open). Use the URL above.",
     );
@@ -175,6 +242,9 @@ describe("dashboardCommand", () => {
 
   it("resolves env-template gateway.auth.token before building dashboard URL", async () => {
     mockSnapshot("${CUSTOM_GATEWAY_TOKEN}");
+    // Set the actual env var so the real resolveSecretRefValues resolves it
+    // (the vi.mock for secrets/resolve.js does not intercept transitive
+    // imports under isolate:false).
     process.env.CUSTOM_GATEWAY_TOKEN = "resolved-secret-token";
     copyToClipboardMock.mockResolvedValue(true);
     detectBrowserOpenSupportMock.mockResolvedValue({ ok: true });
