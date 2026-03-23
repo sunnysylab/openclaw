@@ -19,6 +19,7 @@ import {
   isAuthErrorMessage,
   isAuthPermanentErrorMessage,
   isBillingErrorMessage,
+  isConnectionErrorMessage,
   isOverloadedErrorMessage,
   isPeriodicUsageLimitErrorMessage,
   isRateLimitErrorMessage,
@@ -31,6 +32,7 @@ export {
   isAuthErrorMessage,
   isAuthPermanentErrorMessage,
   isBillingErrorMessage,
+  isConnectionErrorMessage,
   isOverloadedErrorMessage,
   isRateLimitErrorMessage,
   isTimeoutErrorMessage,
@@ -612,6 +614,10 @@ export function formatAssistantErrorText(
     return `LLM request rejected: ${invalidRequest[1]}`;
   }
 
+  if (isConnectionErrorMessage(raw)) {
+    return "The AI service encountered a connection error. Please try again in a moment.";
+  }
+
   const transientCopy = formatRateLimitOrOverloadedErrorCopy(raw);
   if (transientCopy) {
     return transientCopy;
@@ -898,6 +904,9 @@ export function classifyFailoverReason(raw: string): FailoverReason | null {
   }
   if (isBillingErrorMessage(raw)) {
     return "billing";
+  }
+  if (isConnectionErrorMessage(raw)) {
+    return "timeout";
   }
   if (isTimeoutErrorMessage(raw)) {
     return "timeout";
