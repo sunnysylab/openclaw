@@ -214,6 +214,8 @@ import {
   SessionsResolveParamsSchema,
   type SessionsSendParams,
   SessionsSendParamsSchema,
+  type SessionsStartParams,
+  SessionsStartParamsSchema,
   type SessionsUsageParams,
   SessionsUsageParamsSchema,
   type ShutdownEvent,
@@ -342,6 +344,8 @@ export const validateSessionsCreateParams = ajv.compile<SessionsCreateParams>(
   SessionsCreateParamsSchema,
 );
 export const validateSessionsSendParams = ajv.compile<SessionsSendParams>(SessionsSendParamsSchema);
+export const validateSessionsStartParams =
+  ajv.compile<SessionsStartParams>(SessionsStartParamsSchema);
 export const validateSessionsMessagesSubscribeParams = ajv.compile<SessionsMessagesSubscribeParams>(
   SessionsMessagesSubscribeParamsSchema,
 );
@@ -522,6 +526,7 @@ export {
   SessionsResolveParamsSchema,
   SessionsCreateParamsSchema,
   SessionsSendParamsSchema,
+  SessionsStartParamsSchema,
   SessionsAbortParamsSchema,
   SessionsPatchParamsSchema,
   SessionsResetParamsSchema,
@@ -681,6 +686,7 @@ export type {
   SessionsListParams,
   SessionsPreviewParams,
   SessionsResolveParams,
+  SessionsStartParams,
   SessionsPatchParams,
   SessionsPatchResult,
   SessionsResetParams,
