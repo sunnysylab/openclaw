@@ -47,4 +47,20 @@ describe("chat-model-ref helpers", () => {
     expect(resolveServerChatModelValue("gpt-5-mini", "openai")).toBe("openai/gpt-5-mini");
     expect(resolveServerChatModelValue("alias-only", null)).toBe("alias-only");
   });
+
+  it("still qualifies nested ids from other upstream providers", () => {
+    expect(
+      buildChatModelOption({
+        id: "anthropic/claude-sonnet-4-5",
+        name: "Claude Sonnet 4.5",
+        provider: "openrouter",
+      }),
+    ).toEqual({
+      value: "openrouter/anthropic/claude-sonnet-4-5",
+      label: "anthropic/claude-sonnet-4-5 · openrouter",
+    });
+    expect(resolveServerChatModelValue("anthropic/claude-sonnet-4-5", "openrouter")).toBe(
+      "openrouter/anthropic/claude-sonnet-4-5",
+    );
+  });
 });
