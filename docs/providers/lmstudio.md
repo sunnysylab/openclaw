@@ -30,7 +30,7 @@ lms daemon up
 lms server start --port 1234
 ```
 
-If you are using the app, make sure you have JIT enabled for a smooth experience. Learn more [here](https://lmstudio.ai/docs/developer/core/ttl-and-auto-evict)
+If you are using the app, make sure you have JIT enabled for a smooth experience. Learn more in the [LM Studio JIT and TTL guide](https://lmstudio.ai/docs/developer/core/ttl-and-auto-evict).
 
 3. OpenClaw requires an LM Studio token value. Set `LM_API_TOKEN`:
 
