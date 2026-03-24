@@ -1,4 +1,5 @@
 import { resolveFastModeState } from "../../agents/fast-mode.js";
+import { normalizeChatType } from "../../channels/chat-type.js";
 import { formatThreadBindingDurationLabel } from "../../channels/thread-bindings-messages.js";
 import { parseDurationMs } from "../../cli/parse-duration.js";
 import { isRestartEnabled } from "../../config/commands.js";
@@ -8,6 +9,7 @@ import {
   type SessionEntry,
   type SessionHistoryItem,
 } from "../../config/sessions.js";
+import { isThreadSessionKey } from "../../config/sessions/reset.js";
 import { readSessionPreviewItemsFromTranscript } from "../../gateway/session-utils.fs.js";
 import { archiveSessionTranscripts } from "../../gateway/session-utils.fs.js";
 import { logVerbose } from "../../globals.js";
@@ -59,9 +61,23 @@ function resolveSessionHistoryLimit(params: Parameters<CommandHandler>[0]): numb
     : DEFAULT_SESSION_HISTORY_LIMIT;
 }
 
+function isOrdinaryDirectSessionCommandContext(params: Parameters<CommandHandler>[0]): boolean {
+  const chatType = normalizeChatType(params.ctx.ChatType);
+  const threadId =
+    params.ctx.MessageThreadId != null ? String(params.ctx.MessageThreadId).trim() : "";
+  if (threadId || isThreadSessionKey(params.sessionKey)) {
+    return false;
+  }
+  if (params.isGroup) {
+    return false;
+  }
+  return !chatType || chatType === "direct";
+}
+
 function buildSessionHistoryItem(entry: SessionEntry): SessionHistoryItem {
   return {
     sessionId: entry.sessionId,
+    sessionFile: entry.sessionFile,
     createdAt: entry.updatedAt ?? Date.now(),
     label: entry.label,
     metadata: buildSessionHistoryMetadata(entry),
@@ -70,6 +86,7 @@ function buildSessionHistoryItem(entry: SessionEntry): SessionHistoryItem {
 
 function buildSwitchableSessionList(entry: SessionEntry): Array<{
   sessionId: string;
+  sessionFile?: string;
   current: boolean;
   label?: string;
   createdAt?: number;
@@ -80,6 +97,7 @@ function buildSwitchableSessionList(entry: SessionEntry): Array<{
   return [
     {
       sessionId: currentItem.sessionId,
+      sessionFile: currentItem.sessionFile,
       current: true,
       label: currentItem.label,
       createdAt: currentItem.createdAt,
@@ -87,6 +105,7 @@ function buildSwitchableSessionList(entry: SessionEntry): Array<{
     },
     ...history.map((item) => ({
       sessionId: item.sessionId,
+      sessionFile: item.sessionFile,
       current: false,
       label: item.label,
       createdAt: item.createdAt,
@@ -98,15 +117,17 @@ function buildSwitchableSessionList(entry: SessionEntry): Array<{
 function resolveSessionPreviewLine(params: {
   sessionId: string;
   sessionEntry?: SessionEntry;
+  sessionFile?: string;
   storePath?: string;
   agentId?: string;
 }): string | undefined {
   const items = readSessionPreviewItemsFromTranscript(
     params.sessionId,
     params.storePath,
-    params.sessionEntry?.sessionId === params.sessionId
-      ? params.sessionEntry.sessionFile
-      : undefined,
+    params.sessionFile ??
+      (params.sessionEntry?.sessionId === params.sessionId
+        ? params.sessionEntry.sessionFile
+        : undefined),
     params.agentId,
     1,
     160,
@@ -509,6 +530,9 @@ export const handleSessionsListCommand: CommandHandler = async (params, allowTex
   if (normalized !== SESSIONS_COMMAND && !normalized.startsWith(`${SESSIONS_COMMAND} `)) {
     return null;
   }
+  if (!isOrdinaryDirectSessionCommandContext(params)) {
+    return null;
+  }
   if (!params.command.isAuthorizedSender) {
     logVerbose(
       `Ignoring /sessions from unauthorized sender: ${params.command.senderId || "<unknown>"}`,
@@ -531,6 +555,7 @@ export const handleSessionsListCommand: CommandHandler = async (params, allowTex
     const preview = resolveSessionPreviewLine({
       sessionId: item.sessionId,
       sessionEntry: item.current ? params.sessionEntry : undefined,
+      sessionFile: item.sessionFile,
       storePath: params.storePath,
       agentId: params.agentId,
     });
@@ -584,6 +609,9 @@ export const handleSessionCommand: CommandHandler = async (params, allowTextComm
   }
 
   if (action !== SESSION_ACTION_IDLE && action !== SESSION_ACTION_MAX_AGE) {
+    if (!isOrdinaryDirectSessionCommandContext(params)) {
+      return null;
+    }
     if (!params.sessionEntry || !params.sessionStore || !params.sessionKey) {
       return {
         shouldContinue: false,
@@ -650,6 +678,7 @@ export const handleSessionCommand: CommandHandler = async (params, allowTextComm
         archiveSessionTranscripts({
           sessionId: removed.sessionId,
           storePath: params.storePath,
+          sessionFile: removed.sessionFile,
           agentId: params.agentId,
           reason: "reset",
         });
@@ -657,13 +686,14 @@ export const handleSessionCommand: CommandHandler = async (params, allowTextComm
     }
 
     params.sessionEntry.sessionId = target.sessionId;
-    params.sessionEntry.sessionFile = undefined;
+    params.sessionEntry.sessionFile = target.sessionFile;
     params.sessionEntry.sessionHistory = nextHistory;
     applyHistoryMetadata(params.sessionEntry, target.metadata);
     await persistSessionEntry(params);
 
     const preview = resolveSessionPreviewLine({
       sessionId: target.sessionId,
+      sessionFile: target.sessionFile,
       storePath: params.storePath,
       agentId: params.agentId,
     });

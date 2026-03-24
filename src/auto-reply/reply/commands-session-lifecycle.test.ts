@@ -11,6 +11,8 @@ const hoisted = vi.hoisted(() => {
   const setTelegramThreadBindingIdleTimeoutBySessionKeyMock = vi.fn();
   const setTelegramThreadBindingMaxAgeBySessionKeyMock = vi.fn();
   const sessionBindingResolveByConversationMock = vi.fn();
+  const archiveSessionTranscriptsMock = vi.fn();
+  const readSessionPreviewItemsFromTranscriptMock = vi.fn();
   return {
     getThreadBindingManagerMock,
     setThreadBindingIdleTimeoutBySessionKeyMock,
@@ -20,6 +22,8 @@ const hoisted = vi.hoisted(() => {
     setTelegramThreadBindingIdleTimeoutBySessionKeyMock,
     setTelegramThreadBindingMaxAgeBySessionKeyMock,
     sessionBindingResolveByConversationMock,
+    archiveSessionTranscriptsMock,
+    readSessionPreviewItemsFromTranscriptMock,
   };
 });
 
@@ -76,7 +80,17 @@ vi.mock("../../infra/outbound/session-binding-service.js", async (importOriginal
   };
 });
 
-const { handleSessionCommand } = await import("./commands-session.js");
+vi.mock("../../gateway/session-utils.fs.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../gateway/session-utils.fs.js")>();
+  return {
+    ...actual,
+    archiveSessionTranscripts: (opts: unknown) => hoisted.archiveSessionTranscriptsMock(opts),
+    readSessionPreviewItemsFromTranscript: (...args: unknown[]) =>
+      hoisted.readSessionPreviewItemsFromTranscriptMock(...args),
+  };
+});
+
+const { handleSessionCommand, handleSessionsListCommand } = await import("./commands-session.js");
 const { buildCommandTestParams } = await import("./commands.test-harness.js");
 
 const baseCfg = {
@@ -227,6 +241,11 @@ function createFakeThreadBindingManager(binding: FakeBinding | null) {
     getMaxAgeMs: vi.fn(() => 0),
   };
 }
+
+beforeEach(() => {
+  hoisted.archiveSessionTranscriptsMock.mockReset().mockReturnValue([]);
+  hoisted.readSessionPreviewItemsFromTranscriptMock.mockReset().mockReturnValue([]);
+});
 
 describe("/session idle and /session max-age", () => {
   beforeEach(() => {
@@ -575,6 +594,133 @@ describe("/session switch snapshot restore", () => {
     expect(params.sessionEntry.compactionCount).toBe(0);
     expect(params.sessionEntry.memoryFlushAt).toBeUndefined();
     expect(params.sessionEntry.memoryFlushCompactionCount).toBeUndefined();
+  });
+
+  it("restores sessionFile from history when switching sessions", async () => {
+    const params = buildCommandTestParams("/session back", baseCfg);
+    const now = Date.now();
+    params.sessionEntry = {
+      sessionId: "session-current",
+      sessionFile: "/tmp/current.jsonl",
+      updatedAt: now,
+      sessionHistory: [
+        {
+          sessionId: "session-old",
+          sessionFile: "/tmp/old.jsonl",
+          createdAt: now - 1_000,
+          metadata: {},
+        },
+      ],
+    };
+    params.sessionStore = { [params.sessionKey]: params.sessionEntry };
+
+    await handleSessionCommand(params, true);
+
+    expect(params.sessionEntry.sessionId).toBe("session-old");
+    expect(params.sessionEntry.sessionFile).toBe("/tmp/old.jsonl");
+    expect(params.sessionEntry.sessionHistory).toEqual([
+      expect.objectContaining({
+        sessionId: "session-current",
+        sessionFile: "/tmp/current.jsonl",
+      }),
+    ]);
+  });
+
+  it("uses history item sessionFile for previews and evicted transcript archiving", async () => {
+    hoisted.readSessionPreviewItemsFromTranscriptMock.mockReturnValue([
+      { role: "assistant", text: "hello from old session" },
+    ]);
+
+    const params = buildCommandTestParams("/session back", {
+      ...baseCfg,
+      session: { ...baseCfg.session, historyLimit: 1 },
+    });
+    const now = Date.now();
+    params.storePath = "/tmp/sessions.json";
+    params.agentId = "main";
+    params.sessionEntry = {
+      sessionId: "session-current",
+      sessionFile: "/tmp/current.jsonl",
+      updatedAt: now,
+      sessionHistory: [
+        {
+          sessionId: "session-evict",
+          sessionFile: "/tmp/evict.jsonl",
+          createdAt: now - 2_000,
+          metadata: {},
+        },
+        {
+          sessionId: "session-old",
+          sessionFile: "/tmp/old.jsonl",
+          createdAt: now - 1_000,
+          metadata: {},
+        },
+      ],
+    };
+    params.sessionStore = { [params.sessionKey]: params.sessionEntry };
+
+    const result = await handleSessionCommand(params, true);
+
+    expect(result?.reply?.text).toContain("Recent: 🤖 hello from old session");
+    expect(hoisted.readSessionPreviewItemsFromTranscriptMock).toHaveBeenCalledWith(
+      "session-old",
+      "/tmp/sessions.json",
+      "/tmp/old.jsonl",
+      "main",
+      1,
+      160,
+    );
+    expect(hoisted.archiveSessionTranscriptsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-evict",
+        sessionFile: "/tmp/evict.jsonl",
+        storePath: "/tmp/sessions.json",
+        agentId: "main",
+        reason: "reset",
+      }),
+    );
+  });
+
+  it("ignores /sessions outside ordinary direct chats", async () => {
+    const params = buildCommandTestParams("/sessions", baseCfg, {
+      ChatType: "group",
+      OriginatingTo: "chat:group-1",
+    });
+    params.isGroup = true;
+    params.sessionEntry = {
+      sessionId: "session-current",
+      sessionHistory: [],
+    };
+
+    const result = await handleSessionsListCommand(params, true);
+
+    expect(result).toBeNull();
+  });
+
+  it("ignores /session back in threaded contexts but still allows /session idle", async () => {
+    const threadParams = createDiscordCommandParams("/session back");
+    threadParams.sessionEntry = {
+      sessionId: "session-current",
+      sessionHistory: [{ sessionId: "session-old", createdAt: Date.now() - 1_000, metadata: {} }],
+    };
+    threadParams.sessionStore = { [threadParams.sessionKey]: threadParams.sessionEntry };
+
+    await expect(handleSessionCommand(threadParams, true)).resolves.toBeNull();
+
+    const binding = createFakeBinding();
+    hoisted.getThreadBindingManagerMock.mockReturnValue(createFakeThreadBindingManager(binding));
+    hoisted.setThreadBindingIdleTimeoutBySessionKeyMock.mockReturnValue([
+      {
+        ...binding,
+        idleTimeoutMs: 2 * 60 * 60 * 1000,
+        maxAgeMs: binding.maxAgeMs,
+      },
+    ]);
+    const idleResult = await handleSessionCommand(
+      createDiscordCommandParams("/session idle 2h"),
+      true,
+    );
+    expect(idleResult?.reply?.text).toContain("Idle timeout set to 2h");
   });
 
   it("reports ambiguous session id prefixes instead of falling back to not found", async () => {

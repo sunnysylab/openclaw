@@ -70,6 +70,7 @@ function pushSessionHistory(
 
   const item: SessionHistoryItem = {
     sessionId: currentId,
+    sessionFile: sessionEntry.sessionFile,
     createdAt: sessionEntry.updatedAt ?? Date.now(),
     label: sessionEntry.label,
     metadata: buildSessionHistoryMetadata(sessionEntry),
@@ -643,6 +644,7 @@ export async function initSessionState(params: {
     archiveSessionTranscripts({
       sessionId: evicted.sessionId,
       storePath,
+      sessionFile: evicted.sessionFile,
       agentId,
       reason: "reset",
     });
