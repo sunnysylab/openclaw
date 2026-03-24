@@ -18,7 +18,7 @@ final class TalkModeController {
         } else {
             TalkOverlayController.shared.dismiss()
         }
-        TalkSpeechInterruptMonitor.shared.setEnabled(enabled)
+        TalkSpeechInterruptMonitor.shared.setEnabled(enabled && AppStateStore.shared.talkShiftToStopEnabled)
         await TalkModeRuntime.shared.setEnabled(enabled)
     }
 
