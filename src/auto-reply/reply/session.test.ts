@@ -1404,6 +1404,8 @@ describe("initSessionState preserves behavior overrides across /new and /reset",
     const cfg = {
       session: { store: storePath, idleMinutes: 999 },
     } as OpenClawConfig;
+    const sessionUtils = await import("../../gateway/session-utils.fs.js");
+    const archiveSpy = vi.spyOn(sessionUtils, "archiveSessionTranscripts");
 
     const result = await initSessionState({
       ctx: {
@@ -1451,6 +1453,8 @@ describe("initSessionState preserves behavior overrides across /new and /reset",
       });
       await fs.writeFile(transcriptPath, '{"type":"message"}\n', "utf8");
 
+      const sessionUtils = await import("../../gateway/session-utils.fs.js");
+      const archiveSpy = vi.spyOn(sessionUtils, "archiveSessionTranscripts");
       const cfg = { session: { store: storePath } } as OpenClawConfig;
       const result = await initSessionState({
         ctx: {

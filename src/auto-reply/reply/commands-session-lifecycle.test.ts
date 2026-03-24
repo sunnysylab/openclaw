@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
+import type { SessionEntry } from "../../config/sessions.js";
 import type { SessionBindingRecord } from "../../infra/outbound/session-binding-service.js";
 
 const hoisted = vi.hoisted(() => {
@@ -687,10 +688,12 @@ describe("/session switch snapshot restore", () => {
       OriginatingTo: "chat:group-1",
     });
     params.isGroup = true;
-    params.sessionEntry = {
+    const sessionEntry: SessionEntry = {
       sessionId: "session-current",
+      updatedAt: Date.now(),
       sessionHistory: [],
     };
+    params.sessionEntry = sessionEntry;
 
     const result = await handleSessionsListCommand(params, true);
 
@@ -699,11 +702,13 @@ describe("/session switch snapshot restore", () => {
 
   it("ignores /session back in threaded contexts but still allows /session idle", async () => {
     const threadParams = createDiscordCommandParams("/session back");
-    threadParams.sessionEntry = {
+    const threadEntry: SessionEntry = {
       sessionId: "session-current",
+      updatedAt: Date.now(),
       sessionHistory: [{ sessionId: "session-old", createdAt: Date.now() - 1_000, metadata: {} }],
     };
-    threadParams.sessionStore = { [threadParams.sessionKey]: threadParams.sessionEntry };
+    threadParams.sessionEntry = threadEntry;
+    threadParams.sessionStore = { [threadParams.sessionKey]: threadEntry };
 
     await expect(handleSessionCommand(threadParams, true)).resolves.toBeNull();
 
