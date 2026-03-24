@@ -64574,6 +64574,21 @@
       "hasChildren": false
     },
     {
+      "path": "tools.web.fetch.maxResponseBytes",
+      "kind": "core",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "performance",
+        "tools"
+      ],
+      "label": "Web Fetch Max Response Bytes",
+      "help": "Maximum response bytes downloaded by web_fetch before truncation and parsing.",
+      "hasChildren": false
+    },
+    {
       "path": "tools.web.fetch.readability",
       "kind": "core",
       "type": "boolean",
