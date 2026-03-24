@@ -62,7 +62,8 @@ export function resolveMemoryFlushRelativePathForRun(params: {
   cfg?: OpenClawConfig;
   nowMs?: number;
 }): string {
-  const nowMs = Number.isFinite(params.nowMs) ? (params.nowMs as number) : Date.now();
+  const nowMs =
+    typeof params.nowMs === "number" && Number.isFinite(params.nowMs) ? params.nowMs : Date.now();
   const { userTimezone } = resolveCronStyleNow(params.cfg ?? {}, nowMs);
   const dateStamp = formatDateStampInTimezone(nowMs, userTimezone);
   return `memory/${dateStamp}.md`;
@@ -73,7 +74,8 @@ export function resolveMemoryFlushPromptForRun(params: {
   cfg?: OpenClawConfig;
   nowMs?: number;
 }): string {
-  const nowMs = Number.isFinite(params.nowMs) ? (params.nowMs as number) : Date.now();
+  const nowMs =
+    typeof params.nowMs === "number" && Number.isFinite(params.nowMs) ? params.nowMs : Date.now();
   const { timeLine } = resolveCronStyleNow(params.cfg ?? {}, nowMs);
   const dateStamp = resolveMemoryFlushRelativePathForRun({
     cfg: params.cfg,

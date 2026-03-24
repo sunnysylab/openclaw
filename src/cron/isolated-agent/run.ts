@@ -231,8 +231,11 @@ export async function runCronIsolatedAgentTurn(params: {
   });
   const workspaceDir = workspace.dir;
 
+  const explicitExternalSource =
+    params.job.payload.kind === "agentTurn" ? params.job.payload.externalContentSource : undefined;
+
   // Resolve model - prefer hooks.gmail.model for Gmail hooks.
-  const isGmailHook = baseSessionKey.startsWith("hook:gmail:");
+  const isGmailHook = getHookType(baseSessionKey, explicitExternalSource) === "email";
   const now = Date.now();
   const cronSession = resolveCronSession({
     cfg: params.cfg,
@@ -336,7 +339,7 @@ export async function runCronIsolatedAgentTurn(params: {
 
   // SECURITY: Wrap external hook content with security boundaries to prevent prompt injection
   // unless explicitly allowed via a dangerous config override.
-  const isExternalHook = isExternalHookSession(baseSessionKey);
+  const isExternalHook = isExternalHookSession(baseSessionKey, explicitExternalSource);
   const allowUnsafeExternalContent =
     agentPayload?.allowUnsafeExternalContent === true ||
     (isGmailHook && params.cfg.hooks?.gmail?.allowUnsafeExternalContent === true);
@@ -356,10 +359,10 @@ export async function runCronIsolatedAgentTurn(params: {
 
   if (shouldWrapExternal) {
     // Wrap external content with security boundaries
-    const hookType = getHookType(baseSessionKey);
+    const source = getHookType(baseSessionKey, explicitExternalSource);
     const safeContent = buildSafeExternalPrompt({
       content: params.message,
-      source: hookType,
+      source,
       jobName: params.job.name,
       jobId: params.job.id,
       timestamp: formattedTime,

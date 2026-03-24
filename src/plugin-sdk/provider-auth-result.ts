@@ -24,7 +24,9 @@ export function buildOauthProviderAuthResult(params: {
     provider: params.providerId,
     access: params.access,
     ...(params.refresh ? { refresh: params.refresh } : {}),
-    ...(Number.isFinite(params.expires) ? { expires: params.expires as number } : {}),
+    ...(typeof params.expires === "number" && Number.isFinite(params.expires)
+      ? { expires: params.expires }
+      : {}),
     ...(email ? { email } : {}),
     ...params.credentialExtra,
   } as AuthProfileCredential;

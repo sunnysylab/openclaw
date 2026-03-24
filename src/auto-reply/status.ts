@@ -67,7 +67,7 @@ type QueueStatus = {
   showDetails?: boolean;
 };
 
-type StatusArgs = {
+export type StatusArgs = {
   config?: OpenClawConfig;
   agent: AgentConfig;
   agentId?: string;
@@ -88,11 +88,14 @@ type StatusArgs = {
   timeLine?: string;
   queue?: QueueStatus;
   mediaDecisions?: ReadonlyArray<MediaUnderstandingDecision>;
+  /** Explicitly configured context tokens from agent config/selection */
+  explicitConfiguredContextTokens?: number;
+  /** Actual runtime context tokens reported by the model */
+  runtimeContextTokens?: number;
   subagentsLine?: string;
   includeTranscriptUsage?: boolean;
   now?: number;
 };
-
 type NormalizedAuthMode = "api-key" | "oauth" | "token" | "aws-sdk" | "mixed" | "unknown";
 
 function normalizeAuthMode(value?: string): NormalizedAuthMode | undefined {
