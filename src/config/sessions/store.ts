@@ -805,14 +805,19 @@ export async function updateSessionStore<T>(
     const store = reusedStore ?? loadSessionStore(storePath, { skipCache: true });
     const previousAcpByKey =
       getLoadedSessionStoreSnapshot(store)?.previousAcpByKey ?? collectAcpMetadataSnapshot(store);
-    const result = await mutator(store);
-    preserveExistingAcpMetadata({
-      previousAcpByKey,
-      nextStore: store,
-      allowDropSessionKeys: opts?.allowDropAcpMetaSessionKeys,
-    });
-    await saveSessionStoreUnlocked(storePath, store, opts);
-    return result;
+    try {
+      const result = await mutator(store);
+      preserveExistingAcpMetadata({
+        previousAcpByKey,
+        nextStore: store,
+        allowDropSessionKeys: opts?.allowDropAcpMetaSessionKeys,
+      });
+      await saveSessionStoreUnlocked(storePath, store, opts);
+      return result;
+    } catch (error) {
+      forgetLoadedSessionStoreSnapshot(store);
+      throw error;
+    }
   });
 }
 
