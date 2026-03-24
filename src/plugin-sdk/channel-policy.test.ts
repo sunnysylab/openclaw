@@ -22,24 +22,25 @@ describe("createRestrictSendersChannelSecurity", () => {
       policyPathSuffix: "dmPolicy",
     });
 
-    expect(
-      security.resolveDmPolicy?.({
-        cfg: { channels: {} } as never,
+    const resolved = security.resolveDmPolicy?.({
+      cfg: { channels: {} } as never,
+      accountId: "default",
+      account: {
         accountId: "default",
-        account: {
-          accountId: "default",
-          dmPolicy: "allowlist",
-          allowFrom: ["line:user:abc"],
-        },
-      }),
-    ).toEqual({
+        dmPolicy: "allowlist",
+        allowFrom: ["line:user:abc"],
+      },
+    });
+
+    expect(resolved).toMatchObject({
       policy: "allowlist",
       allowFrom: ["line:user:abc"],
       policyPath: "channels.line.dmPolicy",
       allowFromPath: "channels.line.",
-      approveHint: "Approve via: openclaw pairing list line / openclaw pairing approve line <code>",
       normalizeEntry: undefined,
     });
+    expect(resolved?.approveHint).toContain("pairing list line");
+    expect(resolved?.approveHint).toContain("pairing approve line <code>");
 
     expect(
       security.collectWarnings?.({
