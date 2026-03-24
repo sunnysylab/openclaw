@@ -65,9 +65,8 @@ export function applyModelOverrideToSessionEntry(params: {
   // When the selected model changes (or runtime model is already stale), the
   // cached window or prompt snapshots can pin the session to an older/smaller
   // limit until another run refreshes it.
-  const modelChanged = runtimePresent && !runtimeAligned;
-  if (modelChanged) {
-    if (entry.contextTokens !== undefined) {
+  const modelChanged = selectionUpdated || (runtimePresent && !runtimeAligned);
+  if (modelChanged) {    if (entry.contextTokens !== undefined) {
       delete entry.contextTokens;
       updated = true;
     }

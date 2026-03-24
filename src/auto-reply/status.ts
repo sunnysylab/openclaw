@@ -454,10 +454,13 @@ export function buildStatusMessage(args: StatusArgs): string {
       cfg: contextConfig,
       provider: activeProvider,
       model: activeModel,
-      contextTokensOverride: entry?.contextTokens ?? args.agent?.contextTokens,
+      contextTokensOverride:
+        args.runtimeContextTokens ??
+        args.explicitConfiguredContextTokens ??
+        entry?.contextTokens ??
+        args.agent?.contextTokens,
       fallbackContextTokens: DEFAULT_CONTEXT_TOKENS,
     }) ?? DEFAULT_CONTEXT_TOKENS;
-
   let inputTokens = entry?.inputTokens;
   let outputTokens = entry?.outputTokens;
   let cacheRead = entry?.cacheRead;
