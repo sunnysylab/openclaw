@@ -512,6 +512,7 @@ export function buildStatusMessage(args: StatusArgs): string {
       const hasZeroEstimate = entry?.totalTokensEstimate === 0;
       if (
         logUsage.totalTokensFresh &&
+        candidate > 0 &&
         freshTotal === undefined &&
         (entry?.totalTokensEstimate === undefined || (candidate > 0 && hasZeroEstimate)) &&
         entry?.totalTokensFresh === undefined
