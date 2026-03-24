@@ -33,6 +33,7 @@ const GEMINI_API_BASE = DEFAULT_GOOGLE_API_BASE_URL;
 type GeminiConfig = {
   apiKey?: string;
   model?: string;
+  baseURL?: string;
 };
 
 type GeminiGroundingResponse = {
@@ -77,13 +78,20 @@ function resolveGeminiModel(gemini?: GeminiConfig): string {
   return model || DEFAULT_GEMINI_MODEL;
 }
 
+function resolveGeminiBaseUrl(gemini?: GeminiConfig): string {
+  const baseURL = typeof gemini?.baseURL === "string" ? gemini.baseURL.trim() : "";
+  const resolved = baseURL || readProviderEnvValue(["GEMINI_BASE_URL"]) || GEMINI_API_BASE;
+  return resolved.replace(/\/+$/, "");
+}
+
 async function runGeminiSearch(params: {
   query: string;
   apiKey: string;
   model: string;
+  baseURL: string;
   timeoutSeconds: number;
 }): Promise<{ content: string; citations: Array<{ url: string; title?: string }> }> {
-  const endpoint = `${GEMINI_API_BASE}/models/${params.model}:generateContent`;
+  const endpoint = `${params.baseURL}/models/${params.model}:generateContent`;
 
   return withTrustedWebSearchEndpoint(
     {
@@ -96,7 +104,7 @@ async function runGeminiSearch(params: {
           "x-goog-api-key": params.apiKey,
         },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: params.query }] }],
+          contents: [{ role: "user", parts: [{ text: params.query }] }],
           tools: [{ google_search: {} }],
         }),
       },
@@ -204,11 +212,13 @@ function createGeminiToolDefinition(
         searchConfig?.maxResults ??
         undefined;
       const model = resolveGeminiModel(geminiConfig);
+      const baseURL = resolveGeminiBaseUrl(geminiConfig);
       const cacheKey = buildSearchCacheKey([
         "gemini",
         query,
         resolveSearchCount(count, DEFAULT_SEARCH_COUNT),
         model,
+        baseURL,
       ]);
       const cached = readCachedSearchPayload(cacheKey);
       if (cached) {
@@ -220,6 +230,7 @@ function createGeminiToolDefinition(
         query,
         apiKey,
         model,
+        baseURL,
         timeoutSeconds: resolveSearchTimeoutSeconds(searchConfig),
       });
       const payload = {
@@ -277,4 +288,5 @@ export function createGeminiWebSearchProvider(): WebSearchProviderPlugin {
 export const __testing = {
   resolveGeminiApiKey,
   resolveGeminiModel,
+  resolveGeminiBaseUrl,
 } as const;
