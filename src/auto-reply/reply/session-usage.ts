@@ -2,7 +2,6 @@ import { setCliSessionId } from "../../agents/cli-session.js";
 import {
   deriveSessionTotalTokens,
   hasExplicitUsage,
-  hasNonzeroUsage,
   type NormalizedUsage,
 } from "../../agents/usage.js";
 import type { OpenClawConfig } from "../../config/config.js";
@@ -89,7 +88,7 @@ export async function persistSessionUsageUpdate(params: {
     typeof params.promptTokens === "number" &&
     Number.isFinite(params.promptTokens) &&
     params.promptTokens >= 0;
-  const hasFreshContextSnapshot = hasNonzeroUsage(params.lastCallUsage) || hasPromptTokens;
+  const hasFreshContextSnapshot = hasExplicitUsage(params.lastCallUsage) || hasPromptTokens;
   if (hasUsage || hasFreshContextSnapshot) {
     try {
       await updateSessionStoreEntry({

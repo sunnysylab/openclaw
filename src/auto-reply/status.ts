@@ -458,24 +458,60 @@ export function buildStatusMessage(args: StatusArgs): string {
     state: entry,
   });
 
-  let contextTokens = resolveContextTokensForModel({
+  // Re-resolve against the active model.
+  const hasStoredProvider = Boolean(entry?.modelProvider?.trim());
+  const passProvider = hasStoredProvider || !activeModel.includes("/");
+  const entryModelMatch =
+    entry?.model === activeModel &&
+    (entry?.modelProvider === activeProvider || !entry?.modelProvider);
+
+  // Authoritative window resolution for the active model.
+  // We prefer the entry model if it looks like a version-qualified ID without a provider.
+  const lookupModel =
+    !hasStoredProvider && typeof entry?.model === "string" && entry.model.includes("/")
+      ? entry.model
+      : activeModel;
+  const lookupProvider =
+    lookupModel === entry?.model ? undefined : passProvider ? activeProvider : undefined;
+
+  const resolvedWindow = resolveContextTokensForModel({
     cfg: contextConfig,
-    provider: activeProvider,
-    model: activeModel,
-    contextTokensOverride:
-      args.runtimeContextTokens ??
-      (!fallbackState.active ? args.explicitConfiguredContextTokens : undefined) ??
-      entry?.contextTokens ??
-      args.agent?.contextTokens,
+    provider: lookupProvider,
+    model: lookupModel,
   });
 
-  let inputTokens = entry?.inputTokens;  let outputTokens = entry?.outputTokens;
+  let contextTokens = args.runtimeContextTokens;
+
+  if (contextTokens === undefined && entryModelMatch && entry?.contextTokens) {
+    contextTokens = entry.contextTokens;
+  }
+
+  if (contextTokens === undefined) {
+    contextTokens =
+      (!fallbackState.active ? args.explicitConfiguredContextTokens : undefined) ??
+      resolvedWindow ??
+      args.agent?.contextTokens;
+  }
+
+  // Clamping for fallback sessions: ensures selected-model overrides don't
+  // overstate context during fallback to a smaller model.
+  if (fallbackState.active && contextTokens && resolvedWindow && contextTokens > resolvedWindow) {
+    contextTokens = resolvedWindow;
+  }
+
+  if (contextTokens === undefined) {
+    contextTokens = DEFAULT_CONTEXT_TOKENS;
+  }
+
+  let inputTokens = entry?.inputTokens;
+  let outputTokens = entry?.outputTokens;
   let cacheRead = entry?.cacheRead;
   let cacheWrite = entry?.cacheWrite;
   const freshTotal = resolveFreshSessionTotalTokens(entry);
   let totalTokens =
     freshTotal ??
     entry?.totalTokensEstimate ??
+    entry?.totalTokens ??
     (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
 
   // Prefer prompt-size tokens from the session transcript when it looks larger
@@ -494,7 +530,7 @@ export function buildStatusMessage(args: StatusArgs): string {
       if (
         logUsage.totalTokensFresh &&
         candidate > 0 &&
-        freshTotal === undefined &&
+        (freshTotal === undefined || candidate > freshTotal) &&
         (entry?.totalTokensEstimate === undefined || (candidate > 0 && hasZeroEstimate))
       ) {
         // Session transcript is authoritative only when the store has no fresh data
@@ -520,18 +556,20 @@ export function buildStatusMessage(args: StatusArgs): string {
             cfg: contextConfig,
             model: logUsage.model,
           }) ?? contextTokens;
-      }      if (!inputTokens || inputTokens === 0) {
+      }
+      if (!inputTokens || inputTokens === 0) {
         inputTokens = logUsage.input;
       }
       if (!outputTokens || outputTokens === 0) {
         outputTokens = logUsage.output;
       }
     }
-    }
+  }
 
-    contextTokens ??= DEFAULT_CONTEXT_TOKENS;
+  contextTokens ??= DEFAULT_CONTEXT_TOKENS;
 
-    const thinkLevel =    args.resolvedThink ?? args.sessionEntry?.thinkingLevel ?? args.agent?.thinkingDefault ?? "off";
+  const thinkLevel =
+    args.resolvedThink ?? args.sessionEntry?.thinkingLevel ?? args.agent?.thinkingDefault ?? "off";
   const verboseLevel =
     args.resolvedVerbose ?? args.sessionEntry?.verboseLevel ?? args.agent?.verboseDefault ?? "off";
   const fastMode = args.resolvedFast ?? args.sessionEntry?.fastMode ?? false;
@@ -606,7 +644,8 @@ export function buildStatusMessage(args: StatusArgs): string {
     (activeAuthMode && activeAuthMode !== "unknown" ? activeAuthMode : undefined);
   const effectiveCostAuthMode = fallbackState.active
     ? activeAuthMode
-    : (selectedAuthMode ?? activeAuthMode);  const showCost = effectiveCostAuthMode === "api-key" || effectiveCostAuthMode === "mixed";
+    : (selectedAuthMode ?? activeAuthMode);
+  const showCost = effectiveCostAuthMode === "api-key" || effectiveCostAuthMode === "mixed";
   const costConfig = showCost
     ? resolveModelCostConfig({
         provider: activeProvider,

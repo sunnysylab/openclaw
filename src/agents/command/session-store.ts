@@ -10,7 +10,7 @@ import { setCliSessionId } from "../cli-session.js";
 import { resolveContextTokensForModel } from "../context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
 import { isCliProvider } from "../model-selection.js";
-import { deriveSessionTotalTokens, hasExplicitUsage, hasNonzeroUsage } from "../usage.js";
+import { deriveSessionTotalTokens, hasExplicitUsage } from "../usage.js";
 
 type RunResult = Awaited<ReturnType<(typeof import("../pi-embedded.js"))["runEmbeddedPiAgent"]>>;
 
@@ -130,7 +130,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
     const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
     const hasFreshContextSnapshot =
-      hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
+      hasExplicitUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
 
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
@@ -164,6 +164,14 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.totalTokensFresh = false;
     next.cacheRead = undefined;
     next.cacheWrite = undefined;
+
+    if (modelChanged) {
+      next.totalTokensEstimate = undefined;
+    } else if (entry.totalTokensEstimate !== undefined) {
+      next.totalTokensEstimate = entry.totalTokensEstimate;
+    } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+      next.totalTokensEstimate = entry.totalTokens;
+    }
   }
   if (compactionsThisRun > 0) {
     next.compactionCount = (entry.compactionCount ?? 0) + compactionsThisRun;

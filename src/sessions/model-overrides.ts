@@ -65,37 +65,21 @@ export function applyModelOverrideToSessionEntry(params: {
   // When the selected model changes (or runtime model is already stale), the
   // cached window or prompt snapshots can pin the session to an older/smaller
   // limit until another run refreshes it.
-  const modelChanged = selectionUpdated || (runtimePresent && !runtimeAligned);
-  if (modelChanged) {    if (entry.contextTokens !== undefined) {
+  const modelChanged = !runtimeAligned && (selectionUpdated || runtimePresent);
+  if (modelChanged) {
+    if (entry.contextTokens !== undefined) {
       delete entry.contextTokens;
       updated = true;
     }
-    if (entry.totalTokens !== undefined) {
-      delete entry.totalTokens;
-      updated = true;
-    }
-    if (entry.totalTokensFresh !== undefined) {
-      delete entry.totalTokensFresh;
+    // We preserve totalTokens and other usage metrics as they are still valid
+    // cumulative session counts, even if the model target changed.
+    // Wiping them would cause /status to show 0 usage until the next turn.
+    if (entry.totalTokensFresh !== false) {
+      entry.totalTokensFresh = false;
       updated = true;
     }
     if (entry.totalTokensEstimate !== undefined) {
       delete entry.totalTokensEstimate;
-      updated = true;
-    }
-    if (entry.inputTokens !== undefined) {
-      delete entry.inputTokens;
-      updated = true;
-    }
-    if (entry.outputTokens !== undefined) {
-      delete entry.outputTokens;
-      updated = true;
-    }
-    if (entry.cacheRead !== undefined) {
-      delete entry.cacheRead;
-      updated = true;
-    }
-    if (entry.cacheWrite !== undefined) {
-      delete entry.cacheWrite;
       updated = true;
     }
   }
