@@ -1,7 +1,6 @@
 import { rmSync, statSync } from "node:fs";
 import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
 import { EdgeTTS } from "node-edge-tts";
-import { ensureCustomApiRegistered } from "../agents/custom-api-registry.js";
 import { getApiKeyForModel, requireApiKey } from "../agents/model-auth.js";
 import {
   buildModelAliasIndex,
@@ -9,10 +8,9 @@ import {
   resolveModelRefFromString,
   type ModelRef,
 } from "../agents/model-selection.js";
-import { createConfiguredOllamaStreamFn } from "../agents/ollama-stream.js";
 import { resolveModelAsync } from "../agents/pi-embedded-runner/model.js";
+import { prepareModelForSimpleCompletion } from "../agents/simple-completion-transport.js";
 import type { OpenClawConfig } from "../config/config.js";
-import { isValidXaiVoice, parseXaiOutputFormat, XAI_TTS_VOICES } from "./providers/xai.js";
 import type {
   ResolvedTtsConfig,
   ResolvedTtsModelOverrides,
@@ -196,7 +194,7 @@ export function parseTtsDirectives(
             if (!policy.allowVoice) {
               break;
             }
-            if (isValidXaiVoice(rawValue)) {
+            if (isValidVoiceId(rawValue)) {
               overrides.xai = { ...overrides.xai, voiceId: rawValue };
             } else {
               warnings.push(`invalid xAI voiceId "${rawValue}"`);
@@ -480,8 +478,9 @@ export async function summarizeText(params: {
   if (!resolved.model) {
     throw new Error(resolved.error ?? `Unknown summary model: ${ref.provider}/${ref.model}`);
   }
+  const completionModel = prepareModelForSimpleCompletion({ model: resolved.model, cfg });
   const apiKey = requireApiKey(
-    await getApiKeyForModel({ model: resolved.model, cfg }),
+    await getApiKeyForModel({ model: completionModel, cfg }),
     ref.provider,
   );
 
@@ -490,21 +489,8 @@ export async function summarizeText(params: {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      if (resolved.model.api === "ollama") {
-        const providerBaseUrl =
-          typeof cfg.models?.providers?.[resolved.model.provider]?.baseUrl === "string"
-            ? cfg.models.providers[resolved.model.provider]?.baseUrl
-            : undefined;
-        ensureCustomApiRegistered(
-          resolved.model.api,
-          createConfiguredOllamaStreamFn({
-            model: resolved.model,
-            providerBaseUrl,
-          }),
-        );
-      }
       const res = await completeSimple(
-        resolved.model,
+        completionModel,
         {
           messages: [
             {
