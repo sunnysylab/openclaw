@@ -421,6 +421,73 @@ describe("lmstudio setup", () => {
     });
   });
 
+  it("discoverLmstudioProvider does not inject lmstudio-local when Authorization header is configured", async () => {
+    const explicitModels = [createModel("qwen3-8b-instruct", "Qwen3 8B")];
+    const result = await discoverLmstudioProvider(
+      buildDiscoveryContext({
+        config: {
+          models: {
+            providers: {
+              lmstudio: {
+                baseUrl: "http://localhost:1234/api/v1/",
+                models: explicitModels,
+                headers: {
+                  Authorization: "Bearer custom-token",
+                },
+              },
+            },
+          },
+        } as OpenClawConfig,
+      }),
+    );
+
+    expect(buildLmstudioProviderMock).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      provider: {
+        baseUrl: "http://localhost:1234/v1",
+        api: "openai-completions",
+        headers: {
+          Authorization: "Bearer custom-token",
+        },
+        models: explicitModels,
+      },
+    });
+  });
+
+  it("discoverLmstudioProvider still injects lmstudio-local when only non-auth headers are configured", async () => {
+    const explicitModels = [createModel("qwen3-8b-instruct", "Qwen3 8B")];
+    const result = await discoverLmstudioProvider(
+      buildDiscoveryContext({
+        config: {
+          models: {
+            providers: {
+              lmstudio: {
+                baseUrl: "http://localhost:1234/api/v1/",
+                models: explicitModels,
+                headers: {
+                  "X-Proxy-Auth": "proxy-token",
+                },
+              },
+            },
+          },
+        } as OpenClawConfig,
+      }),
+    );
+
+    expect(buildLmstudioProviderMock).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      provider: {
+        baseUrl: "http://localhost:1234/v1",
+        api: "openai-completions",
+        apiKey: LMSTUDIO_LOCAL_API_KEY_PLACEHOLDER,
+        headers: {
+          "X-Proxy-Auth": "proxy-token",
+        },
+        models: explicitModels,
+      },
+    });
+  });
+
   it("discoverLmstudioProvider uses resolved key/headers and non-quiet discovery", async () => {
     buildLmstudioProviderMock.mockResolvedValueOnce({
       baseUrl: "http://localhost:1234/v1",

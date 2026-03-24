@@ -93,8 +93,24 @@ function resolveLmstudioDiscoveryFailure(params: {
 function shouldUseLmstudioApiKeyPlaceholder(params: {
   hasModels: boolean;
   resolvedApiKey: ModelProviderConfig["apiKey"] | undefined;
+  hasAuthorizationHeader?: boolean;
 }): boolean {
-  return params.hasModels && !params.resolvedApiKey;
+  return params.hasModels && !params.resolvedApiKey && !params.hasAuthorizationHeader;
+}
+
+function hasAuthorizationHeader(headers: Record<string, string> | undefined): boolean {
+  if (!headers) {
+    return false;
+  }
+  for (const [headerName, headerValue] of Object.entries(headers)) {
+    if (headerName.trim().toLowerCase() !== "authorization") {
+      continue;
+    }
+    if (headerValue.trim().length > 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function resolveLmstudioProviderAuthMode(
@@ -116,6 +132,7 @@ function resolvePersistedLmstudioApiKey(params: {
   explicitAuth: ModelProviderConfig["auth"] | undefined;
   fallbackApiKey: ModelProviderConfig["apiKey"] | undefined;
   hasModels: boolean;
+  hasAuthorizationHeader?: boolean;
 }): ModelProviderConfig["apiKey"] | undefined {
   if (resolveLmstudioProviderAuthMode(params.currentApiKey)) {
     return params.currentApiKey;
@@ -126,6 +143,7 @@ function resolvePersistedLmstudioApiKey(params: {
   return shouldUseLmstudioApiKeyPlaceholder({
     hasModels: params.hasModels,
     resolvedApiKey: params.currentApiKey,
+    hasAuthorizationHeader: params.hasAuthorizationHeader,
   })
     ? LMSTUDIO_LOCAL_API_KEY_PLACEHOLDER
     : undefined;
@@ -330,6 +348,7 @@ export async function promptAndConfigureLmstudioInteractive(params: {
       explicitAuth: "api-key",
       fallbackApiKey: LMSTUDIO_DEFAULT_API_KEY_ENV_VAR,
       hasModels: discoveredModels.length > 0,
+      hasAuthorizationHeader: hasAuthorizationHeader(resolvedHeaders),
     }) ?? LMSTUDIO_DEFAULT_API_KEY_ENV_VAR;
 
   return {
@@ -473,6 +492,7 @@ export async function configureLmstudioNonInteractive(
     fallbackApiKey:
       configured.models?.providers?.[PROVIDER_ID]?.apiKey ?? LMSTUDIO_DEFAULT_API_KEY_ENV_VAR,
     hasModels: discoveredModels.length > 0,
+    hasAuthorizationHeader: hasAuthorizationHeader(resolvedHeaders),
   });
 
   return {
@@ -534,6 +554,7 @@ export async function discoverLmstudioProvider(ctx: ProviderDiscoveryContext): P
       explicitAuth,
       fallbackApiKey: LMSTUDIO_DEFAULT_API_KEY_ENV_VAR,
       hasModels: hasExplicitModels,
+      hasAuthorizationHeader: hasAuthorizationHeader(resolvedHeaders),
     });
     const persistedAuth = resolveLmstudioProviderAuthMode(persistedApiKey);
     return {
@@ -569,6 +590,7 @@ export async function discoverLmstudioProvider(ctx: ProviderDiscoveryContext): P
     explicitAuth,
     fallbackApiKey: LMSTUDIO_DEFAULT_API_KEY_ENV_VAR,
     hasModels: models.length > 0,
+    hasAuthorizationHeader: hasAuthorizationHeader(resolvedHeaders),
   });
   const persistedAuth = resolveLmstudioProviderAuthMode(persistedApiKey);
   return {
