@@ -546,7 +546,10 @@ describe("createTelegramDraftStream", () => {
     stream.update("Hello");
     await stream.flush();
     expect(api.sendMessage).toHaveBeenCalledTimes(1);
-    expect(api.sendMessage).toHaveBeenCalledWith(123, "Hello", { reply_to_message_id: 999 });
+    expect(api.sendMessage).toHaveBeenCalledWith(123, "Hello", {
+      reply_to_message_id: 999,
+      allow_sending_without_reply: true,
+    });
 
     // After forceNewMessage, the second message should NOT include reply_to_message_id
     // This prevents "Deleted message" artifacts when the first preview is archived
@@ -575,6 +578,7 @@ describe("createTelegramDraftStream", () => {
     expect(api.sendMessage).toHaveBeenCalledWith(123, "Hello", {
       message_thread_id: 55,
       reply_to_message_id: 999,
+      allow_sending_without_reply: true,
     });
 
     // After forceNewMessage, the second message should keep message_thread_id
