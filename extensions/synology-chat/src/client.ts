@@ -173,25 +173,23 @@ export async function fetchChatUsers(
 }
 
 /**
- * Resolve a webhook username to the correct Chat API user_id.
+ * Resolve a mutable webhook username/nickname to the correct Chat API user_id.
  *
  * Synology Chat outgoing webhooks send a user_id that may NOT match the
  * Chat-internal user_id needed by the chatbot API (method=chatbot).
  * The webhook's "username" field corresponds to the Chat user's "nickname".
  *
- * @param incomingUrl - Bot incoming webhook URL (used to derive user_list URL)
- * @param webhookUsername - The username from the outgoing webhook payload
- * @param allowInsecureSsl - Skip TLS verification
  * @returns The correct Chat user_id, or undefined if not found
  */
-export async function resolveChatUserId(
-  incomingUrl: string,
-  webhookUsername: string,
-  allowInsecureSsl = false,
-  log?: { warn: (...args: unknown[]) => void },
-): Promise<number | undefined> {
-  const users = await fetchChatUsers(incomingUrl, allowInsecureSsl, log);
-  const lower = webhookUsername.toLowerCase();
+export async function resolveLegacyWebhookNameToChatUserId(params: {
+  incomingUrl: string;
+  mutableWebhookUsername: string;
+  allowInsecureSsl?: boolean;
+  log?: { warn: (...args: unknown[]) => void };
+}): Promise<number | undefined> {
+  const { allowInsecureSsl = false } = params;
+  const users = await fetchChatUsers(params.incomingUrl, allowInsecureSsl, params.log);
+  const lower = params.mutableWebhookUsername.toLowerCase();
 
   // Match by nickname first (webhook "username" field = Chat "nickname")
   const byNickname = users.find((u) => u.nickname.toLowerCase() === lower);
