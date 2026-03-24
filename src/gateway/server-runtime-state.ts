@@ -230,7 +230,9 @@ export async function createGatewayRuntimeState(params: {
 
     return {
       canvasHost,
-      releasePluginRouteRegistry: () => releasePinnedPluginHttpRouteRegistry(params.pluginRegistry),
+      releasePluginRouteRegistry: () => {
+        releasePinnedPluginHttpRouteRegistry(params.pluginRegistry);
+      },
       httpServer,
       httpServers,
       httpBindHosts,
