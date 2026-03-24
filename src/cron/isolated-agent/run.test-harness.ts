@@ -153,7 +153,7 @@ vi.mock("../../agents/usage.js", async (importOriginal) => {
   return {
     ...actual,
     deriveSessionTotalTokens: vi.fn().mockReturnValue(30),
-    hasNonzeroUsage: vi.fn().mockReturnValue(false),
+    hasExplicitUsage: vi.fn().mockReturnValue(false),
   };
 });
 

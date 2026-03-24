@@ -76,15 +76,6 @@ const asFiniteNumber = (value: unknown): number | undefined => {
   return value;
 };
 
-export function hasNonzeroUsage(usage?: NormalizedUsage | null): usage is NormalizedUsage {
-  if (!usage) {
-    return false;
-  }
-  return [usage.input, usage.output, usage.cacheRead, usage.cacheWrite, usage.total].some(
-    (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
-  );
-}
-
 export function hasExplicitUsage(usage?: NormalizedUsage | null): usage is NormalizedUsage {
   if (!usage) {
     return false;
@@ -194,7 +185,7 @@ export function deriveSessionTotalTokens(params: {
         input: usage?.input,
         cacheRead: usage?.cacheRead,
         cacheWrite: usage?.cacheWrite,
-      }) ?? (usage?.total !== undefined && usage.total >= 0 ? usage.total : undefined));
+      }) ?? (usage?.total !== undefined && usage.total > 0 ? usage.total : undefined));
 
   if (!(typeof promptTokens === "number") || !Number.isFinite(promptTokens) || promptTokens < 0) {
     return undefined;

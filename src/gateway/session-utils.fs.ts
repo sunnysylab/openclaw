@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { deriveSessionTotalTokens, hasNonzeroUsage, normalizeUsage } from "../agents/usage.js";
+import { deriveSessionTotalTokens, hasExplicitUsage, normalizeUsage } from "../agents/usage.js";
 import {
   formatSessionArchiveTimestamp,
   parseSessionArchiveTimestamp,
@@ -692,7 +692,7 @@ function extractLatestUsageFromTranscriptChunk(
             : undefined;
       const isDeliveryMirror = modelProvider === "openclaw" && model === "delivery-mirror";
       const hasMeaningfulUsage =
-        hasNonzeroUsage(usage) ||
+        hasExplicitUsage(usage) ||
         typeof totalTokens === "number" ||
         (typeof costUsd === "number" && Number.isFinite(costUsd));
       const hasModelIdentity = Boolean(modelProvider || model);

@@ -495,7 +495,7 @@ export function buildStatusMessage(args: StatusArgs): string {
 
   // Clamping for fallback sessions: ensures selected-model overrides don't
   // overstate context during fallback to a smaller model.
-  if (fallbackState.active && contextTokens && resolvedWindow && contextTokens > resolvedWindow) {
+  if (contextTokens && resolvedWindow && contextTokens > resolvedWindow) {
     contextTokens = resolvedWindow;
   }
 
@@ -509,7 +509,7 @@ export function buildStatusMessage(args: StatusArgs): string {
   let cacheWrite = entry?.cacheWrite;
   const freshTotal = resolveFreshSessionTotalTokens(entry);
   let totalTokens =
-    freshTotal ??
+    (freshTotal !== undefined && freshTotal > 0 ? freshTotal : undefined) ??
     entry?.totalTokensEstimate ??
     entry?.totalTokens ??
     (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
@@ -527,10 +527,17 @@ export function buildStatusMessage(args: StatusArgs): string {
     if (logUsage) {
       const candidate = logUsage.promptTokens || logUsage.total;
       const hasZeroEstimate = entry?.totalTokensEstimate === 0;
+      const storeTotal =
+        (freshTotal !== undefined && freshTotal > 0 ? freshTotal : undefined) ??
+        entry?.totalTokensEstimate ??
+        entry?.totalTokens ??
+        (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
+
       if (
         logUsage.totalTokensFresh &&
-        candidate > 0 &&
-        (freshTotal === undefined || candidate > freshTotal) &&
+        (candidate > 0 ||
+          (candidate === 0 && freshTotal === undefined && entry?.totalTokensFresh === undefined)) &&
+        (candidate > storeTotal || freshTotal === undefined) &&
         (entry?.totalTokensEstimate === undefined || (candidate > 0 && hasZeroEstimate))
       ) {
         // Session transcript is authoritative only when the store has no fresh data

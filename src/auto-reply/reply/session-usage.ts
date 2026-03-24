@@ -140,7 +140,9 @@ export async function persistSessionUsageUpdate(params: {
             if (modelChanged) {
               patch.totalTokensEstimate = undefined;
             } else {
-              patch.totalTokensEstimate = totalTokens;
+              if (totalTokens > 0) {
+                patch.totalTokensEstimate = totalTokens;
+              }
               if (totalTokens === 0 && !patch.totalTokensFresh) {
                 const fallback = prevEstimate ?? prevTotal;
                 if (fallback !== undefined && fallback > 0) {

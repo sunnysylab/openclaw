@@ -4,7 +4,7 @@ import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { resolveModelAuthMode } from "../../agents/model-auth.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import { queueEmbeddedPiMessage } from "../../agents/pi-embedded.js";
-import { hasNonzeroUsage } from "../../agents/usage.js";
+import { hasExplicitUsage } from "../../agents/usage.js";
 import {
   resolveAgentIdFromSessionKey,
   resolveSessionFilePath,
@@ -583,7 +583,7 @@ export async function runReplyAgent(params: {
 
     await signalTypingIfNeeded(guardedReplyPayloads, typingSignals);
 
-    if (isDiagnosticsEnabled(cfg) && hasNonzeroUsage(usage)) {
+    if (isDiagnosticsEnabled(cfg) && hasExplicitUsage(usage)) {
       const input = usage.input ?? 0;
       const output = usage.output ?? 0;
       const cacheRead = usage.cacheRead ?? 0;
@@ -625,7 +625,7 @@ export async function runReplyAgent(params: {
       activeSessionEntry?.responseUsage ??
       (sessionKey ? activeSessionStore?.[sessionKey]?.responseUsage : undefined);
     const responseUsageMode = resolveResponseUsageMode(responseUsageRaw);
-    if (responseUsageMode !== "off" && hasNonzeroUsage(usage)) {
+    if (responseUsageMode !== "off" && hasExplicitUsage(usage)) {
       const authMode = resolveModelAuthMode(providerUsed, cfg);
       const showCost = authMode === "api-key";
       const costConfig = showCost

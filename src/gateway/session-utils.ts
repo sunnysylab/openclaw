@@ -1153,9 +1153,13 @@ export function buildGatewaySessionRow(params: {
     legacyTotal: entry?.totalTokens,
   });
 
-  const totalTokensFresh =
-    freshTotalValue !== undefined ||
-    (transcriptFresh && transcriptTotal !== undefined && totalTokens === transcriptTotal);
+  const usedEstimate =
+    freshTotalValue === undefined &&
+    (!transcriptFresh || transcriptTotal === undefined || totalTokens !== transcriptTotal) &&
+    estimateValue !== undefined &&
+    totalTokens === estimateValue;
+
+  const totalTokensFresh = freshTotalValue !== undefined || (!usedEstimate && transcriptFresh);
   const childSessions = resolveChildSessionKeys(key, store);
   const estimatedCostUsd =
     resolveEstimatedSessionCostUsd({

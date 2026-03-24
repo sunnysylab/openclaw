@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeUsage,
-  hasNonzeroUsage,
+  hasExplicitUsage,
   derivePromptTokens,
   deriveSessionTotalTokens,
 } from "./usage.js";
@@ -130,29 +130,29 @@ describe("normalizeUsage", () => {
   });
 });
 
-describe("hasNonzeroUsage", () => {
+describe("hasExplicitUsage", () => {
   it("returns true when cache read is nonzero", () => {
     const usage = { cacheRead: 100 };
-    expect(hasNonzeroUsage(usage)).toBe(true);
+    expect(hasExplicitUsage(usage)).toBe(true);
   });
 
   it("returns true when cache write is nonzero", () => {
     const usage = { cacheWrite: 50 };
-    expect(hasNonzeroUsage(usage)).toBe(true);
+    expect(hasExplicitUsage(usage)).toBe(true);
   });
 
   it("returns true when both cache fields are nonzero", () => {
     const usage = { cacheRead: 100, cacheWrite: 50 };
-    expect(hasNonzeroUsage(usage)).toBe(true);
+    expect(hasExplicitUsage(usage)).toBe(true);
   });
 
   it("returns false when cache fields are zero", () => {
     const usage = { cacheRead: 0, cacheWrite: 0 };
-    expect(hasNonzeroUsage(usage)).toBe(false);
+    expect(hasExplicitUsage(usage)).toBe(false);
   });
 
   it("returns false for undefined usage", () => {
-    expect(hasNonzeroUsage(undefined)).toBe(false);
+    expect(hasExplicitUsage(undefined)).toBe(false);
   });
 });
 
