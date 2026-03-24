@@ -120,6 +120,7 @@ import {
   getPresenceVersion,
   incrementPresenceVersion,
   refreshGatewayHealthSnapshot,
+  setRuntimeSnapshotProvider,
 } from "./server/health-state.js";
 import { resolveHookClientIpConfig } from "./server/hooks.js";
 import { createReadinessChecker } from "./server/readiness.js";
@@ -754,6 +755,7 @@ export async function startGatewayServer(
 
   const { getRuntimeSnapshot, startChannels, startChannel, stopChannel, markChannelLoggedOut } =
     channelManager;
+  setRuntimeSnapshotProvider(getRuntimeSnapshot);
 
   if (!minimalTestGateway) {
     const machineDisplayName = await getMachineDisplayName();
