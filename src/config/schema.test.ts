@@ -201,11 +201,12 @@ describe("config schema", () => {
     expect(tags).toContain("performance");
   });
 
-  it("accepts web fetch readability and firecrawl config in the runtime zod schema", () => {
+  it("accepts web fetch readability, response caps, and firecrawl config in the runtime zod schema", () => {
     const parsed = ToolsSchema.parse({
       web: {
         fetch: {
           readability: true,
+          maxResponseBytes: 2_000_000,
           firecrawl: {
             enabled: true,
             apiKey: "firecrawl-test-key",
@@ -219,6 +220,7 @@ describe("config schema", () => {
     });
 
     expect(parsed?.web?.fetch?.readability).toBe(true);
+    expect(parsed?.web?.fetch?.maxResponseBytes).toBe(2_000_000);
     expect(parsed?.web?.fetch).toMatchObject({
       firecrawl: {
         enabled: true,

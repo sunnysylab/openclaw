@@ -90,6 +90,23 @@ describe("createWebhookHandler", () => {
     expect(res._status).toBe(405);
   });
 
+  it("accepts HEAD probes with a 200 ACK and no body", async () => {
+    const deliver = vi.fn();
+    const handler = createWebhookHandler({
+      account: makeAccount(),
+      deliver,
+      log,
+    });
+
+    const req = makeReq("HEAD", "");
+    const res = makeRes();
+    await handler(req, res);
+
+    expect(res._status).toBe(200);
+    expect(res._body).toBe("");
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
   it("returns 400 for missing required fields", async () => {
     const handler = createWebhookHandler({
       account: makeAccount(),
@@ -168,7 +185,8 @@ describe("createWebhookHandler", () => {
     const res = makeRes();
     await handler(req, res);
 
-    expect(res._status).toBe(204);
+    expect(res._status).toBe(200);
+    expect(res._body).toBe('{"success":true}');
     expect(deliver).toHaveBeenCalledWith(
       expect.objectContaining({
         body: "Hello from json",
@@ -198,7 +216,8 @@ describe("createWebhookHandler", () => {
     const res = makeRes();
     await handler(req, res);
 
-    expect(res._status).toBe(204);
+    expect(res._status).toBe(200);
+    expect(res._body).toBe('{"success":true}');
     expect(deliver).toHaveBeenCalled();
   });
 
@@ -223,7 +242,8 @@ describe("createWebhookHandler", () => {
     const res = makeRes();
     await handler(req, res);
 
-    expect(res._status).toBe(204);
+    expect(res._status).toBe(200);
+    expect(res._body).toBe('{"success":true}');
     expect(deliver).toHaveBeenCalled();
   });
 
@@ -271,7 +291,7 @@ describe("createWebhookHandler", () => {
     const req1 = makeReq("POST", validBody);
     const res1 = makeRes();
     await handler(req1, res1);
-    expect(res1._status).toBe(204);
+    expect(res1._status).toBe(200);
 
     // Second request should be rate limited
     const req2 = makeReq("POST", validBody);
@@ -300,12 +320,13 @@ describe("createWebhookHandler", () => {
     const res = makeRes();
     await handler(req, res);
 
-    expect(res._status).toBe(204);
+    expect(res._status).toBe(200);
+    expect(res._body).toBe('{"success":true}');
     // deliver should have been called with the stripped text
     expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ body: "Hello there" }));
   });
 
-  it("responds 204 immediately and delivers async", async () => {
+  it("responds 200 success immediately and delivers async", async () => {
     const deliver = vi.fn().mockResolvedValue("Bot reply");
     const handler = createWebhookHandler({
       account: makeAccount({ accountId: "async-test-" + Date.now() }),
@@ -317,8 +338,8 @@ describe("createWebhookHandler", () => {
     const res = makeRes();
     await handler(req, res);
 
-    expect(res._status).toBe(204);
-    expect(res._body).toBe("");
+    expect(res._status).toBe(200);
+    expect(res._body).toBe('{"success":true}');
     expect(deliver).toHaveBeenCalledWith(
       expect.objectContaining({
         body: "Hello bot",
@@ -343,7 +364,7 @@ describe("createWebhookHandler", () => {
     const res = makeRes();
     await handler(req, res);
 
-    expect(res._status).toBe(204);
+    expect(res._status).toBe(200);
     expect(resolveLegacyWebhookNameToChatUserId).not.toHaveBeenCalled();
     expect(deliver).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -375,7 +396,7 @@ describe("createWebhookHandler", () => {
     const res = makeRes();
     await handler(req, res);
 
-    expect(res._status).toBe(204);
+    expect(res._status).toBe(200);
     expect(resolveLegacyWebhookNameToChatUserId).toHaveBeenCalledWith({
       incomingUrl: "https://nas.example.com/incoming",
       mutableWebhookUsername: "testuser",
@@ -412,7 +433,7 @@ describe("createWebhookHandler", () => {
     const res = makeRes();
     await handler(req, res);
 
-    expect(res._status).toBe(204);
+    expect(res._status).toBe(200);
     expect(resolveLegacyWebhookNameToChatUserId).toHaveBeenCalledWith({
       incomingUrl: "https://nas.example.com/incoming",
       mutableWebhookUsername: "testuser",
