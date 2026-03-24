@@ -23,7 +23,7 @@ import {
   listDescendantRunsForRequester,
 } from "../../agents/subagent-registry.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
-import { deriveSessionTotalTokens, hasExplicitUsage } from "../../agents/usage.js";
+import { deriveSessionTotalTokens, hasExplicitUsage, hasNonzeroUsage } from "../../agents/usage.js";
 import { ensureAgentWorkspace } from "../../agents/workspace.js";
 import {
   normalizeThinkLevel,
@@ -693,18 +693,22 @@ export async function runCronIsolatedAgentTurn(params: {
 
       const lastCallUsage = finalRunResult.meta?.agentMeta?.lastCallUsage;
       const hasFreshContextSnapshot =
-        Boolean(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
+        hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
 
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
         cronSession.sessionEntry.totalTokensFresh =
           totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
-        if (cronSession.sessionEntry.totalTokensFresh) {
+
+        if (modelChanged) {
+          cronSession.sessionEntry.totalTokensEstimate = undefined;
+        } else {
           cronSession.sessionEntry.totalTokensEstimate = totalTokens;
-        } else if (totalTokens === 0 && !modelChanged) {
-          const fallback = prevEstimate ?? prevTotal;
-          if (fallback !== undefined && fallback > 0) {
-            cronSession.sessionEntry.totalTokensEstimate = fallback;
+          if (totalTokens === 0 && !cronSession.sessionEntry.totalTokensFresh) {
+            const fallback = prevEstimate ?? prevTotal;
+            if (fallback !== undefined && fallback > 0) {
+              cronSession.sessionEntry.totalTokensEstimate = fallback;
+            }
           }
         }
         telemetryUsage.total_tokens = totalTokens;
