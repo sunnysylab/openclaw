@@ -639,14 +639,14 @@ export async function runReplyAgent(params: {
     const responseUsageMode = resolveResponseUsageMode(responseUsageRaw);
     if (responseUsageMode !== "off" && hasNonzeroUsage(usage)) {
       const authMode = resolveModelAuthMode(providerUsed, cfg);
-      const showCost = authMode === "api-key";
-      const costConfig = showCost
-        ? resolveModelCostConfig({
-            provider: providerUsed,
-            model: modelUsed,
-            config: cfg,
-          })
-        : undefined;
+      const costConfig = resolveModelCostConfig({
+        provider: providerUsed,
+        model: modelUsed,
+        config: cfg,
+      });
+      const showCost =
+        authMode === "api-key" ||
+        (costConfig != null && costConfig.input > 0 && costConfig.output > 0);
       let formatted = formatResponseUsageLine({
         usage,
         showCost,

@@ -707,14 +707,15 @@ export function buildStatusMessage(args: StatusArgs): string {
   const effectiveCostAuthMode = fallbackState.active
     ? activeAuthMode
     : (selectedAuthMode ?? activeAuthMode);
-  const showCost = effectiveCostAuthMode === "api-key" || effectiveCostAuthMode === "mixed";
-  const costConfig = showCost
-    ? resolveModelCostConfig({
-        provider: activeProvider,
-        model: activeModel,
-        config: args.config,
-      })
-    : undefined;
+  const costConfig = resolveModelCostConfig({
+    provider: activeProvider,
+    model: activeModel,
+    config: args.config,
+  });
+  const showCost =
+    effectiveCostAuthMode === "api-key" ||
+    effectiveCostAuthMode === "mixed" ||
+    (costConfig != null && costConfig.input > 0 && costConfig.output > 0);
   const hasUsage = typeof inputTokens === "number" || typeof outputTokens === "number";
   const cost =
     showCost && hasUsage
