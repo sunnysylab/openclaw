@@ -500,6 +500,8 @@ export type ToolsConfig = {
       maxChars?: number;
       /** Hard cap for maxChars (tool or config), defaults to 50000. */
       maxCharsCap?: number;
+      /** Max response bytes downloaded before truncation. */
+      maxResponseBytes?: number;
       /** Timeout in seconds for fetch requests. */
       timeoutSeconds?: number;
       /** Cache TTL in minutes for fetched content. */

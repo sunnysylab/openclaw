@@ -4,6 +4,7 @@ import {
   classifyPortListener,
   formatPortDiagnostics,
   formatPortListener,
+  isLoopbackDualStackGatewayListenerSet,
 } from "./ports-format.js";
 
 describe("ports-format", () => {
@@ -62,6 +63,44 @@ describe("ports-format", () => {
       "pid ?: ssh (127.0.0.1:18789)",
     );
     expect(formatPortListener({})).toBe("pid ?: unknown");
+  });
+
+  it("detects same-pid loopback dual-stack gateway listeners", () => {
+    expect(
+      isLoopbackDualStackGatewayListenerSet(
+        [
+          {
+            pid: 685632,
+            commandLine: "openclaw-gateway run",
+            address: "127.0.0.1:18789",
+          },
+          {
+            pid: 685632,
+            commandLine: "openclaw-gateway run",
+            address: "[::1]:18789",
+          },
+        ],
+        18789,
+      ),
+    ).toBe(true);
+
+    expect(
+      isLoopbackDualStackGatewayListenerSet(
+        [
+          {
+            pid: 685632,
+            commandLine: "openclaw-gateway run",
+            address: "127.0.0.1:18789",
+          },
+          {
+            pid: 685633,
+            commandLine: "openclaw-gateway run",
+            address: "[::1]:18789",
+          },
+        ],
+        18789,
+      ),
+    ).toBe(false);
   });
 
   it("formats free and busy port diagnostics", () => {

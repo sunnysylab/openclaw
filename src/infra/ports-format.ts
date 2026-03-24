@@ -19,6 +19,63 @@ export function classifyPortListener(listener: PortListener, port: number): Port
   return "unknown";
 }
 
+function normalizeListenerAddress(address: string): string {
+  return address
+    .replace(/^TCP\s+/i, "")
+    .replace(/\s+\(LISTEN\)\s*$/i, "")
+    .trim();
+}
+
+function extractListenerHost(address: string | undefined): string | null {
+  if (!address) {
+    return null;
+  }
+  const normalized = normalizeListenerAddress(address);
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.startsWith("[")) {
+    const end = normalized.indexOf("]");
+    if (end > 1) {
+      return normalized.slice(1, end).toLowerCase();
+    }
+  }
+  if (/^[^:]+:\d+$/.test(normalized)) {
+    return normalized.replace(/:\d+$/, "").toLowerCase();
+  }
+  return normalized.toLowerCase();
+}
+
+export function isLoopbackDualStackGatewayListenerSet(
+  listeners: PortListener[],
+  port: number,
+): boolean {
+  if (listeners.length < 2) {
+    return false;
+  }
+  const pids = listeners.map((listener) => listener.pid);
+  if (pids.some((pid) => !Number.isFinite(pid))) {
+    return false;
+  }
+  if (new Set(pids).size !== 1) {
+    return false;
+  }
+  if (!listeners.every((listener) => classifyPortListener(listener, port) === "gateway")) {
+    return false;
+  }
+  const hosts = new Set(
+    listeners
+      .map((listener) => extractListenerHost(listener.address))
+      .filter((host): host is string => Boolean(host)),
+  );
+  return (
+    hosts.size >= 2 &&
+    hosts.has("127.0.0.1") &&
+    hosts.has("::1") &&
+    [...hosts].every((host) => host === "127.0.0.1" || host === "::1")
+  );
+}
+
 export function buildPortHints(listeners: PortListener[], port: number): string[] {
   if (listeners.length === 0) {
     return [];

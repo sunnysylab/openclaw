@@ -1,7 +1,8 @@
 import type { ProgressReporter } from "../../cli/progress.js";
 import { formatConfigIssueLine } from "../../config/issue-format.js";
 import { resolveGatewayLogPaths } from "../../daemon/launchd.js";
-import { formatPortDiagnostics } from "../../infra/ports.js";
+import { formatPortDiagnostics, isLoopbackDualStackGatewayListenerSet } from "../../infra/ports.js";
+import type { PortListener } from "../../infra/ports.js";
 import {
   type RestartSentinelPayload,
   summarizeRestartSentinel,
@@ -22,7 +23,7 @@ type ConfigSnapshotLike = {
   issues?: ConfigIssueLike[] | null;
 };
 
-type PortUsageLike = { listeners: unknown[] };
+type PortUsageLike = { listeners: PortListener[] };
 
 type TailscaleStatusLike = {
   backendState: string | null;
@@ -139,9 +140,16 @@ export async function appendStatusAllDiagnosis(params: {
   }
 
   if (params.portUsage) {
-    const portOk = params.portUsage.listeners.length === 0;
+    const benignDualStackGatewayPort =
+      params.gatewayReachable &&
+      isLoopbackDualStackGatewayListenerSet(params.portUsage.listeners, params.port);
+    const portOk = params.portUsage.listeners.length === 0 || benignDualStackGatewayPort;
     emitCheck(`Port ${params.port}`, portOk ? "ok" : "warn");
-    if (!portOk) {
+    if (benignDualStackGatewayPort) {
+      lines.push(
+        `  ${muted("Loopback dual-stack gateway listener detected on 127.0.0.1 and ::1 from the same PID.")}`,
+      );
+    } else if (!portOk) {
       for (const line of formatPortDiagnostics(params.portUsage as never)) {
         lines.push(`  ${muted(line)}`);
       }
