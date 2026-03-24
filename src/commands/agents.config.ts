@@ -1,5 +1,6 @@
 import {
   listAgentEntries,
+  listAllAgentEntries,
   resolveAgentDir,
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
@@ -17,6 +18,7 @@ import { normalizeAgentId } from "../routing/session-key.js";
 export type AgentSummary = {
   id: string;
   name?: string;
+  enabled: boolean;
   identityName?: string;
   identityEmoji?: string;
   identitySource?: "identity" | "config";
@@ -33,7 +35,7 @@ export type AgentSummary = {
 type AgentEntry = NonNullable<NonNullable<OpenClawConfig["agents"]>["list"]>[number];
 
 export type AgentIdentity = AgentIdentityFile;
-export { listAgentEntries };
+export { listAgentEntries, listAllAgentEntries };
 
 export function findAgentEntryIndex(list: AgentEntry[], agentId: string): number {
   const id = normalizeAgentId(agentId);
@@ -41,14 +43,14 @@ export function findAgentEntryIndex(list: AgentEntry[], agentId: string): number
 }
 
 function resolveAgentName(cfg: OpenClawConfig, agentId: string) {
-  const entry = listAgentEntries(cfg).find(
+  const entry = listAllAgentEntries(cfg).find(
     (agent) => normalizeAgentId(agent.id) === normalizeAgentId(agentId),
   );
   return entry?.name?.trim() || undefined;
 }
 
 function resolveAgentModel(cfg: OpenClawConfig, agentId: string) {
-  const entry = listAgentEntries(cfg).find(
+  const entry = listAllAgentEntries(cfg).find(
     (agent) => normalizeAgentId(agent.id) === normalizeAgentId(agentId),
   );
   if (entry?.model) {
@@ -83,7 +85,7 @@ export function loadAgentIdentity(workspace: string): AgentIdentity | null {
 
 export function buildAgentSummaries(cfg: OpenClawConfig): AgentSummary[] {
   const defaultAgentId = normalizeAgentId(resolveDefaultAgentId(cfg));
-  const configuredAgents = listAgentEntries(cfg);
+  const configuredAgents = listAllAgentEntries(cfg);
   const orderedIds =
     configuredAgents.length > 0
       ? configuredAgents.map((agent) => normalizeAgentId(agent.id))
@@ -109,9 +111,11 @@ export function buildAgentSummaries(cfg: OpenClawConfig): AgentSummary[] {
       : configIdentity && (identityName || identityEmoji)
         ? "config"
         : undefined;
+    const entry = configuredAgents.find((agent) => normalizeAgentId(agent.id) === id);
     return {
       id,
       name: resolveAgentName(cfg, id),
+      enabled: entry?.enabled !== false,
       identityName,
       identityEmoji,
       identitySource,
@@ -136,7 +140,7 @@ export function applyAgentConfig(
 ): OpenClawConfig {
   const agentId = normalizeAgentId(params.agentId);
   const name = params.name?.trim();
-  const list = listAgentEntries(cfg);
+  const list = listAllAgentEntries(cfg);
   const index = findAgentEntryIndex(list, agentId);
   const base = index >= 0 ? list[index] : { id: agentId };
   const nextEntry: AgentEntry = {
@@ -173,7 +177,7 @@ export function pruneAgentConfig(
   removedAllow: number;
 } {
   const id = normalizeAgentId(agentId);
-  const agents = listAgentEntries(cfg);
+  const agents = listAllAgentEntries(cfg);
   const nextAgentsList = agents.filter((entry) => normalizeAgentId(entry.id) !== id);
   const nextAgents = nextAgentsList.length > 0 ? nextAgentsList : undefined;
 
