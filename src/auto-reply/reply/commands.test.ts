@@ -107,14 +107,19 @@ vi.mock("./commands-context-report.js", () => ({
 
 vi.resetModules();
 
-const { addSubagentRunForTests, listSubagentRunsForRequester, resetSubagentRegistryForTests } =
-  await import("../../agents/subagent-registry.js");
+const {
+  addSubagentRunForTests,
+  getSubagentRunByChildSessionKey,
+  listSubagentRunsForRequester,
+  resetSubagentRegistryForTests,
+} = await import("../../agents/subagent-registry.js");
 const { setDefaultChannelPluginRegistryForTests } =
   await import("../../commands/channel-test-helpers.js");
 const internalHooks = await import("../../hooks/internal-hooks.js");
 const { clearPluginCommands, registerPluginCommand } = await import("../../plugins/commands.js");
 const { abortEmbeddedPiRun, compactEmbeddedPiSession } =
   await import("../../agents/pi-embedded.js");
+const { __testing: subagentControlTesting } = await import("../../agents/subagent-control.js");
 const { resetBashChatCommandForTests } = await import("./bash-command.js");
 const { handleCompactCommand } = await import("./commands-compact.js");
 const { buildCommandsPaginationKeyboard } = await import("./commands-info.js");
@@ -133,10 +138,17 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await fs.rm(testWorkspaceDir, { recursive: true, force: true });
+  await fs.rm(testWorkspaceDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 50,
+  });
 });
 
 beforeEach(() => {
+  vi.useRealTimers();
+  vi.clearAllTimers();
   setDefaultChannelPluginRegistryForTests();
   readConfigFileSnapshotMock.mockImplementation(async () => {
     const configPath = process.env.OPENCLAW_CONFIG_PATH;
@@ -179,7 +191,12 @@ async function withTempConfigPath<T>(
     } else {
       process.env.OPENCLAW_CONFIG_PATH = previous;
     }
-    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 50,
+    });
   }
 }
 
@@ -805,6 +822,48 @@ describe("handleCommands owner gating for privileged show commands", () => {
       const result = await handleCommands(testCase.build());
       testCase.assert(result);
     }
+  });
+
+  it("returns an explicit unauthorized reply for native privileged commands", async () => {
+    const configParams = buildParams(
+      "/config show",
+      {
+        commands: { config: true, text: true },
+        channels: { discord: { dm: { enabled: true, policy: "open" } } },
+      } as OpenClawConfig,
+      {
+        Provider: "discord",
+        Surface: "discord",
+        CommandSource: "native",
+      },
+    );
+    configParams.command.senderIsOwner = false;
+
+    const configResult = await handleCommands(configParams);
+    expect(configResult).toEqual({
+      shouldContinue: false,
+      reply: { text: "You are not authorized to use this command." },
+    });
+
+    const pluginParams = buildParams(
+      "/plugins list",
+      {
+        commands: { plugins: true, text: true },
+        channels: { discord: { dm: { enabled: true, policy: "open" } } },
+      } as OpenClawConfig,
+      {
+        Provider: "discord",
+        Surface: "discord",
+        CommandSource: "native",
+      },
+    );
+    pluginParams.command.senderIsOwner = false;
+
+    const pluginResult = await handleCommands(pluginParams);
+    expect(pluginResult).toEqual({
+      shouldContinue: false,
+      reply: { text: "You are not authorized to use this command." },
+    });
   });
 });
 
@@ -1586,7 +1645,10 @@ describe("handleCommands context", () => {
 describe("handleCommands subagents", () => {
   beforeEach(() => {
     resetSubagentRegistryForTests();
-    callGatewayMock.mockClear().mockImplementation(async () => ({}));
+    callGatewayMock.mockReset().mockImplementation(async () => ({}));
+    subagentControlTesting.setDepsForTest({
+      callGateway: (opts: unknown) => callGatewayMock(opts),
+    });
   });
 
   it("lists subagents when none exist", async () => {
@@ -1914,6 +1976,46 @@ describe("handleCommands subagents", () => {
     const result = await handleCommands(params);
     expect(result.shouldContinue).toBe(false);
     expect(result.reply).toBeUndefined();
+  });
+
+  it("kills descendants when numeric target 1 is an ended orchestrator still waiting on children", async () => {
+    const now = Date.now();
+    const parentKey = "agent:main:subagent:orchestrator-ended";
+    const childKey = "agent:main:subagent:orchestrator-ended:subagent:worker";
+
+    addSubagentRunForTests({
+      runId: "run-orchestrator-ended",
+      childSessionKey: parentKey,
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "orchestrate child workers",
+      cleanup: "keep",
+      createdAt: now - 120_000,
+      startedAt: now - 120_000,
+      endedAt: now - 110_000,
+      outcome: { status: "ok" },
+    });
+    addSubagentRunForTests({
+      runId: "run-orchestrator-child-active",
+      childSessionKey: childKey,
+      requesterSessionKey: parentKey,
+      requesterDisplayKey: "subagent:orchestrator-ended",
+      task: "child worker still running",
+      cleanup: "keep",
+      createdAt: now - 60_000,
+      startedAt: now - 60_000,
+    });
+
+    const cfg = {
+      commands: { text: true },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+    } as OpenClawConfig;
+    const params = buildParams("/kill 1", cfg);
+    const result = await handleCommands(params);
+
+    expect(result.shouldContinue).toBe(false);
+    expect(result.reply).toBeUndefined();
+    expect(getSubagentRunByChildSessionKey(childKey)?.endedAt).toBeTypeOf("number");
   });
 
   it("sends follow-up messages to finished subagents", async () => {

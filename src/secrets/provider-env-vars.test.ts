@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getProviderEnvVars,
   listKnownProviderAuthEnvVarNames,
   listKnownSecretEnvVarNames,
   omitEnvKeysCaseInsensitive,
@@ -55,5 +56,11 @@ describe("provider env vars", () => {
     expect(env.OpenAI_Api_Key).toBeUndefined();
     expect(env.Github_Token).toBeUndefined();
     expect(env.OPENCLAW_API_KEY).toBe("keep-me");
+  });
+
+  it("ignores prototype-chain keys when resolving provider env vars", () => {
+    expect(getProviderEnvVars("__proto__")).toEqual([]);
+    expect(getProviderEnvVars("constructor")).toEqual([]);
+    expect(getProviderEnvVars("openai")).toEqual(["OPENAI_API_KEY"]);
   });
 });

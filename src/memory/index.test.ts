@@ -179,10 +179,21 @@ describe("memory index", () => {
   function resetManagerForTest(manager: MemoryIndexManager) {
     // These tests reuse managers for performance. Clear the index + embedding
     // cache to keep each test fully isolated.
+    const db = (
+      manager as unknown as {
+        db: {
+          exec: (sql: string) => void;
+          prepare: (sql: string) => { get: (name: string) => { name?: string } | undefined };
+        };
+      }
+    ).db;
     (manager as unknown as { resetIndex: () => void }).resetIndex();
-    (manager as unknown as { db: { exec: (sql: string) => void } }).db.exec(
-      "DELETE FROM embedding_cache",
-    );
+    const embeddingCacheTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get("embedding_cache");
+    if (embeddingCacheTable?.name === "embedding_cache") {
+      db.exec("DELETE FROM embedding_cache");
+    }
     (manager as unknown as { dirty: boolean }).dirty = true;
     (manager as unknown as { sessionsDirty: boolean }).sessionsDirty = false;
   }
@@ -205,6 +216,7 @@ describe("memory index", () => {
     vectorEnabled?: boolean;
     cacheEnabled?: boolean;
     minScore?: number;
+    onSearch?: boolean;
     hybrid?: { enabled: boolean; vectorWeight?: number; textWeight?: number };
   }): TestCfg {
     return {
@@ -218,7 +230,7 @@ describe("memory index", () => {
             store: { path: params.storePath, vector: { enabled: params.vectorEnabled ?? false } },
             // Perf: keep test indexes to a single chunk to reduce sqlite work.
             chunking: { tokens: 4000, overlap: 0 },
-            sync: { watch: false, onSessionStart: false, onSearch: true },
+            sync: { watch: false, onSessionStart: false, onSearch: params.onSearch ?? true },
             query: {
               minScore: params.minScore ?? 0,
               hybrid: params.hybrid ?? { enabled: false },
@@ -406,6 +418,7 @@ describe("memory index", () => {
     const firstManager = requireManager(first);
     await firstManager.sync?.({ reason: "test" });
     await firstManager.close?.();
+    const providerCallsBeforeStatus = providerCalls.length;
 
     const statusOnly = await getMemorySearchManager({
       cfg,
@@ -415,7 +428,33 @@ describe("memory index", () => {
     const statusManager = requireManager(statusOnly, "status manager missing");
     const status = statusManager.status();
     expect(status.dirty).toBe(false);
+    expect(status.provider).toBe("openai");
+    expect(providerCalls).toHaveLength(providerCallsBeforeStatus);
     await statusManager.close?.();
+  });
+
+  it("does not cache builtin status-only managers across repeated requests", async () => {
+    const cfg = createCfg({
+      storePath: path.join(workspaceDir, `index-status-${randomUUID()}.sqlite`),
+    });
+
+    const first = await getMemorySearchManager({
+      cfg,
+      agentId: "main",
+      purpose: "status",
+    });
+    const second = await getMemorySearchManager({
+      cfg,
+      agentId: "main",
+      purpose: "status",
+    });
+
+    const firstManager = requireManager(first, "first status manager missing");
+    const secondManager = requireManager(second, "second status manager missing");
+    expect(secondManager).not.toBe(firstManager);
+
+    await firstManager.close?.();
+    await secondManager.close?.();
   });
 
   it("reindexes sessions when source config adds sessions to an existing index", async () => {
@@ -919,6 +958,7 @@ describe("memory index", () => {
 
     const result = await getMemorySearchManager({ cfg, agentId: "main" });
     const manager = requireManager(result);
+    await manager.probeEmbeddingAvailability();
 
     expect(
       providerCalls.some(
@@ -928,6 +968,25 @@ describe("memory index", () => {
           call.outputDimensionality === 1536,
       ),
     ).toBe(true);
+    await manager.close?.();
+  });
+
+  it("does not initialize the provider when searching an empty index", async () => {
+    const cfg = createCfg({
+      storePath: path.join(workspaceDir, `index-empty-${randomUUID()}.sqlite`),
+      provider: "gemini",
+      model: "gemini-embedding-2-preview",
+      outputDimensionality: 1536,
+      onSearch: false,
+    });
+
+    const result = await getMemorySearchManager({ cfg, agentId: "main" });
+    const manager = requireManager(result);
+
+    const results = await manager.search("hello");
+
+    expect(results).toEqual([]);
+    expect(providerCalls).toEqual([]);
     await manager.close?.();
   });
 

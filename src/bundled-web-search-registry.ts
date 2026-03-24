@@ -1,4 +1,6 @@
 import bravePlugin from "../extensions/brave/index.js";
+import duckduckgoPlugin from "../extensions/duckduckgo/index.js";
+import exaPlugin from "../extensions/exa/index.js";
 import firecrawlPlugin from "../extensions/firecrawl/index.js";
 import googlePlugin from "../extensions/google/index.js";
 import moonshotPlugin from "../extensions/moonshot/index.js";
@@ -13,14 +15,61 @@ type RegistrablePlugin = {
 };
 
 export const bundledWebSearchPluginRegistrations: ReadonlyArray<{
-  plugin: RegistrablePlugin;
+  readonly plugin: RegistrablePlugin;
   credentialValue: unknown;
 }> = [
-  { plugin: bravePlugin, credentialValue: "BSA-test" },
-  { plugin: firecrawlPlugin, credentialValue: "fc-test" },
-  { plugin: googlePlugin, credentialValue: "AIza-test" },
-  { plugin: moonshotPlugin, credentialValue: "sk-test" },
-  { plugin: perplexityPlugin, credentialValue: "pplx-test" },
-  { plugin: tavilyPlugin, credentialValue: "tvly-test" },
-  { plugin: xaiPlugin, credentialValue: "xai-test" },
+  {
+    get plugin() {
+      return bravePlugin;
+    },
+    credentialValue: "BSA-test",
+  },
+  {
+    get plugin() {
+      return exaPlugin;
+    },
+    credentialValue: "exa-test",
+  },
+  {
+    get plugin() {
+      return duckduckgoPlugin;
+    },
+    credentialValue: "duckduckgo-no-key-needed",
+  },
+  {
+    get plugin() {
+      return firecrawlPlugin;
+    },
+    credentialValue: "fc-test",
+  },
+  {
+    get plugin() {
+      return googlePlugin;
+    },
+    credentialValue: "AIza-test",
+  },
+  {
+    get plugin() {
+      return moonshotPlugin;
+    },
+    credentialValue: "sk-test",
+  },
+  {
+    get plugin() {
+      return perplexityPlugin;
+    },
+    credentialValue: "pplx-test",
+  },
+  {
+    get plugin() {
+      return tavilyPlugin;
+    },
+    credentialValue: "tvly-test",
+  },
+  {
+    get plugin() {
+      return xaiPlugin;
+    },
+    credentialValue: "xai-test",
+  },
 ];
