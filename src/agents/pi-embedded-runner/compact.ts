@@ -155,6 +155,7 @@ export type CompactEmbeddedPiSessionParams = {
   tokenBudget?: number;
   force?: boolean;
   trigger?: "overflow" | "manual";
+  /** Preserve the original run trigger when compaction is entered from a retry path. */
   sourceTrigger?: EmbeddedRunTrigger;
   diagId?: string;
   attempt?: number;
@@ -172,6 +173,7 @@ function shouldInjectHeartbeatPromptDuringCompaction(params: {
   isDefaultAgent: boolean;
   sourceTrigger?: EmbeddedRunTrigger;
 }): boolean {
+  // Undefined falls back to the default policy, which keeps heartbeat injection enabled.
   return params.isDefaultAgent && shouldInjectHeartbeatPromptForTrigger(params.sourceTrigger);
 }
 

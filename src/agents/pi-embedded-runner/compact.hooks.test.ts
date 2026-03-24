@@ -124,6 +124,9 @@ describe("compaction heartbeat prompt policy", () => {
         sourceTrigger: "memory",
       }),
     ).toBe(true);
+  });
+
+  it("does not inject heartbeat prompt for non-default agents", () => {
     expect(
       compactTesting.shouldInjectHeartbeatPromptDuringCompaction({
         isDefaultAgent: false,

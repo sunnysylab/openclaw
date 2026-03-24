@@ -135,6 +135,33 @@ describe("runEmbeddedPiAgent overflow compaction trigger routing", () => {
     );
   });
 
+  it("preserves the original run trigger when overflow recovery compaction runs", async () => {
+    mockedRunEmbeddedAttempt
+      .mockResolvedValueOnce(makeAttemptResult({ promptError: makeOverflowError() }))
+      .mockResolvedValueOnce(makeAttemptResult({ promptError: null }));
+    mockedCompactDirect.mockResolvedValueOnce(
+      makeCompactionSuccess({
+        summary: "Compacted session",
+        firstKeptEntryId: "entry-8",
+        tokensBefore: 160000,
+      }),
+    );
+
+    await runEmbeddedPiAgent({
+      ...overflowBaseRunParams,
+      trigger: "cron",
+    });
+
+    expect(mockedCompactDirect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeContext: expect.objectContaining({
+          trigger: "overflow",
+          sourceTrigger: "cron",
+        }),
+      }),
+    );
+  });
+
   it("passes observed overflow token counts into compaction when providers report them", async () => {
     const overflowError = new Error(
       '400 {"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: 277403 tokens > 200000 maximum"}}',
