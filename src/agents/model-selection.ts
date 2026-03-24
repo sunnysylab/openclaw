@@ -12,6 +12,7 @@ import {
   resolveAgentEffectiveModelPrimary,
   resolveAgentModelFallbacksOverride,
 } from "./agent-scope.js";
+import { ANTHROPIC_MODEL_ALIASES } from "./anthropic-model-aliases.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
 import type { ModelCatalogEntry } from "./model-catalog.js";
 import { normalizeGoogleModelId, normalizeXaiModelId } from "./model-id-normalization.js";
