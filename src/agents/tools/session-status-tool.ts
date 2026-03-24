@@ -11,6 +11,7 @@ import {
   updateSessionStore,
 } from "../../config/sessions.js";
 import { loadCombinedSessionStoreForGateway } from "../../gateway/session-utils.js";
+import { formatUtcTimestamp } from "../../infra/format-time/format-datetime.js";
 import {
   formatUsageWindowSummary,
   loadProviderUsageSummary,
@@ -25,7 +26,12 @@ import {
 import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
 import { resolvePreferredSessionKeyForSessionIdMatches } from "../../sessions/session-id-resolution.js";
 import { resolveAgentDir } from "../agent-scope.js";
-import { formatUserTime, resolveUserTimeFormat, resolveUserTimezone } from "../date-time.js";
+import {
+  formatUserLocalIsoTimestamp,
+  formatUserTime,
+  resolveUserTimeFormat,
+  resolveUserTimezone,
+} from "../date-time.js";
 import { resolveModelAuthLabel } from "../model-auth-label.js";
 import { loadModelCatalog } from "../model-catalog.js";
 import {
@@ -466,10 +472,19 @@ export function createSessionStatusTool(opts?: {
 
       const userTimezone = resolveUserTimezone(cfg.agents?.defaults?.userTimezone);
       const userTimeFormat = resolveUserTimeFormat(cfg.agents?.defaults?.timeFormat);
-      const userTime = formatUserTime(new Date(), userTimezone, userTimeFormat);
+      const now = new Date();
+      const userTime = formatUserTime(now, userTimezone, userTimeFormat);
+      const localIsoTime = formatUserLocalIsoTimestamp(now, userTimezone);
+      const utcIsoTime = formatUtcTimestamp(now, { displaySeconds: true });
+      const machineTimeSegments = [
+        localIsoTime ? `local ISO ${localIsoTime}` : null,
+        `UTC ${utcIsoTime}`,
+      ]
+        .filter(Boolean)
+        .join(" / ");
       const timeLine = userTime
-        ? `🕒 Time: ${userTime} (${userTimezone})`
-        : `🕒 Time zone: ${userTimezone}`;
+        ? `🕒 Time: ${userTime} (${userTimezone}) / ${machineTimeSegments}`
+        : `🕒 Time zone: ${userTimezone} / ${machineTimeSegments}`;
 
       const agentDefaults = cfg.agents?.defaults ?? {};
       const defaultLabel = `${configured.provider}/${configured.model}`;
