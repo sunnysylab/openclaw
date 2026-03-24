@@ -1036,6 +1036,7 @@ export async function startGatewayServer(
   const execApprovalForwarder = createExecApprovalForwarder();
   const execApprovalHandlers = createExecApprovalHandlers(execApprovalManager, {
     forwarder: execApprovalForwarder,
+    config: cfg,
   });
   const secretsHandlers = createSecretsHandlers({
     reloadSecrets: async () => {
