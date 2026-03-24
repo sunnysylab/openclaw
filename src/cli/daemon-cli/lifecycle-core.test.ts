@@ -210,4 +210,180 @@ describe("runServiceRestart token drift", () => {
     expect(payload.result).toBe("scheduled");
     expect(payload.message).toBe("restart scheduled, gateway will restart momentarily");
   });
+
+  describe("repairNotLoaded (#43602)", () => {
+    it("start: repairs unloaded service when repairNotLoaded succeeds", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: true });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      await runServiceStart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => [],
+        opts: { json: true },
+      });
+
+      expect(repairNotLoaded).toHaveBeenCalledTimes(1);
+      // Repair already started the service (bootstrap → kickstart), so
+      // service.restart() should NOT be called — avoids double-kickstart.
+      expect(service.restart).not.toHaveBeenCalled();
+      const jsonLine = runtimeLogs.find((line) => line.trim().startsWith("{"));
+      const payload = JSON.parse(jsonLine ?? "{}") as { result?: string };
+      expect(payload.result).toBe("started");
+    });
+
+    it("start: falls through to hints when repairNotLoaded returns ok:false", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: false });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      await runServiceStart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => ["openclaw gateway install"],
+        opts: { json: true },
+      });
+
+      expect(repairNotLoaded).toHaveBeenCalledTimes(1);
+      expect(service.restart).not.toHaveBeenCalled();
+      const jsonLine = runtimeLogs.find((line) => line.trim().startsWith("{"));
+      const payload = JSON.parse(jsonLine ?? "{}") as { result?: string; hints?: string[] };
+      expect(payload.result).toBe("not-loaded");
+      expect(payload.hints).toContain("openclaw gateway install");
+    });
+
+    it("start: falls through to hints when repairNotLoaded throws", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockRejectedValue(new Error("launchctl failed"));
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      await runServiceStart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => ["openclaw gateway install"],
+        opts: { json: true },
+      });
+
+      expect(repairNotLoaded).toHaveBeenCalledTimes(1);
+      expect(service.restart).not.toHaveBeenCalled();
+      const jsonLine = runtimeLogs.find((line) => line.trim().startsWith("{"));
+      const payload = JSON.parse(jsonLine ?? "{}") as { result?: string };
+      expect(payload.result).toBe("not-loaded");
+    });
+
+    it("start: does not call repairNotLoaded when service is already loaded", async () => {
+      service.isLoaded.mockResolvedValue(true);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: true });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      await runServiceStart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => [],
+        opts: { json: true },
+      });
+
+      expect(repairNotLoaded).not.toHaveBeenCalled();
+    });
+
+    it("restart: repairs unloaded service when onNotLoaded returns null", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: true });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      const result = await runServiceRestart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => [],
+        opts: { json: true },
+        onNotLoaded: async () => null,
+      });
+
+      expect(result).toBe(true);
+      expect(repairNotLoaded).toHaveBeenCalledTimes(1);
+      const jsonLine = runtimeLogs.find((line) => line.trim().startsWith("{"));
+      const payload = JSON.parse(jsonLine ?? "{}") as { result?: string; message?: string };
+      expect(payload.result).toBe("restarted");
+      expect(payload.message).toContain("re-registered");
+    });
+
+    it("restart: skips repair when onNotLoaded handles it", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: true });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      const result = await runServiceRestart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => [],
+        opts: { json: true },
+        onNotLoaded: async () => ({
+          result: "restarted" as const,
+          message: "handled by SIGUSR1",
+        }),
+      });
+
+      expect(result).toBe(true);
+      expect(repairNotLoaded).not.toHaveBeenCalled();
+    });
+
+    it("restart: does not double-log repair message in non-JSON mode", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: true });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      const result = await runServiceRestart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => [],
+        opts: { json: false },
+        onNotLoaded: async () => null,
+      });
+
+      expect(result).toBe(true);
+      expect(repairNotLoaded).toHaveBeenCalledTimes(1);
+      // The re-registered message should appear exactly once in non-JSON output
+      const reRegisterLogs = runtimeLogs.filter((line) => line.includes("re-registered"));
+      expect(reRegisterLogs).toHaveLength(1);
+    });
+
+    it("restart: does not call service.restart after successful repair (no double-kickstart)", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: true });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      await runServiceRestart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => [],
+        opts: { json: true },
+        onNotLoaded: async () => null,
+      });
+
+      // repairLaunchAgentBootstrap already kickstarted the service.
+      // service.restart() should NOT be called — avoids redundant kill+restart.
+      expect(service.restart).not.toHaveBeenCalled();
+    });
+
+    it("restart: falls through to hints when repair returns ok:false", async () => {
+      service.isLoaded.mockResolvedValue(false);
+      const repairNotLoaded = vi.fn().mockResolvedValue({ ok: false });
+      const serviceWithRepair = { ...service, repairNotLoaded };
+
+      const result = await runServiceRestart({
+        serviceNoun: "Gateway",
+        service: serviceWithRepair,
+        renderStartHints: () => ["openclaw gateway install"],
+        opts: { json: true },
+        onNotLoaded: async () => null,
+      });
+
+      expect(result).toBe(false);
+      expect(repairNotLoaded).toHaveBeenCalledTimes(1);
+      const jsonLine = runtimeLogs.find((line) => line.trim().startsWith("{"));
+      const payload = JSON.parse(jsonLine ?? "{}") as { result?: string };
+      expect(payload.result).toBe("not-loaded");
+    });
+  });
 });
