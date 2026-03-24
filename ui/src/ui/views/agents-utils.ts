@@ -574,6 +574,7 @@ function resolveConfiguredModels(
 export function buildModelOptions(
   configForm: Record<string, unknown> | null,
   current?: string | null,
+  selected?: string | null,
 ) {
   const options = resolveConfiguredModels(configForm);
   const hasCurrent = current ? options.some((option) => option.value === current) : false;
@@ -585,9 +586,10 @@ export function buildModelOptions(
       <option value="" disabled>No configured models</option>
     `;
   }
+  const sel = selected !== undefined ? selected : current;
   return options.map(
     (option) =>
-      html`<option value=${option.value} ?selected=${option.value === current}>${option.label}</option>`,
+      html`<option value=${option.value} ?selected=${option.value === sel}>${option.label}</option>`,
   );
 }
 
