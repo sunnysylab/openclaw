@@ -449,20 +449,27 @@ export function buildStatusMessage(args: StatusArgs): string {
   });
   let activeProvider = modelRefs.active.provider;
   let activeModel = modelRefs.active.model;
-  let contextTokens =
-    resolveContextTokensForModel({
-      cfg: contextConfig,
-      provider: activeProvider,
-      model: activeModel,
-      contextTokensOverride:
-        args.runtimeContextTokens ??
-        args.explicitConfiguredContextTokens ??
-        entry?.contextTokens ??
-        args.agent?.contextTokens,
-      fallbackContextTokens: DEFAULT_CONTEXT_TOKENS,
-    }) ?? DEFAULT_CONTEXT_TOKENS;
-  let inputTokens = entry?.inputTokens;
-  let outputTokens = entry?.outputTokens;
+
+  const selectedModelLabel = modelRefs.selected.label || "unknown";
+  const activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
+  const fallbackState = resolveActiveFallbackState({
+    selectedModelRef: selectedModelLabel,
+    activeModelRef: activeModelLabel,
+    state: entry,
+  });
+
+  let contextTokens = resolveContextTokensForModel({
+    cfg: contextConfig,
+    provider: activeProvider,
+    model: activeModel,
+    contextTokensOverride:
+      args.runtimeContextTokens ??
+      (!fallbackState.active ? args.explicitConfiguredContextTokens : undefined) ??
+      entry?.contextTokens ??
+      args.agent?.contextTokens,
+  });
+
+  let inputTokens = entry?.inputTokens;  let outputTokens = entry?.outputTokens;
   let cacheRead = entry?.cacheRead;
   let cacheWrite = entry?.cacheWrite;
   const freshTotal = resolveFreshSessionTotalTokens(entry);
@@ -512,20 +519,19 @@ export function buildStatusMessage(args: StatusArgs): string {
           resolveContextTokensForModel({
             cfg: contextConfig,
             model: logUsage.model,
-            fallbackContextTokens: contextTokens ?? undefined,
           }) ?? contextTokens;
-      }
-      if (!inputTokens || inputTokens === 0) {
+      }      if (!inputTokens || inputTokens === 0) {
         inputTokens = logUsage.input;
       }
       if (!outputTokens || outputTokens === 0) {
         outputTokens = logUsage.output;
       }
     }
-  }
+    }
 
-  const thinkLevel =
-    args.resolvedThink ?? args.sessionEntry?.thinkingLevel ?? args.agent?.thinkingDefault ?? "off";
+    contextTokens ??= DEFAULT_CONTEXT_TOKENS;
+
+    const thinkLevel =    args.resolvedThink ?? args.sessionEntry?.thinkingLevel ?? args.agent?.thinkingDefault ?? "off";
   const verboseLevel =
     args.resolvedVerbose ?? args.sessionEntry?.verboseLevel ?? args.agent?.verboseDefault ?? "off";
   const fastMode = args.resolvedFast ?? args.sessionEntry?.fastMode ?? false;
@@ -598,17 +604,9 @@ export function buildStatusMessage(args: StatusArgs): string {
   const activeAuthLabelValue =
     args.activeModelAuth ??
     (activeAuthMode && activeAuthMode !== "unknown" ? activeAuthMode : undefined);
-  const selectedModelLabel = modelRefs.selected.label || "unknown";
-  const activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
-  const fallbackState = resolveActiveFallbackState({
-    selectedModelRef: selectedModelLabel,
-    activeModelRef: activeModelLabel,
-    state: entry,
-  });
   const effectiveCostAuthMode = fallbackState.active
     ? activeAuthMode
-    : (selectedAuthMode ?? activeAuthMode);
-  const showCost = effectiveCostAuthMode === "api-key" || effectiveCostAuthMode === "mixed";
+    : (selectedAuthMode ?? activeAuthMode);  const showCost = effectiveCostAuthMode === "api-key" || effectiveCostAuthMode === "mixed";
   const costConfig = showCost
     ? resolveModelCostConfig({
         provider: activeProvider,
