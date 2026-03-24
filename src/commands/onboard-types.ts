@@ -139,6 +139,7 @@ export type OnboardOptions = {
   veniceApiKey?: string;
   togetherApiKey?: string;
   huggingfaceApiKey?: string;
+  hpcAiApiKey?: string;
   opencodeZenApiKey?: string;
   opencodeGoApiKey?: string;
   xaiApiKey?: string;

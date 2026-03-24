@@ -71,8 +71,6 @@ const MODELSTUDIO_NATIVE_BASE_URLS = new Set([
 ]);
 const log = createSubsystemLogger("agents/model-providers");
 
-const ENV_VAR_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
-
 function resolveLiveProviderCatalogTimeoutMs(env: NodeJS.ProcessEnv): number | null {
   const live =
     env.OPENCLAW_LIVE_TEST === "1" || env.OPENCLAW_LIVE_GATEWAY === "1" || env.LIVE === "1";
@@ -103,6 +101,8 @@ function resolveLiveProviderDiscoveryFilter(env: NodeJS.ProcessEnv): string[] | 
     .filter(Boolean);
   return ids.length > 0 ? [...new Set(ids)] : undefined;
 }
+
+const ENV_VAR_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
 
 function normalizeApiKeyConfig(value: string): string {
   const trimmed = value.trim();
@@ -691,19 +691,21 @@ function mergeImplicitProviderSet(
   }
 }
 
-async function resolvePluginImplicitProviders(
+async function mergePluginImplicitProvidersFromDiscovery(
   ctx: ImplicitProviderContext,
-  order: import("../plugins/types.js").ProviderDiscoveryOrder,
-): Promise<Record<string, ProviderConfig> | undefined> {
+  target: Record<string, ProviderConfig>,
+): Promise<void> {
+  // Load bundled provider plugins once per implicit resolve. Previously each discovery
+  // order (simple/profile/paired/late) re-ran resolvePluginDiscoveryProviders, which
+  // calls loadOpenClawPlugins({ cache: false }) — four full plugin loads and easy CI timeouts.
   const onlyPluginIds = resolveLiveProviderDiscoveryFilter(ctx.env);
-  const providers = resolvePluginDiscoveryProviders({
+  const pluginProviders = resolvePluginDiscoveryProviders({
     config: ctx.config,
     workspaceDir: ctx.workspaceDir,
     env: ctx.env,
     onlyPluginIds,
   });
-  const byOrder = groupPluginDiscoveryProvidersByOrder(providers);
-  const discovered: Record<string, ProviderConfig> = {};
+  const byOrder = groupPluginDiscoveryProvidersByOrder(pluginProviders);
   const catalogConfig =
     ctx.explicitProviders && Object.keys(ctx.explicitProviders).length > 0
       ? {
@@ -717,56 +719,63 @@ async function resolvePluginImplicitProviders(
           },
         }
       : (ctx.config ?? {});
-  for (const provider of byOrder[order]) {
-    const catalogRun = runProviderCatalog({
-      provider,
-      config: catalogConfig,
-      agentDir: ctx.agentDir,
-      workspaceDir: ctx.workspaceDir,
-      env: ctx.env,
-      resolveProviderApiKey: (providerId) =>
-        ctx.resolveProviderApiKey(providerId?.trim() || provider.id),
-      resolveProviderAuth: (providerId, options) =>
-        ctx.resolveProviderAuth(providerId?.trim() || provider.id, options),
-    });
-    const timeoutMs = resolveLiveProviderCatalogTimeoutMs(ctx.env);
-    let result: Awaited<ReturnType<typeof runProviderCatalog>>;
-    if (!timeoutMs) {
-      result = await catalogRun;
-    } else {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        result = await Promise.race([
-          catalogRun,
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => {
-              reject(new Error(`provider catalog timed out after ${timeoutMs}ms: ${provider.id}`));
-            }, timeoutMs);
-            timer.unref?.();
-          }),
-        ]);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("provider catalog timed out after")) {
-          log.warn(`${message}; skipping provider discovery`);
-          continue;
-        }
-        throw error;
-      } finally {
-        if (timer) {
-          clearTimeout(timer);
+
+  const orders = ["simple", "profile", "paired", "late"] as const;
+  for (const order of orders) {
+    const discovered: Record<string, ProviderConfig> = {};
+    for (const provider of byOrder[order]) {
+      const catalogRun = runProviderCatalog({
+        provider,
+        config: catalogConfig,
+        agentDir: ctx.agentDir,
+        workspaceDir: ctx.workspaceDir,
+        env: ctx.env,
+        resolveProviderApiKey: (providerId) =>
+          ctx.resolveProviderApiKey(providerId?.trim() || provider.id),
+        resolveProviderAuth: (providerId, options) =>
+          ctx.resolveProviderAuth(providerId?.trim() || provider.id, options),
+      });
+      const timeoutMs = resolveLiveProviderCatalogTimeoutMs(ctx.env);
+      let result: Awaited<ReturnType<typeof runProviderCatalog>>;
+      if (!timeoutMs) {
+        result = await catalogRun;
+      } else {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          result = await Promise.race([
+            catalogRun,
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => {
+                reject(
+                  new Error(`provider catalog timed out after ${timeoutMs}ms: ${provider.id}`),
+                );
+              }, timeoutMs);
+              timer.unref?.();
+            }),
+          ]);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.includes("provider catalog timed out after")) {
+            log.warn(`${message}; skipping provider discovery`);
+            continue;
+          }
+          throw error;
+        } finally {
+          if (timer) {
+            clearTimeout(timer);
+          }
         }
       }
+      mergeImplicitProviderSet(
+        discovered,
+        normalizePluginDiscoveryResult({
+          provider,
+          result,
+        }),
+      );
     }
-    mergeImplicitProviderSet(
-      discovered,
-      normalizePluginDiscoveryResult({
-        provider,
-        result,
-      }),
-    );
+    mergeImplicitProviderSet(target, Object.keys(discovered).length > 0 ? discovered : undefined);
   }
-  return Object.keys(discovered).length > 0 ? discovered : undefined;
 }
 
 export async function resolveImplicitProviders(
@@ -863,10 +872,7 @@ export async function resolveImplicitProviders(
     resolveProviderAuth,
   };
 
-  mergeImplicitProviderSet(providers, await resolvePluginImplicitProviders(context, "simple"));
-  mergeImplicitProviderSet(providers, await resolvePluginImplicitProviders(context, "profile"));
-  mergeImplicitProviderSet(providers, await resolvePluginImplicitProviders(context, "paired"));
-  mergeImplicitProviderSet(providers, await resolvePluginImplicitProviders(context, "late"));
+  await mergePluginImplicitProvidersFromDiscovery(context, providers);
 
   const implicitBedrock = await resolveImplicitBedrockProvider({
     agentDir: params.agentDir,
