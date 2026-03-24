@@ -86,6 +86,25 @@ describe("describeImageWithModel", () => {
       }),
       discoverModels: discoverModelsMock,
     }));
+    // Prevent plugin discovery filesystem scan (discoverOpenClawPlugins) from running on every
+    // vi.resetModules() cycle — bundled hooks don't affect this test's routing/auth assertions.
+    // Transport/compat hooks must also be stubbed: resolveModelWithRegistry calls
+    // normalizeResolvedModel unconditionally after finding a model, which invokes
+    // applyProviderResolvedModelCompatWithPlugins, applyProviderResolvedTransportWithPlugin, and
+    // normalizeProviderTransportWithPlugin — all of which trigger plugin discovery when real.
+    vi.doMock("../plugins/provider-runtime.js", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../plugins/provider-runtime.js")>();
+      return {
+        ...actual,
+        applyProviderResolvedModelCompatWithPlugins: () => undefined,
+        applyProviderResolvedTransportWithPlugin: () => undefined,
+        normalizeProviderResolvedModelWithPlugin: () => undefined,
+        normalizeProviderTransportWithPlugin: () => undefined,
+        runProviderDynamicModel: () => undefined,
+        prepareProviderDynamicModel: async () => {},
+        resolveProviderBuiltInModelSuppression: () => undefined,
+      };
+    });
     ({ describeImageWithModel } = await import("./image.js"));
     vi.clearAllMocks();
     fetchMock.mockResolvedValue({
