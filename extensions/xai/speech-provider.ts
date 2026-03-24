@@ -1,5 +1,5 @@
-import type { SpeechProviderPlugin } from "../../plugins/types.js";
-import type { SpeechVoiceOption } from "../provider-types.js";
+import type { SpeechProviderPlugin } from "openclaw/plugin-sdk/core";
+import { type SpeechVoiceOption } from "openclaw/plugin-sdk/speech";
 
 export const XAI_TTS_VOICES = ["eve", "ara", "rex", "sal", "leo"] as const;
 
