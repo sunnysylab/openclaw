@@ -4,12 +4,7 @@ import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { analyzeShellCommand } from "../infra/exec-approvals-analysis.js";
 import { routeReply } from "../auto-reply/reply/route-reply.js";
 import { loadCombinedSessionStoreForGateway } from "../gateway/session-utils.js";
-import {
-  type ExecHost,
-  loadExecApprovals,
-  maxAsk,
-  minSecurity,
-} from "../infra/exec-approvals.js";
+import { type ExecHost, loadExecApprovals, maxAsk, minSecurity } from "../infra/exec-approvals.js";
 import { resolveExecSafeBinRuntimePolicy } from "../infra/exec-safe-bin-runtime-policy.js";
 import { sanitizeHostExecEnvWithDiagnostics } from "../infra/host-env-security.js";
 import {
@@ -35,7 +30,6 @@ import {
   normalizeExecTarget,
   normalizePathPrepend,
   resolveExecTarget,
-  renderExecHostLabel,
   emitExecSystemEvent,
   resolveApprovalRunningNoticeMs,
   runExecProcess,
