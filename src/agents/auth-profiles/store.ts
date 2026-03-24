@@ -19,6 +19,7 @@ type RejectedCredentialEntry = { key: string; reason: CredentialRejectReason };
 type LoadAuthProfileStoreOptions = {
   allowKeychainPrompt?: boolean;
   readOnly?: boolean;
+  syncExternalCli?: boolean;
 };
 
 const AUTH_PROFILE_TYPES = new Set<AuthProfileCredential["type"]>(["api_key", "oauth", "token"]);
@@ -442,6 +443,7 @@ function loadAuthProfileStoreForAgent(
   options?: LoadAuthProfileStoreOptions,
 ): AuthProfileStore {
   const readOnly = options?.readOnly === true;
+  const syncExternalCli = options?.syncExternalCli !== false;
   const authPath = resolveAuthStorePath(agentDir);
   if (!readOnly) {
     const cached = readCachedAuthProfileStore(authPath, readAuthStoreMtimeMs(authPath));
@@ -453,7 +455,9 @@ function loadAuthProfileStoreForAgent(
   if (asStore) {
     // Runtime secret activation must remain read-only:
     // sync external CLI credentials in-memory, but never persist while readOnly.
-    const synced = syncExternalCliCredentialsTimed(asStore, { log: !readOnly });
+    const synced = syncExternalCli
+      ? syncExternalCliCredentialsTimed(asStore, { log: !readOnly })
+      : false;
     if (synced && !readOnly) {
       saveJsonFile(authPath, asStore);
     }
@@ -489,7 +493,9 @@ function loadAuthProfileStoreForAgent(
 
   const mergedOAuth = mergeOAuthFileIntoStore(store);
   // Keep external CLI credentials visible in runtime even during read-only loads.
-  const syncedCli = syncExternalCliCredentialsTimed(store, { log: !readOnly });
+  const syncedCli = syncExternalCli
+    ? syncExternalCliCredentialsTimed(store, { log: !readOnly })
+    : false;
   const forceReadOnly = process.env.OPENCLAW_AUTH_STORE_READONLY === "1";
   const shouldWrite = !readOnly && !forceReadOnly && (legacy !== null || mergedOAuth || syncedCli);
   if (shouldWrite) {
@@ -536,6 +542,14 @@ export function loadAuthProfileStoreForRuntime(
 
 export function loadAuthProfileStoreForSecretsRuntime(agentDir?: string): AuthProfileStore {
   return loadAuthProfileStoreForRuntime(agentDir, { readOnly: true, allowKeychainPrompt: false });
+}
+
+export function loadAuthProfileStoreForInspection(agentDir?: string): AuthProfileStore {
+  return loadAuthProfileStoreForAgent(agentDir, {
+    readOnly: true,
+    allowKeychainPrompt: false,
+    syncExternalCli: false,
+  });
 }
 
 export function ensureAuthProfileStore(

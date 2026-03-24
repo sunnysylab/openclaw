@@ -1,6 +1,25 @@
+import {
+  loadAuthProfileStoreForInspection,
+  resolveApiKeyForProfile,
+  resolveAuthProfileOrder,
+  type AuthProfileStore,
+} from "../agents/auth-profiles.js";
 import { resolveEnvApiKey } from "../agents/model-auth-env.js";
+import { isKnownEnvApiKeyMarker } from "../agents/model-auth-markers.js";
+import {
+  getCustomProviderApiKey,
+  resolveUsableCustomProviderApiKey,
+} from "../agents/model-auth.js";
+import { normalizeProviderId } from "../agents/provider-id.js";
 import type { OpenClawConfig } from "../config/types.js";
-import type { SecretInput } from "../config/types.secrets.js";
+import {
+  coerceSecretRef,
+  parseEnvTemplateSecretRef,
+  type SecretInput,
+  type SecretRef,
+} from "../config/types.secrets.js";
+import { resolveDefaultSecretProviderAlias } from "../secrets/ref-contract.js";
+import { resolveSecretRefString } from "../secrets/resolve.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
 import {
   resolveSecretInputModeForEnvSelection,
@@ -73,6 +92,150 @@ export function formatApiKeyPreview(
   return `${trimmed.slice(0, head)}…${trimmed.slice(-tail)}`;
 }
 
+async function loadScopedAuthProfileStore(agentDir?: string): Promise<AuthProfileStore> {
+  return loadAuthProfileStoreForInspection(agentDir);
+}
+
+function resolveProviderApiKeyRef(params: {
+  config: OpenClawConfig;
+  provider: string;
+}): SecretRef | null {
+  const providers = params.config.models?.providers ?? {};
+  const providerEntry =
+    providers[params.provider] ??
+    Object.entries(providers).find(
+      ([key]) => normalizeProviderId(key) === normalizeProviderId(params.provider),
+    )?.[1];
+  return coerceSecretRef(providerEntry?.apiKey, params.config.secrets?.defaults);
+}
+
+async function resolveExistingProviderApiKey(params: {
+  config: OpenClawConfig;
+  provider: string;
+  reuseProviders?: string[];
+  agentDir?: string;
+  allowProfile?: boolean;
+}): Promise<{ apiKey: string; source: string; credential: SecretInput } | null> {
+  try {
+    const providersToSearch = Array.from(
+      new Set(
+        [params.provider, ...(params.reuseProviders ?? [])]
+          .map((provider) => provider.trim())
+          .filter(Boolean),
+      ),
+    );
+    const envKey = resolveEnvApiKey(params.provider);
+    if (envKey) {
+      return {
+        apiKey: envKey.apiKey,
+        source: envKey.source,
+        credential: envKey.apiKey,
+      };
+    }
+
+    if (params.allowProfile !== false) {
+      const store = await loadScopedAuthProfileStore(params.agentDir);
+      for (const provider of providersToSearch) {
+        const orderedProfiles = resolveAuthProfileOrder({
+          cfg: params.config,
+          store,
+          provider,
+        });
+        const candidateProfileIds = new Set<string>(orderedProfiles);
+
+        for (const [profileId, profile] of Object.entries(store.profiles)) {
+          if (profile?.type === "api_key" && profile.provider === provider) {
+            candidateProfileIds.add(profileId);
+          }
+        }
+
+        for (const profileId of candidateProfileIds) {
+          const profile = store.profiles[profileId];
+          if (profile?.type !== "api_key") {
+            continue;
+          }
+          try {
+            const resolved = await resolveApiKeyForProfile({
+              cfg: params.config,
+              store,
+              profileId,
+              agentDir: params.agentDir,
+            });
+            if (!resolved?.apiKey) {
+              continue;
+            }
+            return {
+              apiKey: resolved.apiKey,
+              source: `profile:${profileId}`,
+              credential: (() => {
+                if (profile.keyRef) {
+                  return profile.keyRef;
+                }
+                if (typeof profile.key === "string" && profile.key.trim().length > 0) {
+                  const inlineEnvRef = parseEnvTemplateSecretRef(
+                    profile.key,
+                    resolveDefaultSecretProviderAlias(params.config, "env", {
+                      preferFirstProviderForSource: true,
+                    }),
+                  );
+                  return inlineEnvRef ?? profile.key;
+                }
+                return resolved.apiKey;
+              })(),
+            };
+          } catch {
+            continue;
+          }
+        }
+      }
+    }
+
+    for (const provider of providersToSearch) {
+      const configApiKeyRef = resolveProviderApiKeyRef({
+        config: params.config,
+        provider,
+      });
+      if (configApiKeyRef) {
+        try {
+          const resolvedValue = await resolveSecretRefString(configApiKeyRef, {
+            config: params.config,
+            env: process.env,
+          });
+          if (resolvedValue.trim()) {
+            return {
+              apiKey: resolvedValue,
+              source: "models.json",
+              credential: configApiKeyRef,
+            };
+          }
+        } catch {
+          // Fall through to other config-backed detection paths.
+        }
+      }
+
+      const configApiKey = resolveUsableCustomProviderApiKey({
+        cfg: params.config,
+        provider,
+        env: process.env,
+      });
+      if (configApiKey) {
+        const rawConfigApiKey = getCustomProviderApiKey(params.config, provider);
+        return {
+          apiKey: configApiKey.apiKey,
+          source: configApiKey.source,
+          credential:
+            rawConfigApiKey && isKnownEnvApiKeyMarker(rawConfigApiKey)
+              ? rawConfigApiKey
+              : configApiKey.apiKey,
+        };
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
 export function normalizeTokenProviderInput(
   tokenProvider: string | null | undefined,
 ): string | undefined {
@@ -119,7 +282,10 @@ export async function ensureApiKeyFromOptionEnvOrPrompt(params: {
   tokenProvider: string | undefined;
   secretInputMode?: SecretInputMode;
   config: OpenClawConfig;
+  agentDir?: string;
+  allowProfile?: boolean;
   expectedProviders: string[];
+  reuseProviders?: string[];
   provider: string;
   envLabel: string;
   promptMessage: string;
@@ -148,6 +314,9 @@ export async function ensureApiKeyFromOptionEnvOrPrompt(params: {
 
   return await ensureApiKeyFromEnvOrPrompt({
     config: params.config,
+    agentDir: params.agentDir,
+    allowProfile: params.allowProfile,
+    reuseProviders: params.reuseProviders ?? params.expectedProviders,
     provider: params.provider,
     envLabel: params.envLabel,
     promptMessage: params.promptMessage,
@@ -161,6 +330,9 @@ export async function ensureApiKeyFromOptionEnvOrPrompt(params: {
 
 export async function ensureApiKeyFromEnvOrPrompt(params: {
   config: OpenClawConfig;
+  agentDir?: string;
+  allowProfile?: boolean;
+  reuseProviders?: string[];
   provider: string;
   envLabel: string;
   promptMessage: string;
@@ -175,6 +347,13 @@ export async function ensureApiKeyFromEnvOrPrompt(params: {
     explicitMode: params.secretInputMode,
   });
   const envKey = resolveEnvApiKey(params.provider);
+  const existingApiKey = await resolveExistingProviderApiKey({
+    config: params.config,
+    provider: params.provider,
+    reuseProviders: params.reuseProviders,
+    agentDir: params.agentDir,
+    allowProfile: params.allowProfile,
+  });
 
   if (selectedMode === "ref") {
     if (typeof params.prompter.select !== "function") {
@@ -196,14 +375,18 @@ export async function ensureApiKeyFromEnvOrPrompt(params: {
     return resolved.resolvedValue;
   }
 
-  if (envKey && selectedMode === "plaintext") {
+  if (existingApiKey && selectedMode === "plaintext") {
+    const existingCredentialLabel =
+      existingApiKey.source.startsWith("env:") || existingApiKey.source.startsWith("shell env:")
+        ? params.envLabel
+        : `${params.provider} credentials`;
     const useExisting = await params.prompter.confirm({
-      message: `Use existing ${params.envLabel} (${envKey.source}, ${formatApiKeyPreview(envKey.apiKey)})?`,
+      message: `Use existing ${existingCredentialLabel} (${existingApiKey.source}, ${formatApiKeyPreview(existingApiKey.apiKey)})?`,
       initialValue: true,
     });
     if (useExisting) {
-      await params.setCredential(envKey.apiKey, selectedMode);
-      return envKey.apiKey;
+      await params.setCredential(existingApiKey.credential, selectedMode);
+      return existingApiKey.apiKey;
     }
   }
 
