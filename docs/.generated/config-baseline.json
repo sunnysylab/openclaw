@@ -59128,6 +59128,16 @@
       "hasChildren": false
     },
     {
+      "path": "session.historyLimit",
+      "kind": "core",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": false
+    },
+    {
       "path": "session.identityLinks",
       "kind": "core",
       "type": "object",

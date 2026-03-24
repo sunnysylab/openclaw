@@ -23,9 +23,12 @@ import { resolveAndPersistSessionFile } from "../../config/sessions/session-file
 import { resolveSessionKey } from "../../config/sessions/session-key.js";
 import { loadSessionStore, updateSessionStore } from "../../config/sessions/store.js";
 import {
+  buildSessionHistoryMetadata,
   DEFAULT_RESET_TRIGGERS,
+  DEFAULT_SESSION_HISTORY_LIMIT,
   type GroupKeyResolution,
   type SessionEntry,
+  type SessionHistoryItem,
   type SessionScope,
 } from "../../config/sessions/types.js";
 import type { TtsAutoMode } from "../../config/types.tts.js";
@@ -51,6 +54,45 @@ import { forkSessionFromParent, resolveParentForkMaxTokens } from "./session-for
 import { buildSessionEndHookPayload, buildSessionStartHookPayload } from "./session-hooks.js";
 
 const log = createSubsystemLogger("session-init");
+
+/**
+ * Push the current sessionId into the session history queue (LRU).
+ * Captures a metadata snapshot so settings can be restored when switching back.
+ */
+function pushSessionHistory(
+  sessionEntry: SessionEntry,
+  historyLimit: number,
+): SessionHistoryItem[] {
+  const currentId = sessionEntry.sessionId;
+  if (!currentId) {
+    return [];
+  }
+
+  const item: SessionHistoryItem = {
+    sessionId: currentId,
+    sessionFile: sessionEntry.sessionFile,
+    createdAt: sessionEntry.updatedAt ?? Date.now(),
+    label: sessionEntry.label,
+    metadata: buildSessionHistoryMetadata(sessionEntry),
+  };
+
+  const history = sessionEntry.sessionHistory
+    ? sessionEntry.sessionHistory.filter((h) => h.sessionId !== currentId)
+    : [];
+  history.push(item);
+
+  // Evict oldest entries (queue head) when over limit.
+  const evicted: SessionHistoryItem[] = [];
+  while (history.length > historyLimit) {
+    const removed = history.shift();
+    if (removed) {
+      evicted.push(removed);
+    }
+  }
+
+  sessionEntry.sessionHistory = history;
+  return evicted;
+}
 
 export type SessionInitResult = {
   sessionCtx: TemplateContext;
@@ -193,6 +235,10 @@ export async function initSessionState(params: {
   const parentForkMaxTokens = resolveParentForkMaxTokens(cfg);
   const sessionScope = sessionCfg?.scope ?? "per-sender";
   const storePath = resolveStorePath(sessionCfg?.store, { agentId });
+  const historyLimit =
+    typeof sessionCfg?.historyLimit === "number" && Number.isFinite(sessionCfg.historyLimit)
+      ? Math.max(0, Math.floor(sessionCfg.historyLimit))
+      : DEFAULT_SESSION_HISTORY_LIMIT;
   const ingressTimingEnabled = process.env.OPENCLAW_DEBUG_INGRESS_TIMING === "1";
 
   // CRITICAL: Skip cache to ensure fresh data when resolving session identity.
@@ -429,6 +475,8 @@ export async function initSessionState(params: {
     updatedAt: Date.now(),
     systemSent,
     abortedLastRun,
+    // Carry over the session history queue across resets so `/sessions` works.
+    sessionHistory: entry?.sessionHistory ?? baseEntry?.sessionHistory,
     // Persist previously stored thinking/verbose levels when present.
     thinkingLevel: persistedThinking ?? baseEntry?.thinkingLevel,
     verboseLevel: persistedVerbose ?? baseEntry?.verboseLevel,
@@ -530,7 +578,18 @@ export async function initSessionState(params: {
     activeSessionKey: sessionKey,
   });
   sessionEntry = resolvedSessionFile.sessionEntry;
+  let evictedFromHistory: SessionHistoryItem[] = [];
   if (isNewSession) {
+    if (previousSessionEntry?.sessionId && historyLimit > 0) {
+      const historyCarrier: SessionEntry = {
+        ...previousSessionEntry,
+        sessionHistory: [...(previousSessionEntry.sessionHistory ?? [])],
+      };
+      evictedFromHistory = pushSessionHistory(historyCarrier, historyLimit);
+      sessionEntry.sessionHistory = historyCarrier.sessionHistory;
+    } else if (historyLimit === 0) {
+      sessionEntry.sessionHistory = [];
+    }
     sessionEntry.compactionCount = 0;
     sessionEntry.memoryFlushCompactionCount = undefined;
     sessionEntry.memoryFlushAt = undefined;
@@ -568,12 +627,24 @@ export async function initSessionState(params: {
     },
   );
 
-  // Archive old transcript so it doesn't accumulate on disk (#14869).
-  if (previousSessionEntry?.sessionId) {
+  // Archive transcripts for sessions evicted from the LRU history queue.
+  // Sessions still in history are NOT archived so users can switch back to them.
+  // When historyLimit is 0 (history disabled), archive the previous session
+  // unconditionally to preserve the original cleanup behavior (#14869).
+  if (historyLimit === 0 && previousSessionEntry?.sessionId) {
     archiveSessionTranscripts({
       sessionId: previousSessionEntry.sessionId,
       storePath,
       sessionFile: previousSessionEntry.sessionFile,
+      agentId,
+      reason: "reset",
+    });
+  }
+  for (const evicted of evictedFromHistory) {
+    archiveSessionTranscripts({
+      sessionId: evicted.sessionId,
+      storePath,
+      sessionFile: evicted.sessionFile,
       agentId,
       reason: "reset",
     });

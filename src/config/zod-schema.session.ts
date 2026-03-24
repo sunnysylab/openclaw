@@ -53,6 +53,7 @@ export const SessionSchema = z
     typingIntervalSeconds: z.number().int().positive().optional(),
     typingMode: TypingModeSchema.optional(),
     parentForkMaxTokens: z.number().int().nonnegative().optional(),
+    historyLimit: z.number().int().min(0).optional(),
     mainKey: z.string().optional(),
     sendPolicy: SessionSendPolicySchema.optional(),
     agentToAgent: z
