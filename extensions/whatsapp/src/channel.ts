@@ -151,7 +151,7 @@ export const whatsappPlugin: ChannelPlugin<ResolvedWhatsAppAccount> =
           return { actions: Array.from(actions) };
         },
         supportsAction: ({ action }) => action === "react",
-        handleAction: async ({ action, params, cfg, accountId }) => {
+        handleAction: async ({ action, params, cfg, accountId, requesterSenderId }) => {
           if (action !== "react") {
             throw new Error(`Action ${action} is not supported for provider ${WHATSAPP_CHANNEL}.`);
           }
@@ -169,7 +169,16 @@ export const whatsappPlugin: ChannelPlugin<ResolvedWhatsAppAccount> =
               messageId,
               emoji,
               remove,
-              participant: readStringParam(params, "participant"),
+              // Fallback to requesterSenderId when it looks like a WhatsApp JID
+              // (@s.whatsapp.net, @lid, or @hosted.lid).
+              // Correct when reacting to the requester's own message (the common case).
+              // For reactions to other participants' messages the model must supply participant explicitly.
+              // Guard: only use the fallback for WhatsApp-origin sender IDs to avoid cross-channel pollution.
+              participant:
+                readStringParam(params, "participant") ??
+                (requesterSenderId && /\@(s\.whatsapp\.net|hosted\.lid|lid)$/.test(requesterSenderId)
+                  ? requesterSenderId
+                  : undefined),
               accountId: accountId ?? undefined,
               fromMe: typeof params.fromMe === "boolean" ? params.fromMe : undefined,
             },
