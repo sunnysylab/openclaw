@@ -134,12 +134,16 @@ export async function updateSessionStoreAfterAgentRun(params: {
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
       next.totalTokensFresh = totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
-      if (next.totalTokensFresh) {
+
+      if (modelChanged) {
+        next.totalTokensEstimate = undefined;
+      } else {
         next.totalTokensEstimate = totalTokens;
-      } else if (totalTokens === 0 && !modelChanged) {
-        const fallback = prevEstimate ?? prevTotal;
-        if (fallback !== undefined && fallback > 0) {
-          next.totalTokensEstimate = fallback;
+        if (totalTokens === 0 && !next.totalTokensFresh) {
+          const fallback = prevEstimate ?? prevTotal;
+          if (fallback !== undefined && fallback > 0) {
+            next.totalTokensEstimate = fallback;
+          }
         }
       }
     } else {
