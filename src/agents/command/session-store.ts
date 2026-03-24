@@ -10,7 +10,7 @@ import { setCliSessionId } from "../cli-session.js";
 import { resolveContextTokensForModel } from "../context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
 import { isCliProvider } from "../model-selection.js";
-import { deriveSessionTotalTokens, hasExplicitUsage } from "../usage.js";
+import { deriveSessionTotalTokens, hasExplicitUsage, hasNonzeroUsage } from "../usage.js";
 
 type RunResult = Awaited<ReturnType<(typeof import("../pi-embedded.js"))["runEmbeddedPiAgent"]>>;
 
@@ -129,7 +129,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
 
     const lastCallUsage = result.meta.agentMeta?.lastCallUsage;
     const hasFreshContextSnapshot =
-      Boolean(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
+      hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
 
     if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
