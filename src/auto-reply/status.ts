@@ -509,7 +509,7 @@ export function buildStatusMessage(args: StatusArgs): string {
   let cacheWrite = entry?.cacheWrite;
   const freshTotal = resolveFreshSessionTotalTokens(entry);
   let totalTokens =
-    (freshTotal !== undefined && freshTotal > 0 ? freshTotal : undefined) ??
+    freshTotal ??
     entry?.totalTokensEstimate ??
     entry?.totalTokens ??
     (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
@@ -528,7 +528,7 @@ export function buildStatusMessage(args: StatusArgs): string {
       const candidate = logUsage.promptTokens || logUsage.total;
       const hasZeroEstimate = entry?.totalTokensEstimate === 0;
       const storeTotal =
-        (freshTotal !== undefined && freshTotal > 0 ? freshTotal : undefined) ??
+        freshTotal ??
         entry?.totalTokensEstimate ??
         entry?.totalTokens ??
         (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
