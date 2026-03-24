@@ -49,6 +49,7 @@ export type BuiltInAuthChoice =
   | "volcengine-api-key"
   | "byteplus-api-key"
   | "qianfan-api-key"
+  | "avian-api-key"
   | "modelstudio-standard-api-key-cn"
   | "modelstudio-standard-api-key"
   | "modelstudio-api-key-cn"
@@ -85,6 +86,7 @@ export type BuiltInAuthChoiceGroupId =
   | "xai"
   | "volcengine"
   | "byteplus"
+  | "avian"
   | "custom";
 export type AuthChoiceGroupId = BuiltInAuthChoiceGroupId | (string & {});
 export type GatewayAuthChoice = "token" | "password";
@@ -145,6 +147,7 @@ export type OnboardOptions = {
   volcengineApiKey?: string;
   byteplusApiKey?: string;
   qianfanApiKey?: string;
+  avianApiKey?: string;
   modelstudioStandardApiKeyCn?: string;
   modelstudioStandardApiKey?: string;
   modelstudioApiKeyCn?: string;
