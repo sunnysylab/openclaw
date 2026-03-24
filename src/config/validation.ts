@@ -349,11 +349,11 @@ function validateConfigObjectWithPluginsBase(
   type RegistryInfo = {
     registry: ReturnType<typeof loadPluginManifestRegistry>;
     knownIds?: Set<string>;
-    normalizedPlugins?: ReturnType<typeof normalizePluginsConfig>;
   };
 
   let registryInfo: RegistryInfo | null = null;
   let compatConfig: OpenClawConfig | null | undefined;
+  let memoizedNormalizedPlugins: ReturnType<typeof normalizePluginsConfig> | null = null;
 
   const ensureCompatConfig = (): OpenClawConfig => {
     if (compatConfig !== undefined) {
@@ -434,11 +434,10 @@ function validateConfigObjectWithPluginsBase(
   };
 
   const ensureNormalizedPlugins = (): ReturnType<typeof normalizePluginsConfig> => {
-    const info = ensureRegistry();
-    if (!info.normalizedPlugins) {
-      info.normalizedPlugins = normalizePluginsConfig(ensureCompatConfig().plugins);
+    if (!memoizedNormalizedPlugins) {
+      memoizedNormalizedPlugins = normalizePluginsConfig(ensureCompatConfig().plugins);
     }
-    return info.normalizedPlugins;
+    return memoizedNormalizedPlugins;
   };
 
   const allowedChannels = new Set<string>(["defaults", "modelByChannel", ...CHANNEL_IDS]);
@@ -511,6 +510,76 @@ function validateConfigObjectWithPluginsBase(
   if (Array.isArray(config.agents?.list)) {
     for (const [index, entry] of config.agents.list.entries()) {
       validateHeartbeatTarget(entry?.heartbeat?.target, `agents.list.${index}.heartbeat.target`);
+    }
+  }
+
+  const builtInHookChannels = new Set<string>(["last"]);
+  for (const channelId of CHANNEL_IDS) {
+    builtInHookChannels.add(channelId.toLowerCase());
+  }
+  let enabledHookPluginChannels: Set<string> | null = null;
+
+  const ensureEnabledHookPluginChannels = (): Set<string> => {
+    if (enabledHookPluginChannels) {
+      return enabledHookPluginChannels;
+    }
+
+    enabledHookPluginChannels = new Set<string>();
+    const normalizedPlugins = ensureNormalizedPlugins();
+    const { registry: hookChannelRegistry } = ensureRegistry();
+    for (const record of hookChannelRegistry.plugins) {
+      const enableState = resolveEffectiveEnableState({
+        id: record.id,
+        origin: record.origin,
+        config: normalizedPlugins,
+        rootConfig: config,
+        enabledByDefault: record.enabledByDefault,
+      });
+      if (!enableState.enabled) {
+        continue;
+      }
+      for (const channelId of record.channels) {
+        const normalized = channelId.trim().toLowerCase();
+        if (normalized) {
+          enabledHookPluginChannels.add(normalized);
+        }
+      }
+    }
+    return enabledHookPluginChannels;
+  };
+
+  const validateHookMappingChannel = (channel: unknown, path: string) => {
+    if (channel === undefined) {
+      return;
+    }
+    if (typeof channel !== "string") {
+      issues.push({ path, message: "hooks.mappings[].channel must be a string" });
+      return;
+    }
+    const trimmed = channel.trim();
+    if (!trimmed) {
+      issues.push({ path, message: "hooks.mappings[].channel must not be empty" });
+      return;
+    }
+    const normalized = normalizeChatChannelId(trimmed) ?? trimmed.toLowerCase();
+    if (builtInHookChannels.has(normalized)) {
+      return;
+    }
+    if (ensureEnabledHookPluginChannels().has(normalized)) {
+      return;
+    }
+    issues.push({ path, message: `unknown hook mapping channel: ${trimmed}` });
+  };
+
+  if (Array.isArray(config.hooks?.mappings)) {
+    for (const [index, mapping] of config.hooks.mappings.entries()) {
+      if (!mapping || typeof mapping !== "object") {
+        continue;
+      }
+      validateHookMappingChannel(
+        (mapping as { channel?: unknown }).channel,
+        `hooks.mappings.${index}.channel`,
+      );
     }
   }
 
