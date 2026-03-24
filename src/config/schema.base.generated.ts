@@ -8945,6 +8945,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
             minimum: 0,
             maximum: 9007199254740991,
           },
+          historyLimit: {
+            type: "integer",
+            minimum: 0,
+            maximum: 9007199254740991,
+          },
           mainKey: {
             type: "string",
           },
