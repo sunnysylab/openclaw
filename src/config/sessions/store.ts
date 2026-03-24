@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { acquireSessionWriteLock } from "../../agents/session-write-lock.js";
@@ -51,10 +52,16 @@ import {
 
 const log = createSubsystemLogger("sessions/store");
 
+type LoadedSessionStoreSnapshot = {
+  serializedFromDisk?: string;
+  serializedDigest?: string;
+  previousAcpByKey: Map<string, NonNullable<SessionEntry["acp"]>>;
+};
+
 const WARNED_SESSION_OBJECT_CACHE_LIMIT_PATHS = new Set<string>();
 let loadedSessionStoreSnapshots = new WeakMap<
   Record<string, SessionEntry>,
-  { serializedFromDisk?: string }
+  LoadedSessionStoreSnapshot
 >();
 function isSessionStoreRecord(value: unknown): value is Record<string, SessionEntry> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -63,19 +70,46 @@ function isSessionStoreRecord(value: unknown): value is Record<string, SessionEn
 function rememberLoadedSessionStoreSnapshot(params: {
   store: Record<string, SessionEntry>;
   serializedFromDisk?: string;
+  retainSerializedFromDisk?: boolean;
 }): void {
+  const retainSerializedFromDisk = params.retainSerializedFromDisk ?? true;
   loadedSessionStoreSnapshots.set(params.store, {
-    serializedFromDisk: params.serializedFromDisk,
+    previousAcpByKey: collectAcpMetadataSnapshot(params.store),
+    serializedFromDisk: retainSerializedFromDisk ? params.serializedFromDisk : undefined,
+    serializedDigest:
+      !retainSerializedFromDisk && params.serializedFromDisk
+        ? createHash("sha256").update(params.serializedFromDisk).digest("hex")
+        : undefined,
   });
 }
 
 function getLoadedSessionStoreSnapshot(
   store: Record<string, SessionEntry> | undefined,
-): { serializedFromDisk?: string } | undefined {
+): LoadedSessionStoreSnapshot | undefined {
   if (!store) {
     return undefined;
   }
   return loadedSessionStoreSnapshots.get(store);
+}
+
+function forgetLoadedSessionStoreSnapshot(store: Record<string, SessionEntry> | undefined): void {
+  if (!store) {
+    return;
+  }
+  loadedSessionStoreSnapshots.delete(store);
+}
+
+export function getLoadedSessionStoreSnapshotForTest(
+  store: Record<string, SessionEntry> | undefined,
+): { hasSerializedFromDisk: boolean; hasSerializedDigest: boolean } | undefined {
+  const snapshot = getLoadedSessionStoreSnapshot(store);
+  if (!snapshot) {
+    return undefined;
+  }
+  return {
+    hasSerializedFromDisk: snapshot.serializedFromDisk !== undefined,
+    hasSerializedDigest: snapshot.serializedDigest !== undefined,
+  };
 }
 function warnSessionObjectCacheLimitHit(params: {
   storePath: string;
@@ -372,9 +406,11 @@ export function loadSessionStore(
   }
 
   const clonedStore = structuredClone(store);
+  const retainSerializedFromDisk = shouldRetainSessionStoreSerializedCache(fileStat?.sizeBytes);
   rememberLoadedSessionStoreSnapshot({
     store: clonedStore,
     serializedFromDisk,
+    retainSerializedFromDisk,
   });
   return clonedStore;
 }
@@ -447,7 +483,8 @@ function updateSessionStoreWriteCaches(params: {
   serialized: string;
 }): void {
   const fileStat = getFileStatSnapshot(params.storePath);
-  if (shouldRetainSessionStoreSerializedCache(fileStat?.sizeBytes)) {
+  const retainSerializedFromDisk = shouldRetainSessionStoreSerializedCache(fileStat?.sizeBytes);
+  if (retainSerializedFromDisk) {
     setSerializedSessionStore(params.storePath, params.serialized);
   } else {
     setSerializedSessionStore(params.storePath, undefined);
@@ -461,6 +498,7 @@ function updateSessionStoreWriteCaches(params: {
     rememberLoadedSessionStoreSnapshot({
       store: params.store,
       serializedFromDisk: params.serialized,
+      retainSerializedFromDisk,
     });
     dropSessionStoreObjectCache(params.storePath);
     return;
@@ -475,6 +513,7 @@ function updateSessionStoreWriteCaches(params: {
   rememberLoadedSessionStoreSnapshot({
     store: params.store,
     serializedFromDisk: params.serialized,
+    retainSerializedFromDisk,
   });
 }
 
@@ -483,11 +522,21 @@ function tryReuseLoadedSessionStoreSnapshot(params: {
   baseStore?: Record<string, SessionEntry>;
 }): Record<string, SessionEntry> | undefined {
   const snapshot = getLoadedSessionStoreSnapshot(params.baseStore);
-  if (!params.baseStore || snapshot?.serializedFromDisk === undefined) {
+  if (
+    !params.baseStore ||
+    (snapshot?.serializedFromDisk === undefined && snapshot?.serializedDigest === undefined)
+  ) {
     return undefined;
   }
   try {
-    if (fs.readFileSync(params.storePath, "utf-8") !== snapshot.serializedFromDisk) {
+    const serialized = fs.readFileSync(params.storePath, "utf-8");
+    if (snapshot.serializedFromDisk !== undefined) {
+      if (serialized !== snapshot.serializedFromDisk) {
+        return undefined;
+      }
+      return params.baseStore;
+    }
+    if (createHash("sha256").update(serialized).digest("hex") !== snapshot.serializedDigest) {
       return undefined;
     }
     return params.baseStore;
@@ -520,7 +569,7 @@ function collectAcpMetadataSnapshot(
   const snapshot = new Map<string, NonNullable<SessionEntry["acp"]>>();
   for (const [sessionKey, entry] of Object.entries(store)) {
     if (entry?.acp) {
-      snapshot.set(sessionKey, entry.acp);
+      snapshot.set(sessionKey, structuredClone(entry.acp));
     }
   }
   return snapshot;
@@ -687,6 +736,7 @@ async function saveSessionStoreUnlocked(
       } catch (err) {
         const code = getErrorCode(err);
         if (code === "ENOENT") {
+          forgetLoadedSessionStoreSnapshot(store);
           return;
         }
         if (i < 4) {
@@ -695,6 +745,7 @@ async function saveSessionStoreUnlocked(
         }
         // Final attempt failed — skip this save. The write lock ensures
         // the next save will retry with fresh data. Log for diagnostics.
+        forgetLoadedSessionStoreSnapshot(store);
         log.warn(`atomic write failed after 5 attempts: ${storePath}`);
       }
     }
@@ -714,13 +765,16 @@ async function saveSessionStoreUnlocked(
       } catch (err2) {
         const code2 = getErrorCode(err2);
         if (code2 === "ENOENT") {
+          forgetLoadedSessionStoreSnapshot(store);
           return;
         }
+        forgetLoadedSessionStoreSnapshot(store);
         throw err2;
       }
       return;
     }
 
+    forgetLoadedSessionStoreSnapshot(store);
     throw err;
   }
 }
@@ -744,10 +798,13 @@ export async function updateSessionStore<T>(
     // Reuse the caller's already-loaded store snapshot when it still matches the
     // on-disk file inside the lock. This avoids a second whole-file parse on the
     // common single-process hot path without weakening write-order safety.
-    const store =
-      tryReuseLoadedSessionStoreSnapshot({ storePath, baseStore: opts?.baseStore }) ??
-      loadSessionStore(storePath, { skipCache: true });
-    const previousAcpByKey = collectAcpMetadataSnapshot(store);
+    const reusedStore = tryReuseLoadedSessionStoreSnapshot({
+      storePath,
+      baseStore: opts?.baseStore,
+    });
+    const store = reusedStore ?? loadSessionStore(storePath, { skipCache: true });
+    const previousAcpByKey =
+      getLoadedSessionStoreSnapshot(store)?.previousAcpByKey ?? collectAcpMetadataSnapshot(store);
     const result = await mutator(store);
     preserveExistingAcpMetadata({
       previousAcpByKey,
