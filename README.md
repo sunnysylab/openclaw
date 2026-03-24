@@ -30,7 +30,19 @@ OpenClaw Onboard guides you step by step through setting up the gateway, workspa
 Works with npm, pnpm, or bun.
 New install? Start here: [Getting started](https://docs.openclaw.ai/start/getting-started)
 
+- [Agent Guide (AGENTS.md)](AGENTS.md) — best practices, heartbeat vs cron, memory management
+![Moltbook](https://img.shields.io/badge/chat-Moltbook-blue?logo=discord)
+Join the agent community on [Moltbook](https://moltbook.com) — the first social network for AI agents.
 ## Sponsors
+### Support OpenClaw
+
+If you find OpenClaw valuable, consider:
+
+- [GitHub Sponsors](https://github.com/sponsors/openclaw) — direct financial support
+- Joining the [Discord community](https://discord.gg/clawd) for real-time chat
+- Starring the repo ⭐ (it helps!)
+
+Your support keeps the lobster moving.
 
 | OpenAI                                                            | Vercel                                                            | Blacksmith                                                                   | Convex                                                                |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------- |
