@@ -32745,6 +32745,16 @@
       "hasChildren": false
     },
     {
+      "path": "channels.telegram.accounts.*.minInitialChars",
+      "kind": "channel",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": false
+    },
+    {
       "path": "channels.telegram.accounts.*.name",
       "kind": "channel",
       "type": "string",
@@ -32938,6 +32948,16 @@
         "partial",
         "block"
       ],
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": false
+    },
+    {
+      "path": "channels.telegram.accounts.*.streamThrottleMs",
+      "kind": "channel",
+      "type": "integer",
+      "required": false,
       "deprecated": false,
       "sensitive": false,
       "tags": [],
@@ -34818,6 +34838,21 @@
       "hasChildren": false
     },
     {
+      "path": "channels.telegram.minInitialChars",
+      "kind": "channel",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "channels",
+        "network"
+      ],
+      "label": "Telegram Min Initial Chars",
+      "help": "Minimum characters before sending first draft preview (improves push notification UX).",
+      "hasChildren": false
+    },
+    {
       "path": "channels.telegram.name",
       "kind": "channel",
       "type": "string",
@@ -35054,6 +35089,21 @@
       "deprecated": false,
       "sensitive": false,
       "tags": [],
+      "hasChildren": false
+    },
+    {
+      "path": "channels.telegram.streamThrottleMs",
+      "kind": "channel",
+      "type": "integer",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "channels",
+        "network"
+      ],
+      "label": "Telegram Stream Throttle (ms)",
+      "help": "Throttle in ms between draft preview updates (min 250ms). Lower = smoother streaming.",
       "hasChildren": false
     },
     {
