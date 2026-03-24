@@ -4,6 +4,7 @@ import path from "node:path";
 import { deriveSessionTotalTokens, hasNonzeroUsage, normalizeUsage } from "../agents/usage.js";
 import {
   formatSessionArchiveTimestamp,
+  isSessionArchiveArtifactName,
   parseSessionArchiveTimestamp,
   type SessionArchiveReason,
   resolveSessionFilePath,
@@ -13,6 +14,7 @@ import {
 import { resolveRequiredHomeDir } from "../infra/home-dir.js";
 import { jsonUtf8Bytes } from "../infra/json-utf8-bytes.js";
 import { hasInterSessionUserProvenance } from "../sessions/input-provenance.js";
+import { emitSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
 import { extractToolCallNames, hasToolCall } from "../utils/transcript-tools.js";
 import { stripEnvelope } from "./chat-sanitize.js";
@@ -262,6 +264,9 @@ export function archiveFileOnDisk(filePath: string, reason: ArchiveFileReason): 
   const ts = formatSessionArchiveTimestamp();
   const archived = `${filePath}.${reason}.${ts}`;
   fs.renameSync(filePath, archived);
+  if (reason === "reset") {
+    emitSessionTranscriptUpdate(archived);
+  }
   return archived;
 }
 
@@ -300,6 +305,9 @@ export function archiveSessionTranscripts(opts: {
       }
     }
     if (!fs.existsSync(candidatePath)) {
+      continue;
+    }
+    if (isSessionArchiveArtifactName(path.basename(candidatePath))) {
       continue;
     }
     try {
@@ -342,8 +350,17 @@ export async function cleanupArchivedSessionTranscripts(opts: {
       if (!stat?.isFile()) {
         continue;
       }
-      await fs.promises.rm(fullPath).catch(() => undefined);
+      const removedFromDisk = await fs.promises.rm(fullPath).then(
+        () => true,
+        () => false,
+      );
+      if (!removedFromDisk) {
+        continue;
+      }
       removed += 1;
+      if (reason === "reset") {
+        emitSessionTranscriptUpdate(fullPath);
+      }
     }
   }
 
