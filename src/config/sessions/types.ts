@@ -92,6 +92,14 @@ export type SessionEntry = {
   subagentControlScope?: "children" | "none";
   systemSent?: boolean;
   abortedLastRun?: boolean;
+  /**
+   * Grace window for the first owner message after an explicit /new or /reset in a
+   * Discord channel or thread session. While active, queued owner messages can carry
+   * startup-recovery instructions so interrupted Session Startup preload reads are
+   * completed before the turn ends.
+   * Applies to both Discord channel (our extension) and Discord thread (PR #49001).
+   */
+  postRotationStartupUntilMs?: number;
   /** Stable first-run start time for subagent sessions, persisted after completion. */
   startedAt?: number;
   /** Latest completed run end time for subagent sessions, persisted after completion. */
