@@ -286,6 +286,8 @@ importers:
 
   extensions/deepgram: {}
 
+  extensions/deepinfra: {}
+
   extensions/deepseek: {}
 
   extensions/diagnostics-otel:

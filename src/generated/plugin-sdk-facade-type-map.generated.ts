@@ -169,6 +169,15 @@ export interface PluginSdkFacadeTypeMap {
     };
     types: {};
   };
+  deepinfra: {
+    module: typeof import("@openclaw/deepinfra/api.js");
+    sourceModules: {
+      source1: {
+        module: typeof import("@openclaw/deepinfra/api.js");
+      };
+    };
+    types: {};
+  };
   deepseek: {
     module: typeof import("@openclaw/deepseek/api.js");
     sourceModules: {

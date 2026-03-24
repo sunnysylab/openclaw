@@ -16,6 +16,10 @@ function isOpenRouterAnthropicModel(provider: string, modelId: string): boolean 
   return provider.toLowerCase() === "openrouter" && modelId.toLowerCase().startsWith("anthropic/");
 }
 
+function isDeepInfraAnthropicModel(provider: string, modelId: string): boolean {
+  return provider.toLowerCase() === "deepinfra" && modelId.toLowerCase().startsWith("anthropic/");
+}
+
 function mapThinkingLevelToOpenRouterReasoningEffort(
   thinkingLevel: ThinkLevel,
 ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
@@ -56,13 +60,16 @@ function normalizeProxyReasoningPayload(payload: unknown, thinkingLevel?: ThinkL
   }
 }
 
-export function createOpenRouterSystemCacheWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
+export function createSystemCacheWrapper(
+  baseStreamFn: StreamFn | undefined,
+  isEligible: (provider: string, modelId: string) => boolean,
+): StreamFn {
   const underlying = baseStreamFn ?? streamSimple;
   return (model, context, options) => {
     if (
       typeof model.provider !== "string" ||
       typeof model.id !== "string" ||
-      !isOpenRouterAnthropicModel(model.provider, model.id)
+      !isEligible(model.provider, model.id)
     ) {
       return underlying(model, context, options);
     }
@@ -105,6 +112,14 @@ export function createOpenRouterSystemCacheWrapper(baseStreamFn: StreamFn | unde
   };
 }
 
+export function createOpenRouterSystemCacheWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
+  return createSystemCacheWrapper(baseStreamFn, isOpenRouterAnthropicModel);
+}
+
+export function createDeepInfraSystemCacheWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
+  return createSystemCacheWrapper(baseStreamFn, isDeepInfraAnthropicModel);
+}
+
 export function createOpenRouterWrapper(
   baseStreamFn: StreamFn | undefined,
   thinkingLevel?: ThinkLevel,
@@ -137,6 +152,23 @@ export function createOpenRouterWrapper(
 
 export function isProxyReasoningUnsupported(modelId: string): boolean {
   return modelId.toLowerCase().startsWith("x-ai/");
+}
+
+export function createDeepInfraWrapper(
+  baseStreamFn: StreamFn | undefined,
+  thinkingLevel?: ThinkLevel,
+): StreamFn {
+  const underlying = baseStreamFn ?? streamSimple;
+  return (model, context, options) => {
+    const onPayload = options?.onPayload;
+    return underlying(model, context, {
+      ...options,
+      onPayload: (payload) => {
+        normalizeProxyReasoningPayload(payload, thinkingLevel);
+        return onPayload?.(payload, model);
+      },
+    });
+  };
 }
 
 export function createKilocodeWrapper(
