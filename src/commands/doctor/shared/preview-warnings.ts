@@ -13,6 +13,11 @@ import {
   collectBundledPluginLoadPathWarnings,
   scanBundledPluginLoadPathMigrations,
 } from "./bundled-plugin-load-paths.js";
+import {
+  type BundledPluginInstallPathOptions,
+  collectBundledPluginInstallPathWarnings,
+  scanBundledPluginInstallPathRepairs,
+} from "./bundled-plugin-install-paths.js";
 import { scanEmptyAllowlistPolicyWarnings } from "./empty-allowlist-scan.js";
 import {
   collectExecSafeBinCoverageWarnings,
@@ -37,6 +42,7 @@ import {
 export function collectDoctorPreviewWarnings(params: {
   cfg: OpenClawConfig;
   doctorFixCommand: string;
+  bundledPluginPathOptions?: BundledPluginInstallPathOptions;
 }): string[] {
   const warnings: string[] = [];
 
@@ -122,6 +128,19 @@ export function collectDoctorPreviewWarnings(params: {
   const safeBinTrustedDirHints = scanExecSafeBinTrustedDirHints(params.cfg);
   if (safeBinTrustedDirHints.length > 0) {
     warnings.push(collectExecSafeBinTrustedDirHintWarnings(safeBinTrustedDirHints).join("\n"));
+  }
+
+  const staleBundledPluginPaths = scanBundledPluginInstallPathRepairs(
+    params.cfg,
+    params.bundledPluginPathOptions,
+  );
+  if (staleBundledPluginPaths.length > 0) {
+    warnings.push(
+      ...collectBundledPluginInstallPathWarnings({
+        hits: staleBundledPluginPaths,
+        doctorFixCommand: params.doctorFixCommand,
+      }),
+    );
   }
 
   return warnings;
