@@ -5,7 +5,8 @@ import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR } from "../../agents/pi-settings.js";
 import { parseNonNegativeByteSize } from "../../config/byte-size.js";
 import type { OpenClawConfig } from "../../config/config.js";
-import { resolveFreshSessionTotalTokens, type SessionEntry } from "../../config/sessions.js";
+import { type SessionEntry } from "../../config/sessions.js";
+import { resolveTotalTokens } from "../../shared/subagents-format.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
 
 export const DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000;
@@ -164,9 +165,7 @@ export function resolveMemoryFlushContextWindowTokens(params: {
   agentCfgContextTokens?: number;
 }): number {
   return (
-    lookupContextTokens(params.modelId, { allowAsyncLoad: false }) ??
-    params.agentCfgContextTokens ??
-    DEFAULT_CONTEXT_TOKENS
+    lookupContextTokens(params.modelId) ?? params.agentCfgContextTokens ?? DEFAULT_CONTEXT_TOKENS
   );
 }
 
@@ -195,7 +194,8 @@ export function shouldRunMemoryFlush(params: {
       ? Math.floor(override)
       : undefined;
 
-  const totalTokens = overrideTokens ?? resolveFreshSessionTotalTokens(params.entry);
+  const totalTokens =
+    overrideTokens ?? resolveTotalTokens(params.entry, { allowStaleEstimate: true });
   if (!totalTokens || totalTokens <= 0) {
     return false;
   }

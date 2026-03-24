@@ -190,11 +190,11 @@ export function deriveSessionTotalTokens(params: {
   // It intentionally excludes completion/output tokens.
   const promptTokens = hasPromptOverride
     ? promptOverride
-    : derivePromptTokens({
+    : (derivePromptTokens({
         input: usage?.input,
         cacheRead: usage?.cacheRead,
         cacheWrite: usage?.cacheWrite,
-      });
+      }) ?? (usage?.total !== undefined && usage.total >= 0 ? usage.total : undefined));
 
   if (!(typeof promptTokens === "number") || !Number.isFinite(promptTokens) || promptTokens < 0) {
     return undefined;

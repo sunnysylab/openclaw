@@ -1034,18 +1034,18 @@ function resolveGatewaySessionTotalTokens(params: {
     return freshTotal;
   }
 
-  // 2. Fall back to the display estimate if it is positive. This preserves the
-  // last known good count through provider-reported zero usage (the vLLM fix)
-  // and store-only updates like compaction.
-  if (estimate !== undefined && estimate > 0) {
-    return estimate;
-  }
-
-  // 3. Fall back to a fresh transcript total. This ensures that authoritative
+  // 2. Fall back to a fresh transcript total. This ensures that authoritative
   // context data (including an explicit zero after /reset) is preferred over
   // a stale zero estimate in the store.
   if (transcriptFresh && transcriptTotal !== undefined) {
     return transcriptTotal;
+  }
+
+  // 3. Fall back to the display estimate if it is positive. This preserves the
+  // last known good count through provider-reported zero usage (the vLLM fix)
+  // and store-only updates like compaction.
+  if (estimate !== undefined && estimate > 0) {
+    return estimate;
   }
 
   // 4. Fall back to a zero display estimate.
@@ -1059,12 +1059,12 @@ function resolveGatewaySessionTotalTokens(params: {
     return legacyPositive;
   }
 
-  // 5. Fall back to any transcript total (even if stale) as a last resort.
+  // 6. Fall back to any transcript total (even if stale) as a last resort.
   if (transcriptTotal !== undefined) {
     return transcriptTotal;
   }
 
-  // 6. Finally, use any legacy store total.
+  // 7. Finally, use any legacy store total.
   return resolveNonNegativeNumber(legacyTotal);
 }
 
@@ -1151,10 +1151,9 @@ export function buildGatewaySessionRow(params: {
     legacyTotal: entry?.totalTokens,
   });
 
-  const usedEstimate = freshTotalValue === undefined && estimateValue !== undefined;
   const totalTokensFresh =
     freshTotalValue !== undefined ||
-    (!usedEstimate && transcriptFresh && totalTokens === transcriptTotal);
+    (transcriptFresh && transcriptTotal !== undefined && totalTokens === transcriptTotal);
   const childSessions = resolveChildSessionKeys(key, store);
   const estimatedCostUsd =
     resolveEstimatedSessionCostUsd({
