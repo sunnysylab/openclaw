@@ -482,6 +482,8 @@ export type ToolsConfig = {
       cacheTtlMinutes?: number;
       /** @deprecated Legacy Brave scoped config. */
       brave?: WebSearchLegacyProviderConfig;
+      /** @deprecated Legacy Bright Data scoped config. */
+      brightdata?: WebSearchLegacyProviderConfig;
       /** @deprecated Legacy Firecrawl scoped config. */
       firecrawl?: WebSearchLegacyProviderConfig;
       /** @deprecated Legacy Gemini scoped config. */
@@ -522,6 +524,18 @@ export type ToolsConfig = {
         /** Max age (ms) for cached Firecrawl content. */
         maxAgeMs?: number;
         /** Timeout in seconds for Firecrawl requests. */
+        timeoutSeconds?: number;
+      };
+      brightdata?: {
+        /** Enable Bright Data fallback (default: true when apiKey is set). */
+        enabled?: boolean;
+        /** Bright Data API token (optional; defaults to BRIGHTDATA_API_TOKEN env var). */
+        apiKey?: SecretInput;
+        /** Bright Data API base URL (default: https://api.brightdata.com). */
+        baseUrl?: string;
+        /** Bright Data unlocker zone (default: mcp_unlocker). */
+        unlockerZone?: string;
+        /** Timeout in seconds for Bright Data requests. */
         timeoutSeconds?: number;
       };
     };

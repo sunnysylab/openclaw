@@ -1,4 +1,8 @@
 import { Type } from "@sinclair/typebox";
+import {
+  ensureBrightDataZoneExists,
+  resetEnsuredBrightDataZones,
+} from "openclaw/plugin-sdk/provider-web-search";
 import type { OpenClawConfig } from "../../config/config.js";
 import { normalizeResolvedSecretInputString } from "../../config/types.secrets.js";
 import { SsrFBlockedError } from "../../infra/net/ssrf.js";
@@ -43,6 +47,8 @@ const DEFAULT_ERROR_MAX_CHARS = 4_000;
 const DEFAULT_ERROR_MAX_BYTES = 64_000;
 const DEFAULT_FIRECRAWL_BASE_URL = "https://api.firecrawl.dev";
 const DEFAULT_FIRECRAWL_MAX_AGE_MS = 172_800_000;
+const DEFAULT_BRIGHTDATA_BASE_URL = "https://api.brightdata.com";
+const DEFAULT_BRIGHTDATA_UNLOCKER_ZONE = "mcp_unlocker";
 const DEFAULT_FETCH_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -80,6 +86,25 @@ type FirecrawlFetchConfig =
       timeoutSeconds?: number;
     }
   | undefined;
+
+type BrightDataFetchConfig =
+  | {
+      enabled?: boolean;
+      apiKey?: unknown;
+      baseUrl?: string;
+      unlockerZone?: string;
+      timeoutSeconds?: number;
+    }
+  | undefined;
+
+type ExternalFetchFallbackResult = {
+  extractor: "firecrawl" | "brightdata";
+  text: string;
+  title?: string;
+  finalUrl?: string;
+  status?: number;
+  warning?: string;
+};
 
 function resolveFetchConfig(cfg?: OpenClawConfig): WebFetchConfig {
   const fetch = cfg?.tools?.web?.fetch;
@@ -135,6 +160,17 @@ function resolveFirecrawlConfig(fetch?: WebFetchConfig): FirecrawlFetchConfig {
     return undefined;
   }
   return firecrawl as FirecrawlFetchConfig;
+}
+
+function resolveBrightDataConfig(fetch?: WebFetchConfig): BrightDataFetchConfig {
+  if (!fetch || typeof fetch !== "object") {
+    return undefined;
+  }
+  const brightdata = "brightdata" in fetch ? fetch.brightdata : undefined;
+  if (!brightdata || typeof brightdata !== "object") {
+    return undefined;
+  }
+  return brightdata as BrightDataFetchConfig;
 }
 
 function resolveFirecrawlApiKey(firecrawl?: FirecrawlFetchConfig): string | undefined {
@@ -194,6 +230,47 @@ function resolveFirecrawlMaxAgeMsOrDefault(firecrawl?: FirecrawlFetchConfig): nu
     return resolved;
   }
   return DEFAULT_FIRECRAWL_MAX_AGE_MS;
+}
+
+function resolveBrightDataApiKey(brightdata?: BrightDataFetchConfig): string | undefined {
+  const fromConfigRaw =
+    brightdata && "apiKey" in brightdata
+      ? normalizeResolvedSecretInputString({
+          value: brightdata.apiKey,
+          path: "tools.web.fetch.brightdata.apiKey",
+        })
+      : undefined;
+  const fromConfig = normalizeSecretInput(fromConfigRaw);
+  const fromEnv = normalizeSecretInput(process.env.BRIGHTDATA_API_TOKEN);
+  return fromConfig || fromEnv || undefined;
+}
+
+function resolveBrightDataEnabled(params: {
+  brightdata?: BrightDataFetchConfig;
+  apiKey?: string;
+}): boolean {
+  if (typeof params.brightdata?.enabled === "boolean") {
+    return params.brightdata.enabled;
+  }
+  return Boolean(params.apiKey);
+}
+
+function resolveBrightDataBaseUrl(brightdata?: BrightDataFetchConfig): string {
+  const fromConfig =
+    brightdata && "baseUrl" in brightdata && typeof brightdata.baseUrl === "string"
+      ? brightdata.baseUrl.trim()
+      : "";
+  const fromEnv = normalizeSecretInput(process.env.BRIGHTDATA_BASE_URL);
+  return fromConfig || fromEnv || DEFAULT_BRIGHTDATA_BASE_URL;
+}
+
+function resolveBrightDataUnlockerZone(brightdata?: BrightDataFetchConfig): string {
+  const fromConfig =
+    brightdata && "unlockerZone" in brightdata && typeof brightdata.unlockerZone === "string"
+      ? brightdata.unlockerZone.trim()
+      : "";
+  const fromEnv = normalizeSecretInput(process.env.BRIGHTDATA_UNLOCKER_ZONE);
+  return fromConfig || fromEnv || DEFAULT_BRIGHTDATA_UNLOCKER_ZONE;
 }
 
 function resolveMaxChars(value: unknown, fallback: number, cap: number): number {
@@ -309,8 +386,8 @@ function wrapWebFetchField(value: string | undefined): string | undefined {
   return wrapExternalContent(value, { source: "web_fetch", includeWarning: false });
 }
 
-function buildFirecrawlWebFetchPayload(params: {
-  firecrawl: Awaited<ReturnType<typeof fetchFirecrawlContent>>;
+function buildExternalWebFetchPayload(params: {
+  fallback: ExternalFetchFallbackResult;
   rawUrl: string;
   finalUrlFallback: string;
   statusFallback: number;
@@ -318,18 +395,16 @@ function buildFirecrawlWebFetchPayload(params: {
   maxChars: number;
   tookMs: number;
 }): Record<string, unknown> {
-  const wrapped = wrapWebFetchContent(params.firecrawl.text, params.maxChars);
-  const wrappedTitle = params.firecrawl.title
-    ? wrapWebFetchField(params.firecrawl.title)
-    : undefined;
+  const wrapped = wrapWebFetchContent(params.fallback.text, params.maxChars);
+  const wrappedTitle = params.fallback.title ? wrapWebFetchField(params.fallback.title) : undefined;
   return {
     url: params.rawUrl, // Keep raw for tool chaining
-    finalUrl: params.firecrawl.finalUrl || params.finalUrlFallback, // Keep raw
-    status: params.firecrawl.status ?? params.statusFallback,
+    finalUrl: params.fallback.finalUrl || params.finalUrlFallback, // Keep raw
+    status: params.fallback.status ?? params.statusFallback,
     contentType: "text/markdown", // Protocol metadata, don't wrap
     title: wrappedTitle,
     extractMode: params.extractMode,
-    extractor: "firecrawl",
+    extractor: params.fallback.extractor,
     externalContent: {
       untrusted: true,
       source: "web_fetch",
@@ -342,7 +417,7 @@ function buildFirecrawlWebFetchPayload(params: {
     fetchedAt: new Date().toISOString(),
     tookMs: params.tookMs,
     text: wrapped.text,
-    warning: wrapWebFetchField(params.firecrawl.warning),
+    warning: wrapWebFetchField(params.fallback.warning),
   };
 }
 
@@ -366,6 +441,7 @@ export async function fetchFirecrawlContent(params: {
   storeInCache: boolean;
   timeoutSeconds: number;
 }): Promise<{
+  extractor: "firecrawl";
   text: string;
   title?: string;
   finalUrl?: string;
@@ -427,11 +503,118 @@ export async function fetchFirecrawlContent(params: {
             : "";
       const text = params.extractMode === "text" ? markdownToText(rawText) : rawText;
       return {
+        extractor: "firecrawl",
         text,
         title: data.metadata?.title,
         finalUrl: data.metadata?.sourceURL,
         status: data.metadata?.statusCode,
         warning: payload?.warning,
+      };
+    },
+  );
+}
+
+function resolveBrightDataApiEndpoint(baseUrl: string, pathname: string): string {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) {
+    return new URL(pathname, DEFAULT_BRIGHTDATA_BASE_URL).toString();
+  }
+  try {
+    const url = new URL(trimmed);
+    if (url.pathname && url.pathname !== "/" && pathname === "/request") {
+      return url.toString();
+    }
+    url.pathname = pathname;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return new URL(pathname, DEFAULT_BRIGHTDATA_BASE_URL).toString();
+  }
+}
+
+function resolveBrightDataEndpoint(baseUrl: string): string {
+  return resolveBrightDataApiEndpoint(baseUrl, "/request");
+}
+
+async function ensureBrightDataUnlockerZoneExists(params: {
+  apiKey: string;
+  baseUrl: string;
+  unlockerZone: string;
+  timeoutSeconds: number;
+}): Promise<boolean> {
+  return await ensureBrightDataZoneExists({
+    requestEndpoint: withTrustedWebToolsEndpoint,
+    apiToken: params.apiKey,
+    baseUrl: params.baseUrl,
+    zoneName: params.unlockerZone,
+    kind: "unlocker",
+    timeoutSeconds: params.timeoutSeconds,
+    onError: (error) => {
+      logDebug(
+        `[web-fetch] Bright Data unlocker zone bootstrap failed (${params.unlockerZone}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    },
+  });
+}
+
+export async function fetchBrightDataContent(params: {
+  url: string;
+  extractMode: ExtractMode;
+  apiKey: string;
+  baseUrl: string;
+  unlockerZone: string;
+  timeoutSeconds: number;
+}): Promise<ExternalFetchFallbackResult> {
+  await ensureBrightDataUnlockerZoneExists({
+    apiKey: params.apiKey,
+    baseUrl: params.baseUrl,
+    unlockerZone: params.unlockerZone,
+    timeoutSeconds: params.timeoutSeconds,
+  });
+  const endpoint = resolveBrightDataEndpoint(params.baseUrl);
+  return await withTrustedWebToolsEndpoint(
+    {
+      url: endpoint,
+      timeoutSeconds: params.timeoutSeconds,
+      init: {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${params.apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "text/plain, text/html, application/json;q=0.8, */*;q=0.5",
+        },
+        body: JSON.stringify({
+          url: params.url,
+          zone: params.unlockerZone,
+          format: "raw",
+          data_format: "markdown",
+        }),
+      },
+    },
+    async ({ response }) => {
+      if (!response.ok) {
+        const detail = await readResponseText(response, { maxBytes: DEFAULT_ERROR_MAX_BYTES });
+        const code = response.headers.get("x-brd-err-code");
+        if (code === "client_10100" && params.unlockerZone === DEFAULT_BRIGHTDATA_UNLOCKER_ZONE) {
+          throw new Error(
+            "Bright Data fetch failed: free-tier usage limit reached for the default mcp_unlocker zone.",
+          );
+        }
+        throw new Error(
+          `Bright Data fetch failed (${response.status}): ${wrapWebContent(detail.text || response.statusText, "web_fetch")}`,
+        );
+      }
+
+      const markdown = (await response.text()).trim();
+      if (!markdown) {
+        throw new Error("Bright Data fetch returned no content.");
+      }
+      return {
+        extractor: "brightdata",
+        text: params.extractMode === "text" ? markdownToText(markdown) : markdown,
       };
     },
   );
@@ -448,17 +631,26 @@ type FirecrawlRuntimeParams = {
   firecrawlTimeoutSeconds: number;
 };
 
-type WebFetchRuntimeParams = FirecrawlRuntimeParams & {
-  url: string;
-  extractMode: ExtractMode;
-  maxChars: number;
-  maxResponseBytes: number;
-  maxRedirects: number;
-  timeoutSeconds: number;
-  cacheTtlMs: number;
-  userAgent: string;
-  readabilityEnabled: boolean;
+type BrightDataRuntimeParams = {
+  brightdataEnabled: boolean;
+  brightdataApiKey?: string;
+  brightdataBaseUrl: string;
+  brightdataUnlockerZone: string;
+  brightdataTimeoutSeconds: number;
 };
+
+type WebFetchRuntimeParams = FirecrawlRuntimeParams &
+  BrightDataRuntimeParams & {
+    url: string;
+    extractMode: ExtractMode;
+    maxChars: number;
+    maxResponseBytes: number;
+    maxRedirects: number;
+    timeoutSeconds: number;
+    cacheTtlMs: number;
+    userAgent: string;
+    readabilityEnabled: boolean;
+  };
 
 function toFirecrawlContentParams(
   params: FirecrawlRuntimeParams & { url: string; extractMode: ExtractMode },
@@ -498,8 +690,8 @@ async function maybeFetchFirecrawlWebFetchPayload(
   }
 
   const firecrawl = await fetchFirecrawlContent(firecrawlParams);
-  const payload = buildFirecrawlWebFetchPayload({
-    firecrawl,
+  const payload = buildExternalWebFetchPayload({
+    fallback: firecrawl,
     rawUrl: params.url,
     finalUrlFallback: params.finalUrlFallback,
     statusFallback: params.statusFallback,
@@ -509,6 +701,97 @@ async function maybeFetchFirecrawlWebFetchPayload(
   });
   writeCache(FETCH_CACHE, params.cacheKey, payload, params.cacheTtlMs);
   return payload;
+}
+
+function toBrightDataContentParams(
+  params: BrightDataRuntimeParams & { url: string; extractMode: ExtractMode },
+): Parameters<typeof fetchBrightDataContent>[0] | null {
+  if (!params.brightdataEnabled || !params.brightdataApiKey) {
+    return null;
+  }
+  return {
+    url: params.url,
+    extractMode: params.extractMode,
+    apiKey: params.brightdataApiKey,
+    baseUrl: params.brightdataBaseUrl,
+    unlockerZone: params.brightdataUnlockerZone,
+    timeoutSeconds: params.brightdataTimeoutSeconds,
+  };
+}
+
+async function maybeFetchBrightDataWebFetchPayload(
+  params: WebFetchRuntimeParams & {
+    urlToFetch: string;
+    finalUrlFallback: string;
+    statusFallback: number;
+    cacheKey: string;
+    tookMs: number;
+  },
+): Promise<Record<string, unknown> | null> {
+  const brightdataParams = toBrightDataContentParams({
+    ...params,
+    url: params.urlToFetch,
+    extractMode: params.extractMode,
+  });
+  if (!brightdataParams) {
+    return null;
+  }
+
+  const brightdata = await fetchBrightDataContent(brightdataParams);
+  const payload = buildExternalWebFetchPayload({
+    fallback: brightdata,
+    rawUrl: params.url,
+    finalUrlFallback: params.finalUrlFallback,
+    statusFallback: params.statusFallback,
+    extractMode: params.extractMode,
+    maxChars: params.maxChars,
+    tookMs: params.tookMs,
+  });
+  writeCache(FETCH_CACHE, params.cacheKey, payload, params.cacheTtlMs);
+  return payload;
+}
+
+async function maybeFetchExternalWebFetchPayload(
+  params: WebFetchRuntimeParams & {
+    urlToFetch: string;
+    finalUrlFallback: string;
+    statusFallback: number;
+    cacheKey: string;
+    tookMs: number;
+  },
+): Promise<Record<string, unknown> | null> {
+  let firecrawlError: unknown;
+  try {
+    const firecrawlPayload = await maybeFetchFirecrawlWebFetchPayload(params);
+    if (firecrawlPayload) {
+      return firecrawlPayload;
+    }
+  } catch (error) {
+    firecrawlError = error;
+  }
+  try {
+    const brightdataPayload = await maybeFetchBrightDataWebFetchPayload(params);
+    if (brightdataPayload) {
+      return brightdataPayload;
+    }
+  } catch (brightdataError) {
+    const parts: string[] = [];
+    if (firecrawlError) {
+      parts.push(
+        `Firecrawl: ${firecrawlError instanceof Error ? firecrawlError.message : JSON.stringify(firecrawlError)}`,
+      );
+    }
+    parts.push(
+      `Bright Data: ${brightdataError instanceof Error ? brightdataError.message : String(brightdataError)}`,
+    );
+    throw new Error(parts.length > 1 ? `Both fallbacks failed. ${parts.join(". ")}` : parts[0], {
+      cause: brightdataError,
+    });
+  }
+  if (firecrawlError) {
+    throw firecrawlError;
+  }
+  return null;
 }
 
 async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string, unknown>> {
@@ -562,7 +845,7 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
     if (error instanceof SsrFBlockedError) {
       throw error;
     }
-    const payload = await maybeFetchFirecrawlWebFetchPayload({
+    const payload = await maybeFetchExternalWebFetchPayload({
       ...params,
       urlToFetch: finalUrl,
       finalUrlFallback: finalUrl,
@@ -578,7 +861,7 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
 
   try {
     if (!res.ok) {
-      const payload = await maybeFetchFirecrawlWebFetchPayload({
+      const payload = await maybeFetchExternalWebFetchPayload({
         ...params,
         urlToFetch: params.url,
         finalUrlFallback: finalUrl,
@@ -629,11 +912,11 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
           title = readable.title;
           extractor = "readability";
         } else {
-          const firecrawl = await tryFirecrawlFallback({ ...params, url: finalUrl });
-          if (firecrawl) {
-            text = firecrawl.text;
-            title = firecrawl.title;
-            extractor = "firecrawl";
+          const fallback = await tryHostedFetchFallback({ ...params, url: finalUrl });
+          if (fallback) {
+            text = fallback.text;
+            title = fallback.title;
+            extractor = fallback.extractor;
           } else {
             const basic = await extractBasicHtmlContent({
               html: body,
@@ -651,9 +934,16 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
           }
         }
       } else {
-        throw new Error(
-          "Web fetch extraction failed: Readability disabled and Firecrawl unavailable.",
-        );
+        const fallback = await tryHostedFetchFallback({ ...params, url: finalUrl });
+        if (fallback) {
+          text = fallback.text;
+          title = fallback.title;
+          extractor = fallback.extractor;
+        } else {
+          throw new Error(
+            "Web fetch extraction failed: Readability disabled and Firecrawl unavailable.",
+          );
+        }
       }
     } else if (contentType.includes("application/json")) {
       try {
@@ -701,17 +991,44 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
 
 async function tryFirecrawlFallback(
   params: FirecrawlRuntimeParams & { url: string; extractMode: ExtractMode },
-): Promise<{ text: string; title?: string } | null> {
+): Promise<ExternalFetchFallbackResult | null> {
   const firecrawlParams = toFirecrawlContentParams(params);
   if (!firecrawlParams) {
     return null;
   }
   try {
-    const firecrawl = await fetchFirecrawlContent(firecrawlParams);
-    return { text: firecrawl.text, title: firecrawl.title };
+    return await fetchFirecrawlContent(firecrawlParams);
   } catch {
     return null;
   }
+}
+
+async function tryBrightDataFallback(
+  params: BrightDataRuntimeParams & { url: string; extractMode: ExtractMode },
+): Promise<ExternalFetchFallbackResult | null> {
+  const brightdataParams = toBrightDataContentParams(params);
+  if (!brightdataParams) {
+    return null;
+  }
+  try {
+    return await fetchBrightDataContent(brightdataParams);
+  } catch {
+    return null;
+  }
+}
+
+async function tryHostedFetchFallback(
+  params: FirecrawlRuntimeParams &
+    BrightDataRuntimeParams & {
+      url: string;
+      extractMode: ExtractMode;
+    },
+): Promise<ExternalFetchFallbackResult | null> {
+  const firecrawl = await tryFirecrawlFallback(params);
+  if (firecrawl) {
+    return firecrawl;
+  }
+  return await tryBrightDataFallback(params);
 }
 
 function resolveFirecrawlEndpoint(baseUrl: string): string {
@@ -742,6 +1059,7 @@ export function createWebFetchTool(options?: {
   }
   const readabilityEnabled = resolveFetchReadabilityEnabled(fetch);
   const firecrawl = resolveFirecrawlConfig(fetch);
+  const brightdata = resolveBrightDataConfig(fetch);
   const runtimeFirecrawlActive = options?.runtimeFirecrawl?.active;
   const shouldResolveFirecrawlApiKey =
     runtimeFirecrawlActive === undefined ? firecrawl?.enabled !== false : runtimeFirecrawlActive;
@@ -757,6 +1075,14 @@ export function createWebFetchTool(options?: {
     firecrawl?.timeoutSeconds ?? fetch?.timeoutSeconds,
     DEFAULT_TIMEOUT_SECONDS,
   );
+  const brightdataApiKey = resolveBrightDataApiKey(brightdata);
+  const brightdataEnabled = resolveBrightDataEnabled({ brightdata, apiKey: brightdataApiKey });
+  const brightdataBaseUrl = resolveBrightDataBaseUrl(brightdata);
+  const brightdataUnlockerZone = resolveBrightDataUnlockerZone(brightdata);
+  const brightdataTimeoutSeconds = resolveTimeoutSeconds(
+    brightdata?.timeoutSeconds ?? fetch?.timeoutSeconds,
+    DEFAULT_TIMEOUT_SECONDS,
+  );
   const userAgent =
     (fetch && "userAgent" in fetch && typeof fetch.userAgent === "string" && fetch.userAgent) ||
     DEFAULT_FETCH_USER_AGENT;
@@ -765,7 +1091,7 @@ export function createWebFetchTool(options?: {
     label: "Web Fetch",
     name: "web_fetch",
     description:
-      "Fetch and extract readable content from a URL (HTML → markdown/text). Use for lightweight page access without browser automation.",
+      "Fetch and extract readable content from a URL (HTML → markdown/text). Uses Readability first, then configured hosted extractors when needed.",
     parameters: WebFetchSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
@@ -795,6 +1121,11 @@ export function createWebFetchTool(options?: {
         firecrawlProxy: "auto",
         firecrawlStoreInCache: true,
         firecrawlTimeoutSeconds,
+        brightdataEnabled,
+        brightdataApiKey,
+        brightdataBaseUrl,
+        brightdataUnlockerZone,
+        brightdataTimeoutSeconds,
       });
       return jsonResult(result);
     },
@@ -802,5 +1133,9 @@ export function createWebFetchTool(options?: {
 }
 
 export const __testing = {
+  resetBrightDataZoneEnsureCache: () => {
+    resetEnsuredBrightDataZones();
+  },
+  resolveBrightDataBaseUrl,
   resolveFirecrawlBaseUrl,
 };
