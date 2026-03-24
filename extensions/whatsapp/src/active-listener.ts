@@ -7,6 +7,8 @@ export type ActiveWebSendOptions = {
   gifPlayback?: boolean;
   accountId?: string;
   fileName?: string;
+  /** Message ID to quote-reply to (Baileys quoted key). */
+  replyToId?: string;
 };
 
 export type ActiveWebListener = {

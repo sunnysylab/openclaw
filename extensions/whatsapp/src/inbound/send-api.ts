@@ -1,4 +1,4 @@
-import type { AnyMessageContent, WAPresence } from "@whiskeysockets/baileys";
+import type { AnyMessageContent, MiscMessageGenerationOptions, WAPresence } from "@whiskeysockets/baileys";
 import { recordChannelActivity } from "openclaw/plugin-sdk/infra-runtime";
 import { toWhatsappJid } from "openclaw/plugin-sdk/text-runtime";
 import type { ActiveWebSendOptions } from "../active-listener.js";
@@ -19,7 +19,11 @@ function resolveOutboundMessageId(result: unknown): string {
 
 export function createWebSendApi(params: {
   sock: {
-    sendMessage: (jid: string, content: AnyMessageContent) => Promise<unknown>;
+    sendMessage: (
+      jid: string,
+      content: AnyMessageContent,
+      options?: MiscMessageGenerationOptions,
+    ) => Promise<unknown>;
     sendPresenceUpdate: (presence: WAPresence, jid?: string) => Promise<unknown>;
   };
   defaultAccountId: string;
@@ -63,7 +67,22 @@ export function createWebSendApi(params: {
       } else {
         payload = { text };
       }
-      const result = await params.sock.sendMessage(jid, payload);
+      const replyToId = sendOptions?.replyToId?.trim();
+      // Note: we only have the message ID at this call site, not the full original
+      // message content. Passing `message: {}` avoids "Message unavailable" in
+      // some WhatsApp clients while keeping the reply indicator (sender/timestamp).
+      // This is a known limitation — the quote preview body will be empty.
+      const sendMessageOptions: MiscMessageGenerationOptions | undefined = replyToId
+        ? {
+            quoted: {
+              key: { remoteJid: jid, id: replyToId },
+              message: {},
+            } as MiscMessageGenerationOptions["quoted"],
+          }
+        : undefined;
+      const result = sendMessageOptions
+        ? await params.sock.sendMessage(jid, payload, sendMessageOptions)
+        : await params.sock.sendMessage(jid, payload);
       const accountId = sendOptions?.accountId ?? params.defaultAccountId;
       recordWhatsAppOutbound(accountId);
       const messageId = resolveOutboundMessageId(result);
