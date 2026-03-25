@@ -99,6 +99,8 @@ import { resolveGlobalLane, resolveSessionLane } from "./lanes.js";
 import { log } from "./logger.js";
 import { buildEmbeddedMessageActionDiscoveryInput } from "./message-action-discovery-input.js";
 import { buildModelAliasLines, resolveModelAsync } from "./model.js";
+import type { EmbeddedRunTrigger } from "./run/params.js";
+import { shouldInjectHeartbeatPromptForTrigger } from "./run/trigger-policy.js";
 import { buildEmbeddedSandboxInfo } from "./sandbox-info.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "./session-manager-cache.js";
 import { truncateSessionAfterCompaction } from "./session-truncation.js";
@@ -153,6 +155,8 @@ export type CompactEmbeddedPiSessionParams = {
   tokenBudget?: number;
   force?: boolean;
   trigger?: "overflow" | "manual";
+  /** Preserve the original run trigger when compaction is entered from a retry path. */
+  sourceTrigger?: EmbeddedRunTrigger;
   diagId?: string;
   attempt?: number;
   maxAttempts?: number;
@@ -164,6 +168,14 @@ export type CompactEmbeddedPiSessionParams = {
   /** Allow runtime plugins for this compaction to late-bind the gateway subagent. */
   allowGatewaySubagentBinding?: boolean;
 };
+
+function shouldInjectHeartbeatPromptDuringCompaction(params: {
+  isDefaultAgent: boolean;
+  sourceTrigger?: EmbeddedRunTrigger;
+}): boolean {
+  // Undefined falls back to the default policy, which keeps heartbeat injection enabled.
+  return params.isDefaultAgent && shouldInjectHeartbeatPromptForTrigger(params.sourceTrigger);
+}
 
 type CompactionMessageMetrics = {
   messages: number;
@@ -958,7 +970,10 @@ export async function compactEmbeddedPiSessionDirect(
       ownerDisplay: ownerDisplay.ownerDisplay,
       ownerDisplaySecret: ownerDisplay.ownerDisplaySecret,
       reasoningTagHint,
-      heartbeatPrompt: isDefaultAgent
+      heartbeatPrompt: shouldInjectHeartbeatPromptDuringCompaction({
+        isDefaultAgent,
+        sourceTrigger: params.sourceTrigger,
+      })
         ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
         : undefined,
       skillsPrompt,
@@ -1422,6 +1437,7 @@ export const __testing = {
   hasMeaningfulConversationContent,
   containsRealConversationMessages,
   estimateTokensAfterCompaction,
+  shouldInjectHeartbeatPromptDuringCompaction,
   buildBeforeCompactionHookMetrics,
   runBeforeCompactionHooks,
   runAfterCompactionHooks,

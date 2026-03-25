@@ -1099,6 +1099,7 @@ export async function runEmbeddedPiAgent(
                   }),
                   runId: params.runId,
                   trigger: "overflow",
+                  sourceTrigger: params.trigger,
                   ...(observedOverflowTokens !== undefined
                     ? { currentTokenCount: observedOverflowTokens }
                     : {}),
