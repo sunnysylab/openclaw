@@ -159,7 +159,9 @@ export async function persistSessionUsageUpdate(params: {
           }
 
           const hasCurrentUsage =
-            hasUsage || Boolean(params.lastCallUsage) || params.promptTokens === 0;
+            hasUsage ||
+            Boolean(params.lastCallUsage) ||
+            (typeof params.promptTokens === "number" && params.promptTokens >= 0);
 
           if (hasCurrentUsage || hasFreshContextSnapshot) {
             patch.inputTokens = params.usage?.input;

@@ -89,6 +89,14 @@ export function resolveTotalTokens(
   ) {
     return total;
   }
+  if (
+    options?.allowStaleEstimate &&
+    typeof entry.totalTokens === "number" &&
+    Number.isFinite(entry.totalTokens) &&
+    entry.totalTokens >= 0
+  ) {
+    return entry.totalTokens;
+  }
   return undefined;
 }
 

@@ -121,7 +121,10 @@ export async function updateSessionStoreAfterAgentRun(params: {
       }),
     );
     const lastCallUsage = result.meta.agentMeta?.lastCallUsage;
-    const hasCurrentUsage = hasNonzeroUsage(usage) || Boolean(lastCallUsage) || promptTokens === 0;
+    const hasCurrentUsage =
+      hasNonzeroUsage(usage) ||
+      Boolean(lastCallUsage) ||
+      (typeof promptTokens === "number" && promptTokens >= 0);
     const useFallback = !modelChanged && !hasCurrentUsage;
     next.inputTokens = input ?? (useFallback ? entry.inputTokens : undefined);
     next.outputTokens = output ?? (useFallback ? entry.outputTokens : undefined);
