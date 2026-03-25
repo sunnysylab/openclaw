@@ -182,6 +182,78 @@ describe("buildAssistantMessage", () => {
       total: 0,
     });
   });
+
+  it("deserializes tool call arguments from JSON string to object", () => {
+    // Ollama (and some OpenAI-compat layers) can return arguments as a JSON
+    // string instead of a plain object.  buildAssistantMessage must normalise
+    // them so downstream tool-call round-trips don't break.
+    // Use `as unknown as Parameters<typeof buildAssistantMessage>[0]` to model
+    // the real-world Ollama quirk where `arguments` arrives as a JSON string
+    // instead of an object — exactly the runtime scenario this test exercises.
+    const response = {
+      model: "qwen3:32b",
+      created_at: "2026-01-01T00:00:00Z",
+      message: {
+        role: "assistant" as const,
+        content: "",
+        tool_calls: [
+          {
+            function: {
+              name: "get_weather",
+              arguments: '{"location":"Beijing","unit":"celsius"}',
+            },
+          },
+        ],
+      },
+      done: true,
+    } as unknown as Parameters<typeof buildAssistantMessage>[0];
+    const result = buildAssistantMessage(response, modelInfo);
+    expect(result.stopReason).toBe("toolUse");
+    const toolCall = result.content[0] as {
+      type: "toolCall";
+      name: string;
+      arguments: Record<string, unknown>;
+    };
+    expect(toolCall.arguments).toEqual({ location: "Beijing", unit: "celsius" });
+  });
+});
+
+describe("convertToOllamaMessages — tool call argument normalisation", () => {
+  it("deserializes string arguments in toolCall content parts", () => {
+    // When a prior assistant turn stored arguments as a JSON string (e.g. from
+    // an OpenAI-compatible provider), convertToOllamaMessages must convert them
+    // to objects so the Ollama API receives the correct shape.
+    const messages = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call_1",
+            name: "get_weather",
+            arguments: '{"location":"Tokyo"}',
+          },
+        ],
+      },
+    ];
+    const result = convertToOllamaMessages(messages);
+    expect(result[0].tool_calls).toEqual([
+      { function: { name: "get_weather", arguments: { location: "Tokyo" } } },
+    ]);
+  });
+
+  it("keeps object arguments in toolCall content parts unchanged", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call_2", name: "bash", arguments: { command: "ls" } }],
+      },
+    ];
+    const result = convertToOllamaMessages(messages);
+    expect(result[0].tool_calls).toEqual([
+      { function: { name: "bash", arguments: { command: "ls" } } },
+    ]);
+  });
 });
 
 // Helper: build a ReadableStreamDefaultReader from NDJSON lines
