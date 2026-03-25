@@ -11,6 +11,9 @@ import {
 
 const SILENT_REPLY_PATTERN = /^\s*NO_REPLY\s*$/;
 
+/** Limit chat.history request to avoid huge payloads and main-thread freeze (see CHAT_HISTORY_RENDER_LIMIT in views/chat.ts). */
+const CHAT_HISTORY_REQUEST_LIMIT = 25;
+
 function isSilentReplyStream(text: string): boolean {
   return SILENT_REPLY_PATTERN.test(text);
 }
@@ -39,6 +42,7 @@ export type ChatState = {
   chatLoading: boolean;
   chatMessages: unknown[];
   chatThinkingLevel: string | null;
+  chatHistoryTruncated?: boolean;
   chatSending: boolean;
   chatMessage: string;
   chatAttachments: ChatAttachment[];
@@ -79,18 +83,19 @@ export async function loadChatHistory(state: ChatState) {
       "chat.history",
       {
         sessionKey: state.sessionKey,
-        limit: 200,
+        limit: CHAT_HISTORY_REQUEST_LIMIT,
       },
     );
     const messages = Array.isArray(res.messages) ? res.messages : [];
-    state.chatMessages = messages.filter((message) => !isAssistantSilentReply(message));
+    const filtered = messages.filter((message) => !isAssistantSilentReply(message));
     state.chatThinkingLevel = res.thinkingLevel ?? null;
-    // Clear all streaming state — history includes tool results and text
-    // inline, so keeping streaming artifacts would cause duplicates.
     maybeResetToolStream(state);
     state.chatStream = null;
     state.chatStreamStartedAt = null;
+    state.chatMessages = filtered;
+    state.chatHistoryTruncated = messages.length >= CHAT_HISTORY_REQUEST_LIMIT;
   } catch (err) {
+    state.chatHistoryTruncated = false;
     if (isMissingOperatorReadScopeError(err)) {
       state.chatMessages = [];
       state.chatThinkingLevel = null;

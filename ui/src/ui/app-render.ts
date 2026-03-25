@@ -1470,6 +1470,7 @@ export function renderApp(state: AppViewState) {
                 fallbackStatus: state.fallbackStatus,
                 assistantAvatarUrl: chatAvatarUrl,
                 messages: state.chatMessages,
+                historyTruncated: state.chatHistoryTruncated,
                 toolMessages: state.chatToolMessages,
                 streamSegments: state.chatStreamSegments,
                 stream: state.chatStream,
