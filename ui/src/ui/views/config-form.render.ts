@@ -1,4 +1,5 @@
 import { html, nothing } from "lit";
+import { t } from "../../i18n/index.ts";
 import { icons } from "../icons.ts";
 import type { ConfigUiHints } from "../types.ts";
 import { matchesNodeSearch, parseConfigSearchQuery, renderNode } from "./config-form.node.ts";
@@ -322,6 +323,21 @@ export const SECTION_META: Record<string, { label: string; description: string }
   mcp: { label: "MCP", description: "Model Context Protocol server definitions" },
 };
 
+export function getSectionMeta(key: string): { label: string; description: string } | null {
+  const meta = SECTION_META[key];
+  if (!meta) {
+    return null;
+  }
+  const labelKey = `configMeta.sections.${key}.label`;
+  const descriptionKey = `configMeta.sections.${key}.description`;
+  const label = t(labelKey);
+  const description = t(descriptionKey);
+  return {
+    label: label === labelKey ? meta.label : label,
+    description: description === descriptionKey ? meta.description : description,
+  };
+}
+
 function getSectionIcon(key: string) {
   return sectionIcons[key as keyof typeof sectionIcons] ?? sectionIcons.default;
 }
@@ -338,7 +354,7 @@ function matchesSearch(params: {
   }
   const criteria = parseConfigSearchQuery(params.query);
   const q = criteria.text;
-  const meta = SECTION_META[params.key];
+  const meta = getSectionMeta(params.key);
   const sectionMetaMatches =
     q &&
     (params.key.toLowerCase().includes(q) ||
@@ -483,7 +499,7 @@ export function renderConfigForm(props: ConfigFormProps) {
             `;
             })()
           : filteredEntries.map(([key, node]) => {
-              const meta = SECTION_META[key] ?? {
+              const meta = getSectionMeta(key) ?? {
                 label: key.charAt(0).toUpperCase() + key.slice(1),
                 description: node.description ?? "",
               };
