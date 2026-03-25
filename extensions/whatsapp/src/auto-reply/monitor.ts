@@ -151,6 +151,36 @@ export async function monitorWebChannel(
   process.once("SIGINT", handleSigint);
 
   let reconnectAttempts = 0;
+  // Reply closures dereference this at send time, so reconnect can swap
+  // sockets without dropping in-flight messages on stale connections.
+  const socketRef: { current: import("@whiskeysockets/baileys").WASocket | null } = {
+    current: null,
+  };
+  let shouldRetryDisconnect = keepAlive;
+  let disconnectRetryWindowActive = false;
+  const disconnectRetryAbortController = new AbortController();
+  let disconnectRetryWakeController = new AbortController();
+  if (abortSignal) {
+    if (abortSignal.aborted) {
+      disconnectRetryAbortController.abort();
+    } else {
+      abortSignal.addEventListener("abort", () => disconnectRetryAbortController.abort(), {
+        once: true,
+      });
+    }
+  }
+  const pulseDisconnectRetryWakeSignal = () => {
+    if (!disconnectRetryWakeController.signal.aborted) {
+      disconnectRetryWakeController.abort();
+    }
+    disconnectRetryWakeController = new AbortController();
+  };
+  const stopDisconnectRetries = () => {
+    shouldRetryDisconnect = false;
+    disconnectRetryWindowActive = false;
+    disconnectRetryAbortController.abort();
+    pulseDisconnectRetryWakeSignal();
+  };
 
   while (true) {
     if (stopRequested()) {
@@ -202,6 +232,12 @@ export async function monitorWebChannel(
       sendReadReceipts: account.sendReadReceipts,
       debounceMs: inboundDebounceMs,
       shouldDebounce,
+      socketRef,
+      shouldRetryDisconnect: () => shouldRetryDisconnect,
+      disconnectRetryWindowActive: () => disconnectRetryWindowActive,
+      disconnectRetryPolicy: reconnectPolicy,
+      disconnectRetryAbortSignal: disconnectRetryAbortController.signal,
+      disconnectRetryWakeSignal: () => disconnectRetryWakeController.signal,
       onMessage: async (msg: WebInboundMsg) => {
         active.handledMessages += 1;
         active.lastInboundAt = Date.now();
@@ -209,6 +245,8 @@ export async function monitorWebChannel(
         await onMessage(msg);
       },
     });
+    pulseDisconnectRetryWakeSignal();
+    disconnectRetryWindowActive = false;
 
     statusController.noteConnected();
 
@@ -242,6 +280,7 @@ export async function monitorWebChannel(
     });
 
     const closeListener = async () => {
+      socketRef.current = null;
       setActiveWebListener(account.accountId, null);
       if (active.unregisterUnhandled) {
         active.unregisterUnhandled();
@@ -329,6 +368,7 @@ export async function monitorWebChannel(
     }
 
     if (!keepAlive) {
+      stopDisconnectRetries();
       await closeListener();
       process.removeListener("SIGINT", handleSigint);
       return;
@@ -349,6 +389,7 @@ export async function monitorWebChannel(
     statusController.noteReconnectAttempts(reconnectAttempts);
 
     if (stopRequested() || sigintStop || reason === "aborted") {
+      stopDisconnectRetries();
       await closeListener();
       break;
     }
@@ -382,6 +423,7 @@ export async function monitorWebChannel(
     });
 
     if (loggedOut) {
+      stopDisconnectRetries();
       statusController.noteClose({
         statusCode: numericStatusCode,
         loggedOut: true,
@@ -397,6 +439,7 @@ export async function monitorWebChannel(
     }
 
     if (isNonRetryableWebCloseStatus(statusCode)) {
+      stopDisconnectRetries();
       statusController.noteClose({
         statusCode: numericStatusCode,
         error: errorStr,
@@ -420,6 +463,7 @@ export async function monitorWebChannel(
 
     reconnectAttempts += 1;
     if (reconnectPolicy.maxAttempts > 0 && reconnectAttempts >= reconnectPolicy.maxAttempts) {
+      stopDisconnectRetries();
       statusController.noteClose({
         statusCode: numericStatusCode,
         error: errorStr,
@@ -462,6 +506,8 @@ export async function monitorWebChannel(
     runtime.error(
       `WhatsApp Web connection closed (status ${statusCode}). Retry ${reconnectAttempts}/${reconnectPolicy.maxAttempts || "∞"} in ${formatDurationPrecise(delay)}… (${errorStr})`,
     );
+    shouldRetryDisconnect = true;
+    disconnectRetryWindowActive = true;
     await closeListener();
     try {
       await sleep(delay, abortSignal);

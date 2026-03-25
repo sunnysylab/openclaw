@@ -1,8 +1,11 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { logVerbose } from "../../../../src/globals.js";
-import { sleep } from "../../../../src/utils.js";
 import { loadWebMedia } from "../media.js";
 import type { WebInboundMsg } from "./types.js";
+
+const { sleepWithAbortMock } = vi.hoisted(() => ({
+  sleepWithAbortMock: vi.fn(async (_ms: number, _signal?: AbortSignal) => undefined),
+}));
 
 vi.mock("../../../../src/globals.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/globals.js")>();
@@ -17,15 +20,16 @@ vi.mock("../media.js", () => ({
   loadWebMedia: vi.fn(),
 }));
 
-vi.mock("../../../../src/utils.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/utils.js")>();
+vi.mock("../reconnect.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../reconnect.js")>();
   return {
     ...actual,
-    sleep: vi.fn(async () => {}),
+    sleepWithAbort: (ms: number, signal?: AbortSignal) => sleepWithAbortMock(ms, signal),
   };
 });
 
 let deliverWebReply: typeof import("./deliver-reply.js").deliverWebReply;
+let resolveDisconnectRetryStrategy: typeof import("./deliver-reply.js").resolveDisconnectRetryStrategy;
 
 function makeMsg(): WebInboundMsg {
   return {
@@ -34,6 +38,9 @@ function makeMsg(): WebInboundMsg {
     id: "msg-1",
     reply: vi.fn(async () => undefined),
     sendMedia: vi.fn(async () => undefined),
+    shouldRetryDisconnect: () => true,
+    disconnectRetryWindowActive: () => false,
+    disconnectRetryWakeSignal: () => undefined,
   } as unknown as WebInboundMsg;
 }
 
@@ -85,9 +92,12 @@ async function expectReplySuppressed(replyResult: { text: string; isReasoning?: 
 }
 
 describe("deliverWebReply", () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     vi.resetModules();
-    ({ deliverWebReply } = await import("./deliver-reply.js"));
+    ({ deliverWebReply, resolveDisconnectRetryStrategy } = await import("./deliver-reply.js"));
+    vi.clearAllMocks();
+    sleepWithAbortMock.mockReset();
+    sleepWithAbortMock.mockImplementation(async () => undefined);
   });
 
   it("suppresses payloads flagged as reasoning", async () => {
@@ -151,9 +161,295 @@ describe("deliverWebReply", () => {
       });
 
       expect(msg.reply).toHaveBeenCalledTimes(2);
-      expect(sleep).toHaveBeenCalledWith(500);
+      expect(sleepWithAbortMock).toHaveBeenCalledWith(500, undefined);
     },
   );
+
+  it("escalates to extended retries for reconnect-gap errors", async () => {
+    const msg = makeMsg();
+    (msg.reply as unknown as { mockRejectedValueOnce: (v: unknown) => void }).mockRejectedValueOnce(
+      new Error("no active socket - reconnection in progress"),
+    );
+    (msg.reply as unknown as { mockRejectedValueOnce: (v: unknown) => void }).mockRejectedValueOnce(
+      new Error("socket closed"),
+    );
+    (msg.reply as unknown as { mockRejectedValueOnce: (v: unknown) => void }).mockRejectedValueOnce(
+      new Error("socket closed"),
+    );
+    (msg.reply as unknown as { mockRejectedValueOnce: (v: unknown) => void }).mockRejectedValueOnce(
+      new Error("socket closed"),
+    );
+    (msg.reply as unknown as { mockResolvedValueOnce: (v: unknown) => void }).mockResolvedValueOnce(
+      undefined,
+    );
+
+    await deliverWebReply({
+      replyResult: { text: "hi" },
+      msg,
+      maxMediaBytes: 1024 * 1024,
+      textLimit: 200,
+      replyLogger,
+      skipLog: true,
+    });
+
+    expect(msg.reply).toHaveBeenCalledTimes(5);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(1, 500, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(2, 2000, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(3, 3600, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(4, 6480, undefined);
+  });
+
+  it("caps retries after extended disconnect budget", async () => {
+    const msg = makeMsg();
+    msg.disconnectRetryWindowActive = () => true;
+    (msg.reply as unknown as { mockRejectedValue: (v: unknown) => void }).mockRejectedValue(
+      new Error("socket disconnected"),
+    );
+
+    await expect(
+      deliverWebReply({
+        replyResult: { text: "hi" },
+        msg,
+        maxMediaBytes: 1024 * 1024,
+        textLimit: 200,
+        replyLogger,
+        skipLog: true,
+      }),
+    ).rejects.toThrow("socket disconnected");
+
+    expect(msg.reply).toHaveBeenCalledTimes(14);
+    expect(sleepWithAbortMock).toHaveBeenCalledTimes(13);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(1, 500, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(2, 2000, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(3, 3600, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(4, 6480, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(5, 11664, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(6, 20995, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(7, 30000, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(13, 30000, undefined);
+  });
+
+  it("does not retry disconnect errors when reconnect is not expected", async () => {
+    const msg = makeMsg();
+    msg.shouldRetryDisconnect = () => false;
+    (msg.reply as unknown as { mockRejectedValue: (v: unknown) => void }).mockRejectedValue(
+      new Error("no active socket - reconnection in progress"),
+    );
+
+    await expect(
+      deliverWebReply({
+        replyResult: { text: "hi" },
+        msg,
+        maxMediaBytes: 1024 * 1024,
+        textLimit: 200,
+        replyLogger,
+        skipLog: true,
+      }),
+    ).rejects.toThrow("no active socket - reconnection in progress");
+
+    expect(msg.reply).toHaveBeenCalledTimes(1);
+    expect(sleepWithAbortMock).not.toHaveBeenCalled();
+  });
+
+  it("extends disconnect retries for the full reconnect loop", async () => {
+    const msg = makeMsg();
+    msg.disconnectRetryWindowActive = () => true;
+    msg.disconnectRetryPolicy = {
+      initialMs: 5_000,
+      maxMs: 60_000,
+      factor: 2,
+      jitter: 0,
+      maxAttempts: 6,
+    };
+    (msg.reply as unknown as { mockRejectedValue: (v: unknown) => void }).mockRejectedValue(
+      new Error("socket disconnected"),
+    );
+
+    await expect(
+      deliverWebReply({
+        replyResult: { text: "hi" },
+        msg,
+        maxMediaBytes: 1024 * 1024,
+        textLimit: 200,
+        replyLogger,
+        skipLog: true,
+      }),
+    ).rejects.toThrow("socket disconnected");
+
+    expect(msg.reply).toHaveBeenCalledTimes(7);
+    expect(sleepWithAbortMock).toHaveBeenCalledTimes(6);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(1, 500, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(2, 5000, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(3, 10000, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(4, 20000, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(5, 40000, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(6, 60000, undefined);
+  });
+
+  it("keeps generic timeout errors on the standard retry window outside reconnect gaps", async () => {
+    const msg = makeMsg();
+    (msg.reply as unknown as { mockRejectedValue: (v: unknown) => void }).mockRejectedValue(
+      new Error("operation timed out"),
+    );
+
+    await expect(
+      deliverWebReply({
+        replyResult: { text: "hi" },
+        msg,
+        maxMediaBytes: 1024 * 1024,
+        textLimit: 200,
+        replyLogger,
+        skipLog: true,
+      }),
+    ).rejects.toThrow("operation timed out");
+
+    expect(msg.reply).toHaveBeenCalledTimes(3);
+    expect(sleepWithAbortMock).toHaveBeenCalledTimes(2);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(1, 500, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(2, 1000, undefined);
+  });
+
+  it("promotes late reconnect failures into the extended retry window", async () => {
+    const msg = makeMsg();
+    const replyMock = msg.reply as unknown as {
+      mockRejectedValueOnce: (v: unknown) => void;
+      mockResolvedValueOnce: (v: unknown) => void;
+      mock: { calls: unknown[][] };
+    };
+    msg.disconnectRetryWindowActive = () => replyMock.mock.calls.length >= 3;
+    replyMock.mockRejectedValueOnce(new Error("socket closed"));
+    replyMock.mockRejectedValueOnce(new Error("socket closed"));
+    replyMock.mockRejectedValueOnce(new Error("no active socket - reconnection in progress"));
+    replyMock.mockResolvedValueOnce(undefined);
+
+    await deliverWebReply({
+      replyResult: { text: "hi" },
+      msg,
+      maxMediaBytes: 1024 * 1024,
+      textLimit: 200,
+      replyLogger,
+      skipLog: true,
+    });
+
+    expect(msg.reply).toHaveBeenCalledTimes(4);
+    expect(sleepWithAbortMock).toHaveBeenCalledTimes(3);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(1, 500, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(2, 1000, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(3, 2000, undefined);
+  });
+
+  it("keeps retrying when reconnect policy is unlimited", async () => {
+    const msg = makeMsg();
+    msg.disconnectRetryWindowActive = () => true;
+    msg.disconnectRetryPolicy = {
+      initialMs: 2_000,
+      maxMs: 30_000,
+      factor: 1.8,
+      jitter: 0,
+      maxAttempts: 0,
+    };
+    const replyMock = msg.reply as unknown as {
+      mockRejectedValueOnce: (v: unknown) => void;
+      mockResolvedValueOnce: (v: unknown) => void;
+    };
+    for (let attempt = 0; attempt < 14; attempt++) {
+      replyMock.mockRejectedValueOnce(new Error("socket disconnected"));
+    }
+    replyMock.mockResolvedValueOnce(undefined);
+
+    await deliverWebReply({
+      replyResult: { text: "hi" },
+      msg,
+      maxMediaBytes: 1024 * 1024,
+      textLimit: 200,
+      replyLogger,
+      skipLog: true,
+    });
+
+    expect(msg.reply).toHaveBeenCalledTimes(15);
+    expect(sleepWithAbortMock).toHaveBeenCalledTimes(14);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(1, 500, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(2, 2000, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(3, 3600, undefined);
+    expect(sleepWithAbortMock).toHaveBeenNthCalledWith(14, 30000, undefined);
+  });
+
+  it("derives large finite reconnect budgets without looping over every reconnect attempt", () => {
+    const msg = makeMsg();
+    msg.disconnectRetryPolicy = {
+      initialMs: 2_000,
+      maxMs: 30_000,
+      factor: 1.8,
+      jitter: 0,
+      maxAttempts: 100_000,
+    };
+    const roundSpy = vi.spyOn(Math, "round");
+
+    const strategy = resolveDisconnectRetryStrategy(msg);
+
+    expect(strategy.maxAttempts).toBeGreaterThan(2);
+    expect(roundSpy.mock.calls.length).toBeLessThan(50);
+  });
+
+  it("aborts reconnect-gap backoff when shutdown begins", async () => {
+    const msg = makeMsg();
+    const controller = new AbortController();
+    msg.disconnectRetryAbortSignal = controller.signal;
+    msg.shouldRetryDisconnect = () => !controller.signal.aborted;
+    (msg.reply as unknown as { mockRejectedValue: (v: unknown) => void }).mockRejectedValue(
+      new Error("no active socket - reconnection in progress"),
+    );
+    sleepWithAbortMock.mockImplementationOnce(async () => {
+      controller.abort();
+      throw new Error("aborted");
+    });
+
+    await expect(
+      deliverWebReply({
+        replyResult: { text: "hi" },
+        msg,
+        maxMediaBytes: 1024 * 1024,
+        textLimit: 200,
+        replyLogger,
+        skipLog: true,
+      }),
+    ).rejects.toThrow("no active socket - reconnection in progress");
+
+    expect(msg.reply).toHaveBeenCalledTimes(1);
+    expect(sleepWithAbortMock).toHaveBeenCalledWith(500, controller.signal);
+  });
+
+  it("wakes reconnect-gap sleeps when a replacement socket is ready", async () => {
+    const msg = makeMsg();
+    const wakeController = new AbortController();
+    msg.disconnectRetryWindowActive = () => true;
+    msg.disconnectRetryWakeSignal = () => wakeController.signal;
+    (msg.reply as unknown as { mockRejectedValueOnce: (v: unknown) => void }).mockRejectedValueOnce(
+      new Error("no active socket - reconnection in progress"),
+    );
+    (msg.reply as unknown as { mockResolvedValueOnce: (v: unknown) => void }).mockResolvedValueOnce(
+      undefined,
+    );
+    sleepWithAbortMock.mockImplementationOnce(async () => {
+      wakeController.abort();
+      throw new Error("aborted");
+    });
+
+    await deliverWebReply({
+      replyResult: { text: "hi" },
+      msg,
+      maxMediaBytes: 1024 * 1024,
+      textLimit: 200,
+      replyLogger,
+      skipLog: true,
+    });
+
+    expect(msg.reply).toHaveBeenCalledTimes(2);
+    expect(sleepWithAbortMock).toHaveBeenCalledTimes(1);
+    expect(
+      (sleepWithAbortMock as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0],
+    ).toBe(500);
+  });
 
   it("sends image media with caption and then remaining text", async () => {
     const msg = makeMsg();
@@ -205,7 +501,7 @@ describe("deliverWebReply", () => {
     });
 
     expect(msg.sendMedia).toHaveBeenCalledTimes(2);
-    expect(sleep).toHaveBeenCalledWith(500);
+    expect(sleepWithAbortMock).toHaveBeenCalledWith(500, undefined);
   });
 
   it("falls back to text-only when the first media send fails", async () => {
@@ -230,6 +526,49 @@ describe("deliverWebReply", () => {
       expect.objectContaining({ mediaUrl: "http://example.com/img.jpg" }),
       "failed to send web media reply",
     );
+  });
+
+  it("retries fallback text when reconnect gap happens after media failure", async () => {
+    const msg = makeMsg();
+    mockLoadedImageMedia();
+    mockFirstSendMediaFailure(msg, "boom");
+    mockFirstReplyFailure(msg, "no active socket - reconnection in progress");
+    mockSecondReplySuccess(msg);
+
+    await deliverWebReply({
+      replyResult: { text: "caption", mediaUrl: "http://example.com/img.jpg" },
+      msg,
+      maxMediaBytes: 1024 * 1024,
+      textLimit: 20,
+      replyLogger,
+      skipLog: true,
+    });
+
+    expect(msg.reply).toHaveBeenCalledTimes(2);
+    expect(sleepWithAbortMock).toHaveBeenCalledWith(500, undefined);
+  });
+
+  it("retries remaining text chunks after media when reconnect gap happens", async () => {
+    const msg = makeMsg();
+    msg.disconnectRetryWindowActive = () => true;
+    mockLoadedImageMedia();
+    mockFirstReplyFailure(msg, "socket closed");
+    mockSecondReplySuccess(msg);
+
+    await deliverWebReply({
+      replyResult: { text: "aaaaaa", mediaUrl: "http://example.com/img.jpg" },
+      msg,
+      maxMediaBytes: 1024 * 1024,
+      textLimit: 3,
+      replyLogger,
+      skipLog: true,
+    });
+
+    expect(msg.sendMedia).toHaveBeenCalledTimes(1);
+    expect(msg.reply).toHaveBeenCalledTimes(2);
+    expect(msg.reply).toHaveBeenNthCalledWith(1, "aaa");
+    expect(msg.reply).toHaveBeenNthCalledWith(2, "aaa");
+    expect(sleepWithAbortMock).toHaveBeenCalledWith(500, undefined);
   });
 
   it("sends audio media as ptt voice note", async () => {

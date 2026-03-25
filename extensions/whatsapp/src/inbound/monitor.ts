@@ -1,4 +1,4 @@
-import type { AnyMessageContent, proto, WAMessage } from "@whiskeysockets/baileys";
+import type { AnyMessageContent, proto, WAMessage, WASocket } from "@whiskeysockets/baileys";
 import { DisconnectReason, isJidGroup } from "@whiskeysockets/baileys";
 import { createInboundDebouncer, formatLocationText } from "openclaw/plugin-sdk/channel-inbound";
 import { recordChannelActivity } from "openclaw/plugin-sdk/infra-runtime";
@@ -7,6 +7,7 @@ import { logVerbose, shouldLogVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/runtime-env";
 import { getChildLogger } from "openclaw/plugin-sdk/text-runtime";
 import { jidToE164, resolveJidToE164 } from "openclaw/plugin-sdk/text-runtime";
+import type { ReconnectPolicy } from "../reconnect.js";
 import { createWaSocket, getStatusCode, waitForWaConnection } from "../session.js";
 import { checkInboundAccessControl } from "./access-control.js";
 import {
@@ -44,6 +45,21 @@ export async function monitorWebInbox(options: {
   debounceMs?: number;
   /** Optional debounce gating predicate. */
   shouldDebounce?: (msg: WebInboundMessage) => boolean;
+  /**
+   * Optional shared socket reference. When set, reply/send closures resolve
+   * the latest socket at call time so reconnect can swap sockets safely.
+   */
+  socketRef?: { current: WASocket | null };
+  /** Whether disconnect-class send errors should retry for a reconnect gap. */
+  shouldRetryDisconnect?: () => boolean;
+  /** Whether the monitor is currently in a reconnect gap after a connection close. */
+  disconnectRetryWindowActive?: () => boolean;
+  /** Reconnect timing used to size disconnect retry windows for in-flight replies. */
+  disconnectRetryPolicy?: ReconnectPolicy;
+  /** Abort signal for in-flight reply retries when monitor shutdown becomes terminal. */
+  disconnectRetryAbortSignal?: AbortSignal;
+  /** Signal that aborts sleeping retries once a replacement socket is ready. */
+  disconnectRetryWakeSignal?: () => AbortSignal | undefined;
 }) {
   const inboundLogger = getChildLogger({ module: "web-inbound" });
   const inboundConsoleLog = createSubsystemLogger("gateway/channels/whatsapp").child("inbound");
@@ -52,6 +68,10 @@ export async function monitorWebInbox(options: {
   });
   await waitForWaConnection(sock);
   const connectedAtMs = Date.now();
+  if (options.socketRef) {
+    options.socketRef.current = sock;
+  }
+  const getCurrentSock = () => (options.socketRef ? options.socketRef.current : sock);
 
   let onCloseResolve: ((reason: WebListenerCloseReason) => void) | null = null;
   const onClose = new Promise<WebListenerCloseReason>((resolve) => {
@@ -148,7 +168,11 @@ export async function monitorWebInbox(options: {
   };
 
   const sendTrackedMessage = async (jid: string, content: AnyMessageContent) => {
-    const result = await sock.sendMessage(jid, content);
+    const currentSock = getCurrentSock();
+    if (!currentSock) {
+      throw new Error("no active socket - reconnection in progress");
+    }
+    const result = await currentSock.sendMessage(jid, content);
     rememberOutboundMessage(jid, result);
     return result;
   };
@@ -365,8 +389,12 @@ export async function monitorWebInbox(options: {
   ) => {
     const chatJid = inbound.remoteJid;
     const sendComposing = async () => {
+      const currentSock = getCurrentSock();
+      if (!currentSock) {
+        return;
+      }
       try {
-        await sock.sendPresenceUpdate("composing", chatJid);
+        await currentSock.sendPresenceUpdate("composing", chatJid);
       } catch (err) {
         logVerbose(`Presence update failed: ${String(err)}`);
       }
@@ -422,6 +450,11 @@ export async function monitorWebInbox(options: {
       sendComposing,
       reply,
       sendMedia,
+      shouldRetryDisconnect: options.shouldRetryDisconnect,
+      disconnectRetryWindowActive: options.disconnectRetryWindowActive,
+      disconnectRetryPolicy: options.disconnectRetryPolicy,
+      disconnectRetryAbortSignal: options.disconnectRetryAbortSignal,
+      disconnectRetryWakeSignal: options.disconnectRetryWakeSignal,
       mediaPath: enriched.mediaPath,
       mediaType: enriched.mediaType,
       mediaFileName: enriched.mediaFileName,
@@ -479,6 +512,9 @@ export async function monitorWebInbox(options: {
   ) => {
     try {
       if (update.connection === "close") {
+        if (options.socketRef) {
+          options.socketRef.current = null;
+        }
         const status = getStatusCode(update.lastDisconnect?.error);
         resolveClose({
           status,

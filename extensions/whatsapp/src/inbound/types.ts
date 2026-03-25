@@ -1,5 +1,6 @@
 import type { AnyMessageContent } from "@whiskeysockets/baileys";
 import type { NormalizedLocation } from "openclaw/plugin-sdk/channel-inbound";
+import type { ReconnectPolicy } from "../reconnect.js";
 
 export type WebListenerCloseReason = {
   status?: number;
@@ -36,6 +37,11 @@ export type WebInboundMessage = {
   sendComposing: () => Promise<void>;
   reply: (text: string) => Promise<void>;
   sendMedia: (payload: AnyMessageContent) => Promise<void>;
+  shouldRetryDisconnect?: () => boolean;
+  disconnectRetryWindowActive?: () => boolean;
+  disconnectRetryPolicy?: ReconnectPolicy;
+  disconnectRetryAbortSignal?: AbortSignal;
+  disconnectRetryWakeSignal?: () => AbortSignal | undefined;
   mediaPath?: string;
   mediaType?: string;
   mediaFileName?: string;

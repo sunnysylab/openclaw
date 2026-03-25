@@ -113,6 +113,7 @@ export function getSock(): MockSock {
 
 type MonitorWebInbox = typeof import("./inbound.js").monitorWebInbox;
 export type InboxOnMessage = NonNullable<Parameters<MonitorWebInbox>[0]["onMessage"]>;
+export type InboxMonitorOptions = Parameters<MonitorWebInbox>[0];
 let monitorWebInbox: MonitorWebInbox;
 
 export function getMonitorWebInbox(): MonitorWebInbox {
@@ -136,7 +137,10 @@ export async function waitForMessageCalls(onMessage: ReturnType<typeof vi.fn>, c
   );
 }
 
-export async function startInboxMonitor(onMessage: InboxOnMessage) {
+export async function startInboxMonitor(
+  onMessage: InboxOnMessage,
+  extraOptions: Partial<InboxMonitorOptions> = {},
+) {
   if (!monitorWebInbox) {
     ({ monitorWebInbox } = await import("./inbound.js"));
   }
@@ -145,6 +149,7 @@ export async function startInboxMonitor(onMessage: InboxOnMessage) {
     onMessage,
     accountId: DEFAULT_ACCOUNT_ID,
     authDir: getAuthDir(),
+    ...extraOptions,
   });
   return { listener, sock: getSock() };
 }
