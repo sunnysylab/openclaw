@@ -498,6 +498,51 @@ describe("plugin sdk alias helpers", () => {
     );
   });
 
+  it("resolves plugin-sdk aliases for user-installed plugins via moduleUrl hint", () => {
+    const fixture = createPluginSdkAliasFixture({
+      srcFile: "channel-runtime.ts",
+      distFile: "channel-runtime.js",
+      packageExports: {
+        "./plugin-sdk/channel-runtime": { default: "./dist/plugin-sdk/channel-runtime.js" },
+      },
+    });
+    const sourceRootAlias = path.join(fixture.root, "src", "plugin-sdk", "root-alias.cjs");
+    fs.writeFileSync(sourceRootAlias, "module.exports = {};\n", "utf-8");
+    const externalPluginRoot = path.join(makeTempDir(), ".openclaw", "extensions", "demo");
+    const externalPluginEntry = path.join(externalPluginRoot, "index.ts");
+    mkdirSafe(externalPluginRoot);
+    fs.writeFileSync(externalPluginEntry, 'export const plugin = "demo";\n', "utf-8");
+
+    // Simulate loader.ts passing its own import.meta.url as the moduleUrl hint.
+    // This covers installations where argv1 does not resolve to the openclaw root
+    // (e.g. single-binary distributions or custom process launchers).
+    // Use openclaw.mjs which is created by createPluginSdkAliasFixture (bin+marker mode).
+    // Use fixture.root as cwd so process.cwd() fallback also resolves to fixture, not the
+    // real openclaw repo root in the test runner environment.
+    const loaderModuleUrl = pathToFileURL(path.join(fixture.root, "openclaw.mjs")).href;
+
+    // NOTE: passing `undefined` as argv1 activates the default STARTUP_ARGV1 = process.argv[1],
+    // which in test runners resolves to the real openclaw root via the test runner binary path.
+    // Pass externalPluginEntry as argv1 instead — it has no openclaw ancestor, so the argv1
+    // hint returns null and the test exercises the moduleUrl resolution path.
+    const aliases = withCwd(fixture.root, () =>
+      withEnv({ NODE_ENV: undefined }, () =>
+        buildPluginLoaderAliasMap(
+          externalPluginEntry,
+          externalPluginEntry, // argv1 with no openclaw ancestor; forces fallthrough to moduleUrl hint
+          loaderModuleUrl,
+        ),
+      ),
+    );
+
+    expect(fs.realpathSync(aliases["openclaw/plugin-sdk"] ?? "")).toBe(
+      fs.realpathSync(sourceRootAlias),
+    );
+    expect(fs.realpathSync(aliases["openclaw/plugin-sdk/channel-runtime"] ?? "")).toBe(
+      fs.realpathSync(path.join(fixture.root, "src", "plugin-sdk", "channel-runtime.ts")),
+    );
+  });
+
   it("does not resolve plugin-sdk alias files from cwd fallback when package root is not an OpenClaw root", () => {
     const fixture = createPluginSdkAliasFixture({
       srcFile: "channel-runtime.ts",
