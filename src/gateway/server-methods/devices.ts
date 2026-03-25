@@ -41,7 +41,11 @@ function logDeviceTokenRotationDenied(params: {
   log: { warn: (message: string) => void };
   deviceId: string;
   role: string;
-  reason: RotateDeviceTokenDenyReason | "caller-missing-scope" | "unknown-device-or-role";
+  reason:
+    | RotateDeviceTokenDenyReason
+    | "caller-missing-scope"
+    | "unknown-device-or-role"
+    | "device-ownership-mismatch";
   scope?: string | null;
 }) {
   const suffix = params.scope ? ` scope=${params.scope}` : "";
@@ -151,7 +155,7 @@ export const deviceHandlers: GatewayRequestHandlers = {
     );
     respond(true, rejected, undefined);
   },
-  "device.pair.remove": async ({ params, respond, context }) => {
+  "device.pair.remove": async ({ params, respond, context, client }) => {
     if (!validateDevicePairRemoveParams(params)) {
       respond(
         false,
@@ -166,6 +170,23 @@ export const deviceHandlers: GatewayRequestHandlers = {
       return;
     }
     const { deviceId } = params as { deviceId: string };
+    const callerDeviceId = client?.connect?.device?.id;
+    const removeCallerScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+    if (
+      callerDeviceId &&
+      callerDeviceId !== deviceId &&
+      !removeCallerScopes.includes("operator.admin")
+    ) {
+      context.logGateway.warn(
+        `device pairing removal denied device=${deviceId} reason=device-ownership-mismatch`,
+      );
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "device pairing removal denied"),
+      );
+      return;
+    }
     const removed = await removePairedDevice(deviceId);
     if (!removed) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown deviceId"));
@@ -193,6 +214,26 @@ export const deviceHandlers: GatewayRequestHandlers = {
       role: string;
       scopes?: string[];
     };
+    // Ownership guard — blocks non-admin device callers from rotating
+    // other devices' tokens (IDOR). Admin-scoped callers (CLI, Control UI,
+    // admin mobile) legitimately manage all devices and are exempt.
+    const callerDeviceId = client?.connect?.device?.id;
+    const callerScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
+    const isAdminCaller = callerScopes.includes("operator.admin");
+    if (callerDeviceId && callerDeviceId !== deviceId && !isAdminCaller) {
+      logDeviceTokenRotationDenied({
+        log: context.logGateway,
+        deviceId,
+        role,
+        reason: "device-ownership-mismatch",
+      });
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, DEVICE_TOKEN_ROTATION_DENIED_MESSAGE),
+      );
+      return;
+    }
     const pairedDevice = await getPairedDevice(deviceId);
     if (!pairedDevice) {
       logDeviceTokenRotationDenied({
@@ -208,7 +249,6 @@ export const deviceHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const callerScopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
     const requestedScopes = normalizeDeviceAuthScopes(
       scopes ?? pairedDevice.tokens?.[role.trim()]?.scopes ?? pairedDevice.scopes,
     );
@@ -263,7 +303,7 @@ export const deviceHandlers: GatewayRequestHandlers = {
       undefined,
     );
   },
-  "device.token.revoke": async ({ params, respond, context }) => {
+  "device.token.revoke": async ({ params, respond, context, client }) => {
     if (!validateDeviceTokenRevokeParams(params)) {
       respond(
         false,
@@ -278,6 +318,18 @@ export const deviceHandlers: GatewayRequestHandlers = {
       return;
     }
     const { deviceId, role } = params as { deviceId: string; role: string };
+    const callerDeviceId = client?.connect?.device?.id;
+    if (callerDeviceId && callerDeviceId !== deviceId) {
+      context.logGateway.warn(
+        `device token revocation denied device=${deviceId} role=${role} reason=device-ownership-mismatch`,
+      );
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "device token revocation denied"),
+      );
+      return;
+    }
     const entry = await revokeDeviceToken({ deviceId, role });
     if (!entry) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown deviceId/role"));
