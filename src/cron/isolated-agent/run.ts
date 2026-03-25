@@ -607,7 +607,6 @@ export async function runCronIsolatedAgentTurn(params: {
   const finalRunResult = runResult;
   const payloads = finalRunResult.payloads ?? [];
   const preRunTotalTokens = cronSession.sessionEntry.totalTokens;
-  const preRunTotalTokensFresh = cronSession.sessionEntry.totalTokensFresh;
 
   // Update token+model fields in the session store.
   // Also collect best-effort telemetry for the cron run log.
@@ -744,8 +743,6 @@ export async function runCronIsolatedAgentTurn(params: {
         cronSession.sessionEntry.totalTokensEstimate = undefined;
       } else if (cronSession.sessionEntry.totalTokensEstimate !== undefined) {
         // preserve
-      } else if (preRunTotalTokens !== undefined && preRunTotalTokensFresh !== false) {
-        cronSession.sessionEntry.totalTokensEstimate = preRunTotalTokens;
       }
 
       telemetry = {
