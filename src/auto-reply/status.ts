@@ -469,8 +469,10 @@ export function buildStatusMessage(args: StatusArgs): string {
   let totalTokens =
     freshTotal ??
     entry?.totalTokensEstimate ??
-    entry?.totalTokens ??
-    (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
+    (entry?.totalTokensFresh !== false ? entry?.totalTokens : undefined) ??
+    (entry?.inputTokens !== undefined || entry?.outputTokens !== undefined
+      ? (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0)
+      : undefined);
 
   let contextLookupProvider: string | undefined = activeProvider;
   let contextLookupModel = activeModel;
