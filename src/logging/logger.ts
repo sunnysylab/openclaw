@@ -53,6 +53,8 @@ const requireConfig = resolveNodeRequireFromMeta(import.meta.url);
 
 export type LoggerSettings = {
   level?: LogLevel;
+  /** Custom log directory. Retains daily rolling filenames. Ignored when `file` is set. */
+  dir?: string;
   file?: string;
   maxFileBytes?: number;
   consoleLevel?: LogLevel;
@@ -137,7 +139,7 @@ function resolveSettings(): ResolvedSettings {
     process.env.VITEST === "true" && process.env.OPENCLAW_TEST_FILE_LOG !== "1" ? "silent" : "info";
   const fromConfig = normalizeLogLevel(cfg?.level, defaultLevel);
   const level = envLevel ?? fromConfig;
-  const file = cfg?.file ?? defaultRollingPathForToday();
+  const file = cfg?.file ?? defaultRollingPathForToday(cfg?.dir);
   const maxFileBytes = resolveMaxLogFileBytes(cfg?.maxFileBytes);
   return { level, file, maxFileBytes };
 }
@@ -334,6 +336,7 @@ export function registerLogTransport(transport: LogTransport): () => void {
 
 export const __test__ = {
   shouldSkipLoadConfigFallback,
+  defaultRollingPathForToday,
 };
 
 function formatLocalDate(date: Date): string {
@@ -343,9 +346,9 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function defaultRollingPathForToday(): string {
+function defaultRollingPathForToday(dir?: string): string {
   const today = formatLocalDate(new Date());
-  return path.join(DEFAULT_LOG_DIR, `${LOG_PREFIX}-${today}${LOG_SUFFIX}`);
+  return path.join(dir ?? DEFAULT_LOG_DIR, `${LOG_PREFIX}-${today}${LOG_SUFFIX}`);
 }
 
 function isRollingPath(file: string): boolean {
