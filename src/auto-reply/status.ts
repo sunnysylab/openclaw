@@ -581,8 +581,9 @@ export function buildStatusMessage(args: StatusArgs): string {
   });
 
   const entryModelMatch =
-    entry?.model === activeModel &&
-    (entry?.modelProvider === activeProvider || !entry?.modelProvider);
+    (entry?.model === activeModel &&
+      (entry?.modelProvider === activeProvider || !entry?.modelProvider)) ||
+    (entry?.model === modelRefs.active.label && !entry?.modelProvider);
 
   let contextTokens = args.runtimeContextTokens;
 
