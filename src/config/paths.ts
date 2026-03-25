@@ -291,6 +291,14 @@ export function resolveGatewayPort(
   if (envPort !== null) {
     return envPort;
   }
+  // Standard PaaS PORT env var (Railway, Render, Heroku, Fly).
+  const paasPort = env.PORT?.trim();
+  if (paasPort) {
+    const parsed = Number.parseInt(paasPort, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
   const configPort = cfg?.gateway?.port;
   if (typeof configPort === "number" && Number.isFinite(configPort)) {
     if (configPort > 0) {
