@@ -500,14 +500,11 @@ export async function dispatchReplyFromConfig(params: {
         undefined,
       chatType: sessionStoreEntry.entry?.chatType,
     });
-    if (sendPolicy === "deny" && !bypassAcpForCommand) {
+    const suppressDelivery = sendPolicy === "deny" && !bypassAcpForCommand;
+    if (suppressDelivery) {
       logVerbose(
-        `Send blocked by policy for session ${sessionStoreEntry.sessionKey ?? sessionKey ?? "unknown"}`,
+        `Send policy deny: delivery suppressed for session ${sessionStoreEntry.sessionKey ?? sessionKey ?? "unknown"} (agent will still process inbound)`,
       );
-      const counts = dispatcher.getQueuedCounts();
-      recordProcessed("completed", { reason: "send_policy_deny" });
-      markIdle("message_completed");
-      return { queuedFinal: false, counts };
     }
 
     const { maybeApplyTtsToPayload } = await loadTtsRuntime();
@@ -588,26 +585,28 @@ export async function dispatchReplyFromConfig(params: {
     }
 
     const shouldSendToolSummaries = ctx.ChatType !== "group" && ctx.CommandSource !== "native";
-    const acpDispatch = await dispatchAcpRuntime.tryDispatchAcpReply({
-      ctx,
-      cfg,
-      dispatcher,
-      sessionKey: acpDispatchSessionKey,
-      abortSignal: params.replyOptions?.abortSignal,
-      inboundAudio,
-      sessionTtsAuto,
-      ttsChannel,
-      shouldRouteToOriginating,
-      originatingChannel,
-      originatingTo,
-      shouldSendToolSummaries,
-      bypassForCommand: bypassAcpForCommand,
-      onReplyStart: params.replyOptions?.onReplyStart,
-      recordProcessed,
-      markIdle,
-    });
-    if (acpDispatch) {
-      return acpDispatch;
+    if (!suppressDelivery) {
+      const acpDispatch = await dispatchAcpRuntime.tryDispatchAcpReply({
+        ctx,
+        cfg,
+        dispatcher,
+        sessionKey: acpDispatchSessionKey,
+        abortSignal: params.replyOptions?.abortSignal,
+        inboundAudio,
+        sessionTtsAuto,
+        ttsChannel,
+        shouldRouteToOriginating,
+        originatingChannel,
+        originatingTo,
+        shouldSendToolSummaries,
+        bypassForCommand: bypassAcpForCommand,
+        onReplyStart: params.replyOptions?.onReplyStart,
+        recordProcessed,
+        markIdle,
+      });
+      if (acpDispatch) {
+        return acpDispatch;
+      }
     }
 
     // Track accumulated block text for TTS generation after streaming completes.
@@ -649,7 +648,8 @@ export async function dispatchReplyFromConfig(params: {
     };
     const typing = resolveRunTypingPolicy({
       requestedPolicy: params.replyOptions?.typingPolicy,
-      suppressTyping: params.replyOptions?.suppressTyping === true || shouldSuppressTyping,
+      suppressTyping:
+        params.replyOptions?.suppressTyping === true || shouldSuppressTyping || suppressDelivery,
       originatingChannel,
       systemEvent: shouldRouteToOriginating,
     });
@@ -662,8 +662,12 @@ export async function dispatchReplyFromConfig(params: {
         ...params.replyOptions,
         typingPolicy: typing.typingPolicy,
         suppressTyping: typing.suppressTyping,
+        onReplyStart: suppressDelivery ? undefined : params.replyOptions?.onReplyStart,
         onToolResult: (payload: ReplyPayload) => {
           const run = async () => {
+            if (suppressDelivery) {
+              return;
+            }
             const ttsPayload = await maybeApplyTtsToPayload({
               payload,
               cfg,
@@ -686,6 +690,9 @@ export async function dispatchReplyFromConfig(params: {
         },
         onBlockReply: (payload: ReplyPayload, context?: BlockReplyContext) => {
           const run = async () => {
+            if (suppressDelivery) {
+              return;
+            }
             // Suppress reasoning payloads — channels using this generic dispatch
             // path (WhatsApp, web, etc.) do not have a dedicated reasoning lane.
             // Telegram has its own dispatch path that handles reasoning splitting.
@@ -726,30 +733,41 @@ export async function dispatchReplyFromConfig(params: {
       // Command handling prepared a trailing prompt after ACP in-place reset.
       // Route that tail through ACP now (same turn) instead of embedded dispatch.
       ctx.AcpDispatchTailAfterReset = false;
-      const acpTailDispatch = await dispatchAcpRuntime.tryDispatchAcpReply({
-        ctx,
-        cfg,
-        dispatcher,
-        sessionKey: acpDispatchSessionKey,
-        abortSignal: params.replyOptions?.abortSignal,
-        inboundAudio,
-        sessionTtsAuto,
-        ttsChannel,
-        shouldRouteToOriginating,
-        originatingChannel,
-        originatingTo,
-        shouldSendToolSummaries,
-        bypassForCommand: false,
-        onReplyStart: params.replyOptions?.onReplyStart,
-        recordProcessed,
-        markIdle,
-      });
-      if (acpTailDispatch) {
-        return acpTailDispatch;
+      if (!suppressDelivery) {
+        const acpTailDispatch = await dispatchAcpRuntime.tryDispatchAcpReply({
+          ctx,
+          cfg,
+          dispatcher,
+          sessionKey: acpDispatchSessionKey,
+          abortSignal: params.replyOptions?.abortSignal,
+          inboundAudio,
+          sessionTtsAuto,
+          ttsChannel,
+          shouldRouteToOriginating,
+          originatingChannel,
+          originatingTo,
+          shouldSendToolSummaries,
+          bypassForCommand: false,
+          onReplyStart: params.replyOptions?.onReplyStart,
+          recordProcessed,
+          markIdle,
+        });
+        if (acpTailDispatch) {
+          return acpTailDispatch;
+        }
       }
     }
 
     const replies = replyResult ? (Array.isArray(replyResult) ? replyResult : [replyResult]) : [];
+
+    // When sendPolicy denies delivery, the agent has already processed the inbound
+    // message (context, memory, tool calls). Skip only the outbound delivery step.
+    if (suppressDelivery) {
+      const counts = dispatcher.getQueuedCounts();
+      recordProcessed("completed", { reason: "send_policy_deny" });
+      markIdle("message_completed");
+      return { queuedFinal: false, counts };
+    }
 
     let queuedFinal = false;
     let routedFinalCount = 0;
