@@ -39,7 +39,7 @@ RUN mkdir -p /out && \
       fi; \
     done
 
-# ── Stage 2: Build ──────────────────────────────────────────────
+# ── Stage 2: Production dependencies ────────────────────────────
 FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS prod-deps
 
 RUN corepack enable
@@ -58,6 +58,7 @@ COPY --from=ext-deps /out/ ./extensions/
 RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
     NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile --prod
 
+# ── Stage 3: Build ──────────────────────────────────────────────
 FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS build
 ARG OPENCLAW_BUNDLED_PLUGIN_DIR
 
@@ -131,7 +132,7 @@ ARG OPENCLAW_NODE_BOOKWORM_SLIM_DIGEST
 LABEL org.opencontainers.image.base.name="docker.io/library/node:24-bookworm-slim" \
   org.opencontainers.image.base.digest="${OPENCLAW_NODE_BOOKWORM_SLIM_DIGEST}"
 
-# ── Stage 3: Runtime ────────────────────────────────────────────
+# ── Stage 4: Runtime ────────────────────────────────────────────
 FROM base-${OPENCLAW_VARIANT}
 ARG OPENCLAW_VARIANT
 ARG OPENCLAW_BUNDLED_PLUGIN_DIR
