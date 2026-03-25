@@ -121,9 +121,6 @@ jobs:
           set -euxo pipefail
           pnpm release:check
 
-      - name: Preview publish command
-        run: bash scripts/openclaw-npm-publish.sh --dry-run
-
   publish_openclaw_npm:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     # npm trusted publishing + provenance requires a GitHub-hosted runner.

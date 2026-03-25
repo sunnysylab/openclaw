@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { deriveSessionTotalTokens, hasExplicitUsage, normalizeUsage } from "../agents/usage.js";
+import { deriveSessionTotalTokens, hasNonzeroUsage, normalizeUsage } from "../agents/usage.js";
 import { jsonUtf8Bytes } from "../infra/json-utf8-bytes.js";
 import { hasInterSessionUserProvenance } from "../sessions/input-provenance.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
@@ -493,7 +493,7 @@ function extractLatestUsageFromTranscriptChunk(
             : undefined;
       const isDeliveryMirror = modelProvider === "openclaw" && model === "delivery-mirror";
       const hasMeaningfulUsage =
-        hasExplicitUsage(usage) ||
+        hasNonzeroUsage(usage) ||
         typeof totalTokens === "number" ||
         (typeof costUsd === "number" && Number.isFinite(costUsd));
       const hasModelIdentity = Boolean(modelProvider || model);

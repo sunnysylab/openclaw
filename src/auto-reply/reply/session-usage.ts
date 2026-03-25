@@ -134,10 +134,11 @@ export async function persistSessionUsageUpdate(params: {
 
           const prevEstimate = entry.totalTokensEstimate;
           const prevTotal = entry.totalTokens;
+          const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
           if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
             patch.totalTokens = totalTokens;
-            patch.totalTokensFresh = totalTokens > 0 || hasFreshContextSnapshot;
+            patch.totalTokensFresh = totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
 
             if (modelChanged) {
               patch.totalTokensEstimate = undefined;
@@ -155,15 +156,6 @@ export async function persistSessionUsageUpdate(params: {
           } else {
             patch.totalTokens = undefined;
             patch.totalTokensFresh = false;
-
-            if (modelChanged) {
-              patch.totalTokensEstimate = undefined;
-            } else if (entry.totalTokensEstimate !== undefined) {
-              patch.totalTokensEstimate = entry.totalTokensEstimate;
-            } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
-              // Refresh or backfill estimate baseline from the last known fresh total.
-              patch.totalTokensEstimate = entry.totalTokens;
-            }
           }
 
           const hasCurrentUsage =

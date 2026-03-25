@@ -64,7 +64,7 @@ import {
   type FailoverReason,
 } from "../pi-embedded-helpers.js";
 import { ensureRuntimePluginsLoaded } from "../runtime-plugins.js";
-import { derivePromptTokens, hasExplicitUsage, normalizeUsage, type UsageLike } from "../usage.js";
+import { derivePromptTokens, hasNonzeroUsage, normalizeUsage, type UsageLike } from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
 import { buildEmbeddedCompactionRuntimeContext } from "./compaction-runtime-context.js";
 import { runContextEngineMaintenance } from "./context-engine-maintenance.js";
@@ -197,7 +197,7 @@ function buildErrorAgentMeta(params: {
     lastRunPromptUsage: params.lastRunPromptUsage,
     lastTurnTotal: params.lastTurnTotal,
   });
-  const hasAuthoritativeUsage = hasExplicitUsage(usageMeta.lastCallUsage);
+  const hasAuthoritativeUsage = hasNonzeroUsage(usageMeta.lastCallUsage);
   return {
     sessionId: params.sessionId,
     provider: params.provider,

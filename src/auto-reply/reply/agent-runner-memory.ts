@@ -9,7 +9,7 @@ import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { resolveSandboxConfigForAgent, resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import {
   derivePromptTokens,
-  hasExplicitUsage,
+  hasNonzeroUsage,
   normalizeUsage,
   type UsageLike,
 } from "../../agents/usage.js";
@@ -89,7 +89,7 @@ function parseUsageFromTranscriptLine(line: string): ReturnType<typeof normalize
     };
     const usageRaw = parsed.message?.usage ?? parsed.usage;
     const usage = normalizeUsage(usageRaw);
-    if (usage && hasExplicitUsage(usage)) {
+    if (usage && hasNonzeroUsage(usage)) {
       return usage;
     }
   } catch {
