@@ -76,6 +76,15 @@ const asFiniteNumber = (value: unknown): number | undefined => {
   return value;
 };
 
+export function hasNonzeroUsage(usage?: NormalizedUsage | null): usage is NormalizedUsage {
+  if (!usage) {
+    return false;
+  }
+  return [usage.input, usage.output, usage.cacheRead, usage.cacheWrite, usage.total].some(
+    (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
+  );
+}
+
 export function hasExplicitUsage(usage?: NormalizedUsage | null): usage is NormalizedUsage {
   if (!usage) {
     return false;

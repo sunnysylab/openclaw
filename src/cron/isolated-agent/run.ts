@@ -23,7 +23,7 @@ import {
   listDescendantRunsForRequester,
 } from "../../agents/subagent-registry.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
-import { deriveSessionTotalTokens, hasExplicitUsage } from "../../agents/usage.js";
+import { deriveSessionTotalTokens, hasExplicitUsage, hasNonzeroUsage } from "../../agents/usage.js";
 import { ensureAgentWorkspace } from "../../agents/workspace.js";
 import {
   normalizeThinkLevel,
@@ -691,7 +691,7 @@ export async function runCronIsolatedAgentTurn(params: {
 
       const lastCallUsage = finalRunResult.meta?.agentMeta?.lastCallUsage;
       const hasFreshContextSnapshot =
-        hasExplicitUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
+        hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens > 0);
 
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;

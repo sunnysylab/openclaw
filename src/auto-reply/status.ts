@@ -452,56 +452,11 @@ export function buildStatusMessage(args: StatusArgs): string {
 
   const selectedModelLabel = modelRefs.selected.label || "unknown";
   const activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
-  const fallbackState = resolveActiveFallbackState({
+  const initialFallbackState = resolveActiveFallbackState({
     selectedModelRef: selectedModelLabel,
     activeModelRef: activeModelLabel,
     state: entry,
   });
-
-  // Re-resolve against the active model.
-  const hasStoredProvider = Boolean(entry?.modelProvider?.trim());
-  const passProvider = hasStoredProvider || !activeModel.includes("/");
-  const entryModelMatch =
-    entry?.model === activeModel &&
-    (entry?.modelProvider === activeProvider || !entry?.modelProvider);
-
-  // Authoritative window resolution for the active model.
-  // We prefer the entry model if it looks like a version-qualified ID without a provider.
-  const lookupModel =
-    !hasStoredProvider && typeof entry?.model === "string" && entry.model.includes("/")
-      ? entry.model
-      : activeModel;
-  const lookupProvider =
-    lookupModel === entry?.model ? undefined : passProvider ? activeProvider : undefined;
-
-  const resolvedWindow = resolveContextTokensForModel({
-    cfg: contextConfig,
-    provider: lookupProvider,
-    model: lookupModel,
-  });
-
-  let contextTokens = args.runtimeContextTokens;
-
-  if (contextTokens === undefined && entryModelMatch && entry?.contextTokens) {
-    contextTokens = entry.contextTokens;
-  }
-
-  if (contextTokens === undefined) {
-    contextTokens =
-      (!fallbackState.active ? args.explicitConfiguredContextTokens : undefined) ??
-      resolvedWindow ??
-      args.agent?.contextTokens;
-  }
-
-  // Clamping for fallback sessions: ensures selected-model overrides don't
-  // overstate context during fallback to a smaller model.
-  if (contextTokens && resolvedWindow && contextTokens > resolvedWindow) {
-    contextTokens = resolvedWindow;
-  }
-
-  if (contextTokens === undefined) {
-    contextTokens = DEFAULT_CONTEXT_TOKENS;
-  }
 
   let inputTokens = entry?.inputTokens;
   let outputTokens = entry?.outputTokens;
@@ -513,6 +468,42 @@ export function buildStatusMessage(args: StatusArgs): string {
     entry?.totalTokensEstimate ??
     entry?.totalTokens ??
     (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
+
+  let contextLookupProvider: string | undefined = activeProvider;
+  let contextLookupModel = activeModel;
+
+  const runtimeModelRaw = typeof entry?.model === "string" ? entry.model.trim() : "";
+  const runtimeProviderRaw =
+    typeof entry?.modelProvider === "string" ? entry.modelProvider.trim() : "";
+
+  if (runtimeModelRaw && !runtimeProviderRaw && runtimeModelRaw.includes("/")) {
+    const slashIndex = runtimeModelRaw.indexOf("/");
+    const embeddedProvider = runtimeModelRaw.slice(0, slashIndex).trim().toLowerCase();
+    const fallbackMatchesRuntimeModel =
+      initialFallbackState.active &&
+      runtimeModelRaw.toLowerCase() ===
+        String(entry?.fallbackNoticeActiveModel ?? "")
+          .trim()
+          .toLowerCase();
+    const runtimeMatchesSelectedModel =
+      runtimeModelRaw.toLowerCase() === selectedModelLabel.toLowerCase();
+
+    // Legacy fallback sessions can persist provider-qualified runtime ids
+    // without a separate modelProvider field. Preserve provider-aware lookup
+    // when the stored slash id is the selected model or the active fallback
+    // target; otherwise keep the raw model-only lookup for OpenRouter-style
+    // slash ids.
+    if (
+      (fallbackMatchesRuntimeModel || runtimeMatchesSelectedModel) &&
+      embeddedProvider === activeProvider.toLowerCase()
+    ) {
+      contextLookupProvider = activeProvider;
+      contextLookupModel = activeModel;
+    } else {
+      contextLookupProvider = undefined;
+      contextLookupModel = runtimeModelRaw;
+    }
+  }
 
   // Prefer prompt-size tokens from the session transcript when it looks larger
   // (cached prompt tokens are often missing from agent meta/store).
@@ -527,17 +518,10 @@ export function buildStatusMessage(args: StatusArgs): string {
     if (logUsage) {
       const candidate = logUsage.promptTokens || logUsage.total;
       const hasZeroEstimate = entry?.totalTokensEstimate === 0;
-      const storeTotal =
-        freshTotal ??
-        entry?.totalTokensEstimate ??
-        entry?.totalTokens ??
-        (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
 
       if (
         logUsage.totalTokensFresh &&
-        (candidate > 0 ||
-          (candidate === 0 && freshTotal === undefined && entry?.totalTokensFresh === undefined)) &&
-        (candidate > storeTotal || freshTotal === undefined) &&
+        (freshTotal === undefined || candidate > freshTotal) &&
         (entry?.totalTokensEstimate === undefined || (candidate > 0 && hasZeroEstimate))
       ) {
         // Session transcript is authoritative only when the store has no fresh data
@@ -552,17 +536,17 @@ export function buildStatusMessage(args: StatusArgs): string {
           if (provider && model) {
             activeProvider = provider;
             activeModel = model;
+            // Preserve model-only lookup for transcript-derived provider/model IDs
+            // like "google/gemini-2.5-pro" that may come from a different upstream
+            // provider (for example OpenRouter).
+            contextLookupProvider = undefined;
+            contextLookupModel = logUsage.model;
           }
         } else {
           activeModel = logUsage.model;
+          contextLookupProvider = activeProvider;
+          contextLookupModel = logUsage.model;
         }
-      }
-      if (!contextTokens && logUsage.model) {
-        contextTokens =
-          resolveContextTokensForModel({
-            cfg: contextConfig,
-            model: logUsage.model,
-          }) ?? contextTokens;
       }
       if (!inputTokens || inputTokens === 0) {
         inputTokens = logUsage.input;
@@ -571,6 +555,39 @@ export function buildStatusMessage(args: StatusArgs): string {
         outputTokens = logUsage.output;
       }
     }
+  }
+
+  const fallbackState = resolveActiveFallbackState({
+    selectedModelRef: selectedModelLabel,
+    activeModelRef: formatProviderModelRef(activeProvider, activeModel) || "unknown",
+    state: entry,
+  });
+
+  const resolvedWindow = resolveContextTokensForModel({
+    cfg: contextConfig,
+    provider: contextLookupProvider,
+    model: contextLookupModel,
+  });
+
+  const entryModelMatch =
+    entry?.model === activeModel &&
+    (entry?.modelProvider === activeProvider || !entry?.modelProvider);
+
+  let contextTokens = args.runtimeContextTokens;
+
+  if (contextTokens === undefined && entryModelMatch && entry?.contextTokens) {
+    contextTokens = entry.contextTokens;
+  }
+
+  if (contextTokens === undefined) {
+    contextTokens =
+      args.explicitConfiguredContextTokens ?? resolvedWindow ?? args.agent?.contextTokens;
+  }
+
+  // Clamping for fallback sessions: ensures selected-model overrides don't
+  // overstate context during fallback to a smaller model.
+  if (contextTokens && resolvedWindow && contextTokens > resolvedWindow) {
+    contextTokens = resolvedWindow;
   }
 
   contextTokens ??= DEFAULT_CONTEXT_TOKENS;
