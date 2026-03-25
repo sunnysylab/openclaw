@@ -105,6 +105,7 @@ export function isFeishuGroupAllowed(params: {
 
 export function resolveFeishuReplyPolicy(params: {
   isDirectMessage: boolean;
+  isThreadReply?: boolean;
   globalConfig?: FeishuConfig;
   groupConfig?: FeishuGroupConfig;
   /**
@@ -126,6 +127,14 @@ export function resolveFeishuReplyPolicy(params: {
     params.groupConfig?.requireMention ??
     params.globalConfig?.requireMention ??
     requireMentionDefault;
+
+  if (params.isThreadReply) {
+    const threadOverride =
+      params.groupConfig?.requireMentionInThread ?? params.globalConfig?.requireMentionInThread;
+    if (threadOverride !== undefined) {
+      return { requireMention: threadOverride };
+    }
+  }
 
   return { requireMention };
 }
