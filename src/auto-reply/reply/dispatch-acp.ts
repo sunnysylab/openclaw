@@ -22,7 +22,11 @@ import {
   normalizeAttachments,
 } from "../../media-understanding/attachments.normalize.js";
 import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
-import { maybeApplyTtsToPayload, resolveTtsConfig } from "../../tts/tts.js";
+import {
+  maybeApplyTtsToPayload,
+  resolveTtsConfig,
+  resolveTtsConfigForAccount,
+} from "../../tts/tts.js";
 import {
   isCommandEnabled,
   maybeResolveTextAlias,
@@ -187,6 +191,10 @@ export type AcpDispatchAttemptResult = {
   counts: Record<ReplyDispatchKind, number>;
 };
 
+function didAccumulatedBlocksReachUser(params: { deliveredBlockReply: boolean }): boolean {
+  return params.deliveredBlockReply;
+}
+
 async function finalizeAcpTurnOutput(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
@@ -194,12 +202,20 @@ async function finalizeAcpTurnOutput(params: {
   inboundAudio: boolean;
   sessionTtsAuto?: TtsAutoMode;
   ttsChannel?: string;
+  accountId?: string;
   shouldEmitResolvedIdentityNotice: boolean;
 }): Promise<boolean> {
   let queuedFinal = false;
-  const ttsMode = resolveTtsConfig(params.cfg).mode ?? "final";
+  const ttsMode =
+    (params.ttsChannel
+      ? resolveTtsConfigForAccount(params.cfg, params.ttsChannel, params.accountId)
+      : resolveTtsConfig(params.cfg)
+    ).mode ?? "final";
   const accumulatedBlockText = params.delivery.getAccumulatedBlockText();
   const hasAccumulatedBlockText = accumulatedBlockText.trim().length > 0;
+  if (hasAccumulatedBlockText) {
+    await params.delivery.syncDispatcherDeliveryState();
+  }
 
   let finalMediaDelivered = false;
   if (ttsMode === "final" && hasAccumulatedBlockText) {
@@ -208,6 +224,7 @@ async function finalizeAcpTurnOutput(params: {
         payload: { text: accumulatedBlockText },
         cfg: params.cfg,
         channel: params.ttsChannel,
+        accountId: params.accountId,
         kind: "final",
         inboundAudio: params.inboundAudio,
         ttsAuto: params.sessionTtsAuto,
@@ -232,6 +249,9 @@ async function finalizeAcpTurnOutput(params: {
   const shouldDeliverTextFallback =
     ttsMode !== "all" &&
     hasAccumulatedBlockText &&
+    !didAccumulatedBlocksReachUser({
+      deliveredBlockReply: params.delivery.hasDeliveredBlockReply(),
+    }) &&
     !finalMediaDelivered &&
     !params.delivery.hasDeliveredFinalReply();
   if (shouldDeliverTextFallback) {
@@ -404,6 +424,7 @@ export async function tryDispatchAcpReply(params: {
         inboundAudio: params.inboundAudio,
         sessionTtsAuto: params.sessionTtsAuto,
         ttsChannel: params.ttsChannel,
+        accountId: params.ctx.AccountId,
         shouldEmitResolvedIdentityNotice,
       })) || queuedFinal;
 

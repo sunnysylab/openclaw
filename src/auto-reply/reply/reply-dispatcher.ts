@@ -16,10 +16,12 @@ type ReplyDispatchSkipHandler = (
   info: { kind: ReplyDispatchKind; reason: NormalizeReplySkipReason },
 ) => void;
 
+type ReplyDispatchDeliverResult = void | boolean;
+
 type ReplyDispatchDeliverer = (
   payload: ReplyPayload,
   info: { kind: ReplyDispatchKind },
-) => Promise<void>;
+) => Promise<ReplyDispatchDeliverResult>;
 
 const DEFAULT_HUMAN_DELAY_MIN_MS = 800;
 const DEFAULT_HUMAN_DELAY_MAX_MS = 2500;
@@ -80,6 +82,7 @@ export type ReplyDispatcher = {
   sendFinalReply: (payload: ReplyPayload) => boolean;
   waitForIdle: () => Promise<void>;
   getQueuedCounts: () => Record<ReplyDispatchKind, number>;
+  getDeliveredCounts: () => Record<ReplyDispatchKind, number>;
   markComplete: () => void;
 };
 
@@ -110,6 +113,12 @@ function normalizeReplyPayloadInternal(
   });
 }
 
+function wasPayloadDelivered(result: ReplyDispatchDeliverResult): boolean {
+  // Preserve existing channel behavior unless a deliverer explicitly reports
+  // that the payload was intentionally suppressed from the user-facing surface.
+  return result !== false;
+}
+
 export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDispatcher {
   let sendChain: Promise<void> = Promise.resolve();
   // Track in-flight deliveries so we can emit a reliable "idle" signal.
@@ -121,6 +130,11 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
   let sentFirstBlock = false;
   // Serialize outbound replies to preserve tool/block/final order.
   const queuedCounts: Record<ReplyDispatchKind, number> = {
+    tool: 0,
+    block: 0,
+    final: 0,
+  };
+  const deliveredCounts: Record<ReplyDispatchKind, number> = {
     tool: 0,
     block: 0,
     final: 0,
@@ -164,7 +178,10 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
         }
         // Safe: deliver is called inside an async .then() callback, so even a synchronous
         // throw becomes a rejection that flows through .catch()/.finally(), ensuring cleanup.
-        await options.deliver(normalized, { kind });
+        const result = await options.deliver(normalized, { kind });
+        if (wasPayloadDelivered(result)) {
+          deliveredCounts[kind] += 1;
+        }
       })
       .catch((err) => {
         options.onError?.(err, { kind });
@@ -213,6 +230,7 @@ export function createReplyDispatcher(options: ReplyDispatcherOptions): ReplyDis
     sendFinalReply: (payload) => enqueue("final", payload),
     waitForIdle: () => sendChain,
     getQueuedCounts: () => ({ ...queuedCounts }),
+    getDeliveredCounts: () => ({ ...deliveredCounts }),
     markComplete,
   };
 }
