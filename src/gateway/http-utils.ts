@@ -9,6 +9,7 @@ import {
   resolveDefaultModelForAgent,
 } from "../agents/model-selection.js";
 import { loadConfig } from "../config/config.js";
+import type { OpenClawConfig } from "../config/config.js";
 import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
 import { normalizeMessageChannel } from "../utils/message-channel.js";
 import { loadGatewayModelCatalog } from "./server-model-catalog.js";
@@ -144,6 +145,20 @@ export function resolveSessionKey(params: {
   const user = params.user?.trim();
   const mainKey = user ? `${params.prefix}-user:${user}` : `${params.prefix}:${randomUUID()}`;
   return buildAgentMainSessionKey({ agentId: params.agentId, mainKey });
+}
+
+export function resolveProviderForAgent(
+  agentId: string,
+  fallback: string,
+  cfg?: OpenClawConfig,
+): string {
+  const resolvedCfg = cfg ?? loadConfig();
+  try {
+    const modelRef = resolveDefaultModelForAgent({ cfg: resolvedCfg, agentId });
+    return modelRef.provider || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export function resolveGatewayRequestContext(params: {
