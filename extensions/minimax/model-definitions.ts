@@ -11,8 +11,8 @@ export const DEFAULT_MINIMAX_MAX_TOKENS = 8192;
 export const MINIMAX_API_COST = {
   input: 0.3,
   output: 1.2,
-  cacheRead: 0.03,
-  cacheWrite: 0.12,
+  cacheRead: 0.06,
+  cacheWrite: 0.375,
 };
 export const MINIMAX_HOSTED_COST = {
   input: 0,

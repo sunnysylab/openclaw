@@ -8,11 +8,29 @@ export const MINIMAX_DEFAULT_MODEL_ID = "MiniMax-M2.7";
 const MINIMAX_DEFAULT_VISION_MODEL_ID = "MiniMax-VL-01";
 const MINIMAX_DEFAULT_CONTEXT_WINDOW = 200000;
 const MINIMAX_DEFAULT_MAX_TOKENS = 8192;
-const MINIMAX_API_COST = {
+const MINIMAX_M27_COST = {
+  input: 0.3,
+  output: 1.2,
+  cacheRead: 0.06,
+  cacheWrite: 0.375,
+};
+const MINIMAX_M27_HIGHSPEED_COST = {
+  input: 0.6,
+  output: 2.4,
+  cacheRead: 0.06,
+  cacheWrite: 0.375,
+};
+const MINIMAX_M25_COST = {
   input: 0.3,
   output: 1.2,
   cacheRead: 0.03,
-  cacheWrite: 0.12,
+  cacheWrite: 0.375,
+};
+const MINIMAX_M25_HIGHSPEED_COST = {
+  input: 0.6,
+  output: 2.4,
+  cacheRead: 0.03,
+  cacheWrite: 0.375,
 };
 
 function buildMinimaxModel(params: {
@@ -20,13 +38,14 @@ function buildMinimaxModel(params: {
   name: string;
   reasoning: boolean;
   input: ModelDefinitionConfig["input"];
+  cost: ModelDefinitionConfig["cost"];
 }): ModelDefinitionConfig {
   return {
     id: params.id,
     name: params.name,
     reasoning: params.reasoning,
     input: params.input,
-    cost: MINIMAX_API_COST,
+    cost: params.cost,
     contextWindow: MINIMAX_DEFAULT_CONTEXT_WINDOW,
     maxTokens: MINIMAX_DEFAULT_MAX_TOKENS,
   };
@@ -36,6 +55,7 @@ function buildMinimaxTextModel(params: {
   id: string;
   name: string;
   reasoning: boolean;
+  cost: ModelDefinitionConfig["cost"];
 }): ModelDefinitionConfig {
   return buildMinimaxModel({ ...params, input: ["text"] });
 }
@@ -47,26 +67,31 @@ function buildMinimaxCatalog(): ModelDefinitionConfig[] {
       name: "MiniMax VL 01",
       reasoning: false,
       input: ["text", "image"],
+      cost: MINIMAX_M27_COST,
     }),
     buildMinimaxTextModel({
       id: MINIMAX_DEFAULT_MODEL_ID,
       name: "MiniMax M2.7",
       reasoning: true,
+      cost: MINIMAX_M27_COST,
     }),
     buildMinimaxTextModel({
       id: "MiniMax-M2.7-highspeed",
       name: "MiniMax M2.7 Highspeed",
       reasoning: true,
+      cost: MINIMAX_M27_HIGHSPEED_COST,
     }),
     buildMinimaxTextModel({
       id: "MiniMax-M2.5",
       name: "MiniMax M2.5",
       reasoning: true,
+      cost: MINIMAX_M25_COST,
     }),
     buildMinimaxTextModel({
       id: "MiniMax-M2.5-highspeed",
       name: "MiniMax M2.5 Highspeed",
       reasoning: true,
+      cost: MINIMAX_M25_HIGHSPEED_COST,
     }),
   ];
 }
