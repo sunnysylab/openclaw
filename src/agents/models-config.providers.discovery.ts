@@ -6,7 +6,9 @@ import {
   OLLAMA_DEFAULT_CONTEXT_WINDOW,
   OLLAMA_DEFAULT_COST,
   OLLAMA_DEFAULT_MAX_TOKENS,
+  OLLAMA_SHOW_CONCURRENCY,
   isReasoningModelHeuristic,
+  isVisionModelHeuristic,
   resolveOllamaApiBase,
   type OllamaTagsResponse,
 } from "./ollama-models.js";
@@ -31,7 +33,6 @@ type ProviderConfig = NonNullable<ModelsConfig["providers"]>[string];
 
 const log = createSubsystemLogger("agents/model-providers");
 
-const OLLAMA_SHOW_CONCURRENCY = 8;
 const OLLAMA_SHOW_MAX_MODELS = 200;
 
 type OpenAICompatModelsResponse = {
@@ -49,6 +50,7 @@ async function discoverOllamaModels(
   }
   try {
     const apiBase = resolveOllamaApiBase(baseUrl);
+    const started = Date.now();
     const response = await fetch(`${apiBase}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
@@ -72,15 +74,26 @@ async function discoverOllamaModels(
     const discovered = await enrichOllamaModelsWithContext(apiBase, modelsToInspect, {
       concurrency: OLLAMA_SHOW_CONCURRENCY,
     });
-    return discovered.map((model) => ({
-      id: model.name,
-      name: model.name,
-      reasoning: isReasoningModelHeuristic(model.name),
-      input: ["text"],
-      cost: OLLAMA_DEFAULT_COST,
-      contextWindow: model.contextWindow ?? OLLAMA_DEFAULT_CONTEXT_WINDOW,
-      maxTokens: OLLAMA_DEFAULT_MAX_TOKENS,
-    }));
+    const elapsed = Date.now() - started;
+    const visionCount = discovered.filter((m) => m.supportsVision).length;
+    const reasoningCount = discovered.filter((m) => isReasoningModelHeuristic(m.name)).length;
+    log.debug(
+      `Ollama discovery: ${discovered.length} models in ${elapsed}ms` +
+        (visionCount > 0 ? ` (${visionCount} vision)` : "") +
+        (reasoningCount > 0 ? ` (${reasoningCount} reasoning)` : ""),
+    );
+    return discovered.map((model) => {
+      const vision = model.supportsVision ?? isVisionModelHeuristic(model.name);
+      return {
+        id: model.name,
+        name: model.name,
+        reasoning: isReasoningModelHeuristic(model.name),
+        input: vision ? ["text", "image"] : ["text"],
+        cost: OLLAMA_DEFAULT_COST,
+        contextWindow: model.contextWindow ?? OLLAMA_DEFAULT_CONTEXT_WINDOW,
+        maxTokens: OLLAMA_DEFAULT_MAX_TOKENS,
+      };
+    });
   } catch (error) {
     if (!opts?.quiet) {
       log.warn(`Failed to discover Ollama models: ${String(error)}`);
@@ -125,11 +138,12 @@ async function discoverOpenAICompatibleLocalModels(params: {
       .filter((model) => Boolean(model.id))
       .map((model) => {
         const modelId = model.id;
+        const vision = isVisionModelHeuristic(modelId);
         return {
           id: modelId,
           name: modelId,
           reasoning: isReasoningModelHeuristic(modelId),
-          input: ["text"],
+          input: vision ? ["text", "image"] : ["text"],
           cost: SELF_HOSTED_DEFAULT_COST,
           contextWindow: params.contextWindow ?? SELF_HOSTED_DEFAULT_CONTEXT_WINDOW,
           maxTokens: params.maxTokens ?? SELF_HOSTED_DEFAULT_MAX_TOKENS,
