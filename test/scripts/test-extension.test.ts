@@ -53,6 +53,14 @@ describe("scripts/test-extension.mjs", () => {
     expect(plan.testFiles.some((file) => file.startsWith("extensions/firecrawl/"))).toBe(true);
   });
 
+  it("returns an empty test list for provider extensions without dedicated tests", () => {
+    const plan = resolveExtensionTestPlan({ targetArg: "anthropic", cwd: process.cwd() });
+
+    expect(plan.extensionId).toBe("anthropic");
+    expect(plan.config).toBe("vitest.extensions.config.ts");
+    expect(plan.testFiles).toEqual([]);
+  });
+
   it("applies exact isolated files for non-channel extensions", () => {
     const { isolatedTestFiles, sharedTestFiles } = partitionExtensionTestFiles({
       config: "vitest.extensions.config.ts",
@@ -80,6 +88,18 @@ describe("scripts/test-extension.mjs", () => {
 
     expect(plan.extensionId).toBe("slack");
     expect(plan.extensionDir).toBe("extensions/slack");
+  });
+
+  it("treats extensions without dedicated tests as a clean dry-run skip", () => {
+    const stdout = execFileSync(process.execPath, [scriptPath, "anthropic"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    });
+
+    expect(stdout).toContain("[test-extension] No tests found for extensions/anthropic.");
+    expect(stdout).toContain(
+      'Run "pnpm test:extension anthropic -- --dry-run" to inspect the resolved roots. Skipping.',
+    );
   });
 
   it("maps changed paths back to extension ids", () => {

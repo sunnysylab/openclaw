@@ -3,7 +3,9 @@ import type { OpenClawConfig } from "../../../config/config.js";
 import { applyNonInteractiveAuthChoice } from "./auth-choice.js";
 
 const applySimpleNonInteractiveApiKeyChoice = vi.hoisted(() =>
-  vi.fn<() => Promise<OpenClawConfig | null | undefined>>(async () => undefined),
+  vi.fn<typeof import("./auth-choice.api-key-providers.js").applySimpleNonInteractiveApiKeyChoice>(
+    async () => undefined,
+  ),
 );
 vi.mock("./auth-choice.api-key-providers.js", () => ({
   applySimpleNonInteractiveApiKeyChoice,
@@ -21,6 +23,8 @@ vi.mock("../api-keys.js", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  delete process.env.OPENCLAW_AGENT_DIR;
+  delete process.env.PI_CODING_AGENT_DIR;
 });
 
 function createRuntime() {
@@ -49,5 +53,99 @@ describe("applyNonInteractiveAuthChoice", () => {
     expect(result).toBe(resolvedConfig);
     expect(applyNonInteractivePluginProviderChoice).toHaveBeenCalledOnce();
     expect(applySimpleNonInteractiveApiKeyChoice).not.toHaveBeenCalled();
+  });
+
+  it("passes the target agent dir into builtin non-interactive API key flows", async () => {
+    const runtime = createRuntime();
+    const nextConfig = {
+      agents: {
+        defaults: {},
+        list: [
+          {
+            id: "work",
+            default: true,
+            agentDir: "/tmp/openclaw-agents/work/agent",
+          },
+        ],
+      },
+    } as OpenClawConfig;
+    applySimpleNonInteractiveApiKeyChoice.mockImplementationOnce(async ({ resolveApiKey }) => {
+      await resolveApiKey({
+        provider: "gigachat",
+        cfg: nextConfig,
+        flagName: "--gigachat-api-key",
+        envVar: "GIGACHAT_CREDENTIALS",
+        runtime: runtime as never,
+      });
+      return null;
+    });
+    resolveNonInteractiveApiKey.mockResolvedValueOnce(null);
+
+    await applyNonInteractiveAuthChoice({
+      nextConfig,
+      authChoice: "gigachat-api-key",
+      opts: {} as never,
+      runtime: runtime as never,
+      baseConfig: nextConfig,
+    });
+
+    expect(applySimpleNonInteractiveApiKeyChoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentDir: "/tmp/openclaw-agents/work/agent",
+      }),
+    );
+    expect(resolveNonInteractiveApiKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentDir: "/tmp/openclaw-agents/work/agent",
+      }),
+    );
+  });
+
+  it("prefers OPENCLAW_AGENT_DIR overrides for builtin non-interactive API key flows", async () => {
+    const runtime = createRuntime();
+    const nextConfig = {
+      agents: {
+        defaults: {},
+        list: [
+          {
+            id: "work",
+            default: true,
+            agentDir: "/tmp/openclaw-agents/work/agent",
+          },
+        ],
+      },
+    } as OpenClawConfig;
+    process.env.OPENCLAW_AGENT_DIR = "/tmp/openclaw-agents/override/agent";
+    process.env.PI_CODING_AGENT_DIR = "/tmp/openclaw-agents/override/agent";
+    applySimpleNonInteractiveApiKeyChoice.mockImplementationOnce(async ({ resolveApiKey }) => {
+      await resolveApiKey({
+        provider: "gigachat",
+        cfg: nextConfig,
+        flagName: "--gigachat-api-key",
+        envVar: "GIGACHAT_CREDENTIALS",
+        runtime: runtime as never,
+      });
+      return null;
+    });
+    resolveNonInteractiveApiKey.mockResolvedValueOnce(null);
+
+    await applyNonInteractiveAuthChoice({
+      nextConfig,
+      authChoice: "gigachat-api-key",
+      opts: {} as never,
+      runtime: runtime as never,
+      baseConfig: nextConfig,
+    });
+
+    expect(applySimpleNonInteractiveApiKeyChoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentDir: "/tmp/openclaw-agents/override/agent",
+      }),
+    );
+    expect(resolveNonInteractiveApiKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentDir: "/tmp/openclaw-agents/override/agent",
+      }),
+    );
   });
 });

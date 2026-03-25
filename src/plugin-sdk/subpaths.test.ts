@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
   BaseProbeResult as ContractBaseProbeResult,
   BaseTokenResolution as ContractBaseTokenResolution,
@@ -37,6 +38,7 @@ import type {
   ChannelThreadingToolContext,
 } from "../channels/plugins/types.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
+import { resolvePluginSdkAliasFile } from "../plugins/sdk-alias.js";
 import type { OpenClawPluginApi } from "../plugins/types.js";
 import type {
   ChannelMessageActionContext as SharedChannelMessageActionContext,
@@ -47,10 +49,35 @@ import { pluginSdkSubpaths } from "./entrypoints.js";
 
 const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN_SDK_DIR = resolve(ROOT_DIR, "plugin-sdk");
+const requireFromHere = createRequire(import.meta.url);
 const sourceCache = new Map<string, string>();
 const representativeRuntimeSmokeSubpaths = ["channel-runtime", "conversation-runtime"] as const;
 
-const importResolvedPluginSdkSubpath = async (specifier: string) => import(specifier);
+function resolveImportablePluginSdkSubpathFile(specifier: string): string {
+  const subpath = specifier.replace(/^openclaw\/plugin-sdk\//, "");
+  const resolvedAlias = resolvePluginSdkAliasFile({
+    srcFile: `${subpath}.ts`,
+    distFile: `${subpath}.js`,
+    moduleUrl: import.meta.url,
+  });
+  if (resolvedAlias) {
+    return resolvedAlias;
+  }
+
+  try {
+    const resolvedExport = requireFromHere.resolve(specifier);
+    if (existsSync(resolvedExport)) {
+      return resolvedExport;
+    }
+  } catch {
+    // Fall back to the package export only when the source-checkout alias path cannot be determined.
+  }
+
+  throw new Error(`Unable to resolve importable plugin-sdk subpath: ${specifier}`);
+}
+
+const importResolvedPluginSdkSubpath = async (specifier: string) =>
+  import(pathToFileURL(resolveImportablePluginSdkSubpathFile(specifier)).href);
 
 function readPluginSdkSource(subpath: string): string {
   const file = resolve(PLUGIN_SDK_DIR, `${subpath}.ts`);

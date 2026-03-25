@@ -173,10 +173,12 @@ describe("resolveMedia getFile retry", () => {
     ({ resolveMedia } = await import("./delivery.js"));
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
+    vi.resetModules();
     fetchRemoteMedia.mockReset();
     saveMediaBuffer.mockReset();
+    ({ resolveMedia } = await import("./delivery.js"));
   });
 
   afterEach(() => {
@@ -396,10 +398,12 @@ describe("resolveMedia getFile retry", () => {
 });
 
 describe("resolveMedia original filename preservation", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
+    vi.resetModules();
     fetchRemoteMedia.mockClear();
     saveMediaBuffer.mockClear();
+    ({ resolveMedia } = await import("./delivery.js"));
   });
 
   afterEach(() => {

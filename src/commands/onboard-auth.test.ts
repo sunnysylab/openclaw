@@ -5,6 +5,7 @@ import type { OAuthCredentials } from "@mariozechner/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyMinimaxApiConfig,
+  applyMinimaxApiConfigCn,
   applyMinimaxApiProviderConfig,
 } from "../../extensions/minimax/onboard.js";
 import { buildMistralModelDefinition as buildBundledMistralModelDefinition } from "../../extensions/mistral/model-definitions.js";
@@ -358,7 +359,7 @@ describe("applyAuthProfileConfig", () => {
     expect(next.auth?.order?.kilocode).toEqual(["kilocode:default", "kilocode:legacy"]);
   });
 
-  it("keeps implicit round-robin when no mixed provider modes are present", () => {
+  it("creates provider order when switching between same-mode profiles without explicit order", () => {
     const next = applyAuthProfileConfig(
       {
         auth: {
@@ -374,7 +375,45 @@ describe("applyAuthProfileConfig", () => {
       },
     );
 
+    expect(next.auth?.order?.kilocode).toEqual(["kilocode:default", "kilocode:legacy"]);
+  });
+
+  it("keeps implicit round-robin when reapplying the same provider profile", () => {
+    const next = applyAuthProfileConfig(
+      {
+        auth: {
+          profiles: {
+            "kilocode:default": { provider: "kilocode", mode: "api_key" },
+          },
+        },
+      },
+      {
+        profileId: "kilocode:default",
+        provider: "kilocode",
+        mode: "api_key",
+      },
+    );
+
     expect(next.auth?.order).toBeUndefined();
+  });
+
+  it("creates provider order when an existing profile uses an aliased provider id", () => {
+    const next = applyAuthProfileConfig(
+      {
+        auth: {
+          profiles: {
+            "qwen:legacy": { provider: "qwen", mode: "api_key" },
+          },
+        },
+      },
+      {
+        profileId: "qwen-portal:default",
+        provider: "qwen-portal",
+        mode: "api_key",
+      },
+    );
+
+    expect(next.auth?.order?.["qwen-portal"]).toEqual(["qwen-portal:default", "qwen:legacy"]);
   });
 
   it("stores display metadata without overloading email", () => {
@@ -448,6 +487,52 @@ describe("applyMinimaxApiConfig", () => {
       "old-model",
       "MiniMax-M2.7",
     ]);
+  });
+
+  it("preserves secret-ref api keys when rewriting minimax global config", () => {
+    const secretRef = {
+      source: "env" as const,
+      provider: "default",
+      id: "MINIMAX_API_KEY",
+    };
+    const cfg = applyMinimaxApiConfig({
+      models: {
+        providers: {
+          minimax: {
+            baseUrl: "https://legacy.minimax.example/anthropic",
+            api: "openai-completions",
+            apiKey: secretRef,
+            models: [],
+          },
+        },
+      },
+    });
+
+    expect(cfg.models?.providers?.minimax?.apiKey).toEqual(secretRef);
+    expect(cfg.models?.providers?.minimax?.baseUrl).toBe("https://api.minimax.io/anthropic");
+  });
+
+  it("preserves secret-ref api keys when rewriting minimax CN config", () => {
+    const secretRef = {
+      source: "env" as const,
+      provider: "default",
+      id: "MINIMAX_API_KEY",
+    };
+    const cfg = applyMinimaxApiConfigCn({
+      models: {
+        providers: {
+          minimax: {
+            baseUrl: "https://legacy.minimax.example/anthropic",
+            api: "openai-completions",
+            apiKey: secretRef,
+            models: [],
+          },
+        },
+      },
+    });
+
+    expect(cfg.models?.providers?.minimax?.apiKey).toEqual(secretRef);
+    expect(cfg.models?.providers?.minimax?.baseUrl).toBe("https://api.minimaxi.com/anthropic");
   });
 
   it("preserves other providers when adding minimax", () => {

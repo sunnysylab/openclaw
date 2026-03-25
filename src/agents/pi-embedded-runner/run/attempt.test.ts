@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
+import {
+  GIGACHAT_BASE_URL,
+  GIGACHAT_BASIC_BASE_URL,
+} from "../../../commands/onboard-auth.models.js";
 import type { OpenClawConfig } from "../../../config/config.js";
 import { appendBootstrapPromptWarning } from "../../bootstrap-budget.js";
+import {
+  resolveConfiguredGigachatBaseUrl,
+  resolveGigachatAuthMode,
+  resolveGigachatInsecureTlsOverride,
+} from "../../gigachat-auth.js";
 import { resolveOllamaBaseUrlForRun } from "../../ollama-stream.js";
 import { buildAgentSystemPrompt } from "../../system-prompt.js";
 import { buildEmbeddedSystemPrompt } from "../system-prompt.js";
@@ -12,6 +21,8 @@ import {
   persistSessionsYieldContextMessage,
   isOllamaCompatProvider,
   prependSystemPromptAddition,
+  resolveGigachatApiKeyForRun,
+  resolveGigachatAuthProfileMetadata,
   queueSessionsYieldInterruptMessage,
   resolveAttemptFsWorkspaceOnly,
   resolveOllamaCompatNumCtxEnabled,
@@ -147,6 +158,211 @@ describe("resolvePromptBuildHookResult", () => {
     expect(result.prependContext).toBe("prompt context\n\nlegacy context");
     expect(result.prependSystemContext).toBe("prompt prepend\n\nlegacy prepend");
     expect(result.appendSystemContext).toBe("prompt append\n\nlegacy append");
+  });
+});
+
+describe("resolveGigachatAuthProfileMetadata", () => {
+  it("prefers the active GigaChat auth profile metadata over the default profile", () => {
+    expect(
+      resolveGigachatAuthProfileMetadata(
+        {
+          profiles: {
+            "gigachat:default": {
+              type: "api_key",
+              provider: "gigachat",
+              metadata: { scope: "GIGACHAT_API_PERS", insecureTls: "false" },
+            },
+            "gigachat:business": {
+              type: "api_key",
+              provider: "gigachat",
+              metadata: { scope: "GIGACHAT_API_B2B", insecureTls: "true" },
+            },
+          },
+        },
+        "gigachat:business",
+      ),
+    ).toEqual({ scope: "GIGACHAT_API_B2B", insecureTls: "true" });
+  });
+
+  it("falls back to the default GigaChat profile metadata when the active profile is absent", () => {
+    expect(
+      resolveGigachatAuthProfileMetadata(
+        {
+          profiles: {
+            "gigachat:default": {
+              type: "api_key",
+              provider: "gigachat",
+              metadata: { scope: "GIGACHAT_API_PERS", insecureTls: "false" },
+            },
+          },
+        },
+        "gigachat:business",
+      ),
+    ).toEqual({ scope: "GIGACHAT_API_PERS", insecureTls: "false" });
+  });
+
+  it("ignores non-GigaChat active profiles when resolving metadata", () => {
+    expect(
+      resolveGigachatAuthProfileMetadata(
+        {
+          profiles: {
+            "gigachat:default": {
+              type: "api_key",
+              provider: "gigachat",
+              metadata: { scope: "GIGACHAT_API_PERS" },
+            },
+            "openai:p1": {
+              type: "api_key",
+              provider: "openai",
+              metadata: { scope: "not-gigachat" },
+            },
+          },
+        },
+        "openai:p1",
+      ),
+    ).toEqual({ scope: "GIGACHAT_API_PERS" });
+  });
+
+  it("does not inherit the default GigaChat profile when fallback is disabled", () => {
+    expect(
+      resolveGigachatAuthProfileMetadata(
+        {
+          profiles: {
+            "gigachat:default": {
+              type: "api_key",
+              provider: "gigachat",
+              metadata: { scope: "GIGACHAT_API_B2B", insecureTls: "true" },
+            },
+          },
+        },
+        undefined,
+        { allowDefaultProfileFallback: false },
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe("resolveGigachatAuthMode", () => {
+  it("infers basic auth for single-separator combined credentials without profile metadata", () => {
+    expect(resolveGigachatAuthMode({ apiKey: "user:password" })).toBe("basic");
+  });
+
+  it("keeps oauth as the fallback for colon-containing credentials keys", () => {
+    expect(resolveGigachatAuthMode({ apiKey: "oauth:credential:with:colon" })).toBe("oauth");
+  });
+
+  it("keeps oauth as the fallback when a profile is selected but has no metadata", () => {
+    expect(
+      resolveGigachatAuthMode({
+        apiKey: "oauth:credential:with:colon",
+        authProfileId: "gigachat:business",
+      }),
+    ).toBe("oauth");
+  });
+
+  it("infers basic auth for single-separator stored profile credentials without metadata", () => {
+    expect(
+      resolveGigachatAuthMode({
+        apiKey: "user:password",
+        authProfileId: "gigachat:default",
+      }),
+    ).toBe("basic");
+  });
+});
+
+describe("resolveGigachatInsecureTlsOverride", () => {
+  it("maps explicit metadata flags to boolean overrides", () => {
+    expect(resolveGigachatInsecureTlsOverride({ insecureTls: "true" })).toBe(true);
+    expect(resolveGigachatInsecureTlsOverride({ insecureTls: "false" })).toBe(false);
+  });
+
+  it("leaves the override unset when metadata does not specify TLS behavior", () => {
+    expect(resolveGigachatInsecureTlsOverride(undefined)).toBeUndefined();
+    expect(resolveGigachatInsecureTlsOverride({ scope: "GIGACHAT_API_PERS" })).toBeUndefined();
+  });
+});
+
+describe("resolveGigachatApiKeyForRun", () => {
+  it("falls back to config-backed GigaChat API keys when authStorage has no key", async () => {
+    const resolved = await resolveGigachatApiKeyForRun({
+      model: {
+        provider: "gigachat",
+        api: "openai-completions",
+        id: "GigaChat-2-Max",
+        input: ["text"],
+      } as never,
+      config: {
+        models: {
+          providers: {
+            gigachat: {
+              baseUrl: "https://gigachat.devices.sberbank.ru/api/v1",
+              api: "openai-completions",
+              apiKey: "user:password",
+              models: [],
+            },
+          },
+        },
+      },
+      authStorage: {
+        getApiKey: vi.fn(async () => undefined),
+      },
+    });
+
+    expect(resolved).toEqual({
+      apiKey: "user:password",
+      authProfileId: undefined,
+    });
+  });
+
+  it("keeps runtime authStorage keys over config-backed GigaChat API keys", async () => {
+    const resolved = await resolveGigachatApiKeyForRun({
+      model: {
+        provider: "gigachat",
+        api: "openai-completions",
+        id: "GigaChat-2-Max",
+        input: ["text"],
+      } as never,
+      config: {
+        models: {
+          providers: {
+            gigachat: {
+              baseUrl: "https://gigachat.devices.sberbank.ru/api/v1",
+              api: "openai-completions",
+              apiKey: "config-user:config-pass",
+              models: [],
+            },
+          },
+        },
+      },
+      authStorage: {
+        getApiKey: vi.fn(async () => "runtime-key"),
+      },
+    });
+
+    expect(resolved).toEqual({
+      apiKey: "runtime-key",
+      authProfileId: undefined,
+    });
+  });
+});
+
+describe("resolveConfiguredGigachatBaseUrl", () => {
+  it("treats the stock OAuth host as an implicit default for Basic auth", () => {
+    expect(
+      resolveConfiguredGigachatBaseUrl({
+        baseUrl: GIGACHAT_BASE_URL,
+        apiKey: "user:password",
+      }),
+    ).toBe(GIGACHAT_BASIC_BASE_URL);
+  });
+
+  it("preserves custom hosts for Basic auth", () => {
+    expect(
+      resolveConfiguredGigachatBaseUrl({
+        baseUrl: "https://preview.gigachat.example/v1",
+        apiKey: "user:password",
+      }),
+    ).toBe("https://preview.gigachat.example/v1");
   });
 });
 
@@ -1866,6 +2082,18 @@ describe("prependSystemPromptAddition", () => {
 });
 
 describe("buildAfterTurnRuntimeContext", () => {
+  it("returns workspace-only context when attempt data is missing", () => {
+    const legacy = buildAfterTurnRuntimeContext({
+      workspaceDir: "/tmp/workspace",
+      agentDir: "/tmp/agent",
+    });
+
+    expect(legacy).toEqual({
+      workspaceDir: "/tmp/workspace",
+      agentDir: "/tmp/agent",
+    });
+  });
+
   it("uses primary model when compaction.model is not set", () => {
     const legacy = buildAfterTurnRuntimeContext({
       attempt: {

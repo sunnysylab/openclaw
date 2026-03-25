@@ -37,6 +37,7 @@ import { registerProviderPlugins } from "../test-utils/plugin-registration.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
 import { applyAuthChoice, resolvePreferredProviderForAuthChoice } from "./auth-choice.js";
 import { GOOGLE_GEMINI_DEFAULT_MODEL } from "./google-gemini-model-default.js";
+import { GIGACHAT_BASE_URL } from "./onboard-auth.models.js";
 import type { AuthChoice } from "./onboard-types.js";
 import {
   authProfilePathForAgent,
@@ -307,6 +308,526 @@ describe("applyAuthChoice", () => {
       refresh: "refresh-token",
       access: "access-token",
       email: "user@example.com",
+    });
+  });
+
+  it("stores an explicit combined GigaChat Basic credential ref in secret-input-mode ref", async () => {
+    await setupTempState();
+
+    process.env.GIGACHAT_CREDENTIALS = "basic-user:basic-pass"; // pragma: allowlist secret
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+
+    const text = vi
+      .fn()
+      .mockResolvedValueOnce("https://gigachat.ift.sberdevices.ru/v1")
+      .mockResolvedValueOnce("GIGACHAT_CREDENTIALS");
+    const { prompter, runtime } = createApiKeyPromptHarness({ text });
+
+    const result = await applyAuthChoice({
+      authChoice: "gigachat-basic",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: false,
+      opts: { secretInputMode: "ref" },
+    });
+
+    expect(result.config.auth?.profiles?.["gigachat:default"]).toMatchObject({
+      provider: "gigachat",
+      mode: "api_key",
+    });
+    expect(result.agentModelOverride).toBe("gigachat/GigaChat-2-Max");
+    expect(resolveAgentModelPrimaryValue(result.config.agents?.defaults?.model)).toBeUndefined();
+    expect(await readAuthProfile("gigachat:default")).toMatchObject({
+      type: "api_key",
+      provider: "gigachat",
+      keyRef: { source: "env", provider: "default", id: "GIGACHAT_CREDENTIALS" },
+      metadata: {
+        authMode: "basic",
+        scope: "GIGACHAT_API_PERS",
+      },
+    });
+    expect((await readAuthProfile("gigachat:default"))?.metadata).not.toHaveProperty("insecureTls");
+    expect((await readAuthProfile("gigachat:default"))?.key).toBeUndefined();
+    expect(text).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects GigaChat Basic secret refs that resolve to OAuth credentials", async () => {
+    await setupTempState();
+
+    process.env.GIGACHAT_CREDENTIALS = "env-oauth-credentials"; // pragma: allowlist secret
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+
+    const text = vi
+      .fn()
+      .mockResolvedValueOnce("https://gigachat.ift.sberdevices.ru/v1")
+      .mockResolvedValueOnce("GIGACHAT_CREDENTIALS");
+    const { prompter } = createApiKeyPromptHarness({ text });
+    const runtime = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn((code: number) => {
+        throw new Error(`exit ${code}`);
+      }),
+    };
+
+    await expect(
+      applyAuthChoice({
+        authChoice: "gigachat-basic",
+        config: {},
+        prompter,
+        runtime,
+        setDefaultModel: false,
+        opts: { secretInputMode: "ref" },
+      }),
+    ).rejects.toThrow("exit 1");
+
+    expect(runtime.error).toHaveBeenCalledWith(
+      expect.stringContaining("did not resolve to user:password credentials"),
+    );
+    await expect(readAuthProfile("gigachat:default")).rejects.toThrow();
+  });
+
+  it("captures business scope for direct GigaChat Basic onboarding", async () => {
+    await setupTempState();
+
+    process.env.GIGACHAT_CREDENTIALS = "env-oauth-credentials"; // pragma: allowlist secret
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+
+    const select: WizardPrompter["select"] = vi.fn(async () => "GIGACHAT_API_B2B" as never);
+    const text = vi
+      .fn()
+      .mockResolvedValueOnce("https://gigachat.ift.sberdevices.ru/v1")
+      .mockResolvedValueOnce("basic-user")
+      .mockResolvedValueOnce("basic-pass");
+    const { prompter, runtime } = createApiKeyPromptHarness({ select, text });
+
+    await applyAuthChoice({
+      authChoice: "gigachat-basic",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: false,
+    });
+
+    expect(await readAuthProfile("gigachat:default")).toMatchObject({
+      metadata: {
+        authMode: "basic",
+        scope: "GIGACHAT_API_B2B",
+      },
+    });
+  });
+
+  it("rejects Basic-shaped GigaChat credentials on the interactive OAuth path", async () => {
+    await setupTempState();
+
+    process.env.GIGACHAT_CREDENTIALS = "basic-user:basic-pass"; // pragma: allowlist secret
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+
+    const { prompter } = createApiKeyPromptHarness({
+      confirm: vi.fn(async () => true),
+    });
+    const runtime = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn((code: number) => {
+        throw new Error(`exit ${code}`);
+      }),
+    };
+
+    await expect(
+      applyAuthChoice({
+        authChoice: "gigachat-personal",
+        config: {},
+        prompter,
+        runtime,
+        setDefaultModel: false,
+      }),
+    ).rejects.toThrow("exit 1");
+
+    expect(runtime.error).toHaveBeenCalledWith(
+      expect.stringContaining("Basic user:password credentials"),
+    );
+    await expect(readAuthProfile("gigachat:default")).rejects.toThrow();
+  });
+
+  it("rejects ref-backed Basic GigaChat credentials on the interactive OAuth path", async () => {
+    await setupTempState();
+
+    process.env.GIGACHAT_CREDENTIALS = "basic-user:basic-pass"; // pragma: allowlist secret
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+
+    const text = vi.fn().mockResolvedValueOnce("GIGACHAT_CREDENTIALS");
+    const { prompter } = createApiKeyPromptHarness({ text });
+    const runtime = {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn((code: number) => {
+        throw new Error(`exit ${code}`);
+      }),
+    };
+
+    await expect(
+      applyAuthChoice({
+        authChoice: "gigachat-personal",
+        config: {},
+        prompter,
+        runtime,
+        setDefaultModel: false,
+        opts: { secretInputMode: "ref" },
+      }),
+    ).rejects.toThrow("exit 1");
+
+    expect(runtime.error).toHaveBeenCalledWith(
+      expect.stringContaining("Basic user:password credentials"),
+    );
+    await expect(readAuthProfile("gigachat:default")).rejects.toThrow();
+  });
+
+  it("accepts OAuth GigaChat credentials keys that contain colons", async () => {
+    await setupTempState();
+
+    delete process.env.GIGACHAT_CREDENTIALS;
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+
+    const { prompter, runtime } = createApiKeyPromptHarness();
+
+    const result = await applyAuthChoice({
+      authChoice: "gigachat-personal",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: false,
+      opts: { gigachatApiKey: "oauth:credential:with:colon" },
+    });
+
+    expect(result.config.auth?.profiles?.["gigachat:default"]).toMatchObject({
+      provider: "gigachat",
+      mode: "api_key",
+    });
+    const profile = await readAuthProfile("gigachat:default");
+    expect(profile).toMatchObject({
+      type: "api_key",
+      provider: "gigachat",
+      metadata: {
+        authMode: "oauth",
+        scope: "GIGACHAT_API_PERS",
+      },
+    });
+    expect(profile?.metadata).not.toHaveProperty("insecureTls");
+  });
+
+  it("resets a custom Basic GigaChat base URL when switching to OAuth", async () => {
+    await setupTempState();
+
+    delete process.env.GIGACHAT_CREDENTIALS;
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+
+    const basicText = vi
+      .fn()
+      .mockResolvedValueOnce("https://preview-basic.gigachat.example/api/v1")
+      .mockResolvedValueOnce("basic-user")
+      .mockResolvedValueOnce("basic-pass");
+    const basicHarness = createApiKeyPromptHarness({ text: basicText });
+
+    const basicResult = await applyAuthChoice({
+      authChoice: "gigachat-basic",
+      config: {},
+      prompter: basicHarness.prompter,
+      runtime: basicHarness.runtime,
+      setDefaultModel: true,
+    });
+
+    expect(basicResult.config.models?.providers?.gigachat?.baseUrl).toBe(
+      "https://preview-basic.gigachat.example/api/v1",
+    );
+
+    process.env.GIGACHAT_CREDENTIALS = "gigachat-oauth-credentials=="; // pragma: allowlist secret
+    const oauthHarness = createApiKeyPromptHarness();
+
+    const oauthResult = await applyAuthChoice({
+      authChoice: "gigachat-personal",
+      config: basicResult.config,
+      prompter: oauthHarness.prompter,
+      runtime: oauthHarness.runtime,
+      setDefaultModel: true,
+    });
+
+    expect(oauthResult.config.models?.providers?.gigachat?.baseUrl).toBe(GIGACHAT_BASE_URL);
+    expect(await readAuthProfile("gigachat:default")).toMatchObject({
+      type: "api_key",
+      provider: "gigachat",
+      metadata: {
+        authMode: "oauth",
+        scope: "GIGACHAT_API_PERS",
+      },
+    });
+  });
+
+  it("resets a custom Basic GigaChat base URL when the active ordered profile is non-default", async () => {
+    await setupTempState();
+
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+    process.env.GIGACHAT_CREDENTIALS = "gigachat-oauth-credentials=="; // pragma: allowlist secret
+
+    await fs.writeFile(
+      authProfilePathForAgent(requireOpenClawAgentDir()),
+      JSON.stringify(
+        {
+          version: 1,
+          profiles: {
+            "gigachat:work": {
+              type: "api_key",
+              provider: "gigachat",
+              key: "basic-user:basic-pass",
+              metadata: { authMode: "basic" },
+            },
+            "gigachat:default": {
+              type: "api_key",
+              provider: "gigachat",
+              key: "gigachat-oauth-credentials==", // pragma: allowlist secret
+              metadata: {
+                authMode: "oauth",
+                scope: "GIGACHAT_API_PERS",
+              },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const oauthHarness = createApiKeyPromptHarness();
+    const oauthResult = await applyAuthChoice({
+      authChoice: "gigachat-personal",
+      config: {
+        auth: {
+          profiles: {
+            "gigachat:work": { provider: "gigachat", mode: "api_key" },
+            "gigachat:default": { provider: "gigachat", mode: "api_key" },
+          },
+          order: { gigachat: ["gigachat:work", "gigachat:default"] },
+        },
+        models: {
+          providers: {
+            gigachat: {
+              baseUrl: "https://preview-basic.gigachat.example/api/v1",
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+      prompter: oauthHarness.prompter,
+      runtime: oauthHarness.runtime,
+      setDefaultModel: true,
+    });
+
+    expect(oauthResult.config.models?.providers?.gigachat?.baseUrl).toBe(GIGACHAT_BASE_URL);
+  });
+
+  it("resets a custom Basic GigaChat base URL when the active ordered profile has Basic credentials but no metadata", async () => {
+    await setupTempState();
+
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+    process.env.GIGACHAT_CREDENTIALS = "gigachat-oauth-credentials=="; // pragma: allowlist secret
+
+    await fs.writeFile(
+      authProfilePathForAgent(requireOpenClawAgentDir()),
+      JSON.stringify(
+        {
+          version: 1,
+          profiles: {
+            "gigachat:work": {
+              type: "api_key",
+              provider: "gigachat",
+              key: "basic-user:basic-pass",
+            },
+            "gigachat:default": {
+              type: "api_key",
+              provider: "gigachat",
+              key: "gigachat-oauth-credentials==", // pragma: allowlist secret
+              metadata: {
+                authMode: "oauth",
+                scope: "GIGACHAT_API_PERS",
+              },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const oauthHarness = createApiKeyPromptHarness();
+    const oauthResult = await applyAuthChoice({
+      authChoice: "gigachat-personal",
+      config: {
+        auth: {
+          profiles: {
+            "gigachat:work": { provider: "gigachat", mode: "api_key" },
+            "gigachat:default": { provider: "gigachat", mode: "api_key" },
+          },
+          order: { gigachat: ["gigachat:work", "gigachat:default"] },
+        },
+        models: {
+          providers: {
+            gigachat: {
+              baseUrl: "https://preview-basic.gigachat.example/api/v1",
+              api: "openai-completions",
+              models: [],
+            },
+          },
+        },
+      },
+      prompter: oauthHarness.prompter,
+      runtime: oauthHarness.runtime,
+      setDefaultModel: true,
+    });
+
+    expect(oauthResult.config.models?.providers?.gigachat?.baseUrl).toBe(GIGACHAT_BASE_URL);
+  });
+
+  it("resets a config-backed Basic GigaChat base URL when switching to OAuth", async () => {
+    await setupTempState();
+
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+    process.env.GIGACHAT_CREDENTIALS = "gigachat-oauth-credentials=="; // pragma: allowlist secret
+
+    const oauthHarness = createApiKeyPromptHarness();
+    const oauthResult = await applyAuthChoice({
+      authChoice: "gigachat-personal",
+      config: {
+        models: {
+          providers: {
+            gigachat: {
+              api: "openai-completions",
+              apiKey: "basic-user:basic-pass",
+              baseUrl: "https://preview-basic.gigachat.example/api/v1",
+              models: [],
+            },
+          },
+        },
+      },
+      prompter: oauthHarness.prompter,
+      runtime: oauthHarness.runtime,
+      setDefaultModel: true,
+    });
+
+    expect(oauthResult.config.models?.providers?.gigachat?.baseUrl).toBe(GIGACHAT_BASE_URL);
+    expect(await readAuthProfile("gigachat:default")).toMatchObject({
+      type: "api_key",
+      provider: "gigachat",
+      metadata: {
+        authMode: "oauth",
+        scope: "GIGACHAT_API_PERS",
+      },
+    });
+  });
+
+  it("resets a SecretRef-backed Basic GigaChat base URL when switching to OAuth", async () => {
+    await setupTempState();
+
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+    process.env.GIGACHAT_CREDENTIALS = "basic-user:basic-pass"; // pragma: allowlist secret
+
+    const oauthHarness = createApiKeyPromptHarness();
+    const oauthResult = await applyAuthChoice({
+      authChoice: "gigachat-personal",
+      config: {
+        models: {
+          providers: {
+            gigachat: {
+              api: "openai-completions",
+              apiKey: {
+                source: "env",
+                provider: "default",
+                id: "GIGACHAT_CREDENTIALS",
+              },
+              baseUrl: "https://preview-basic.gigachat.example/api/v1",
+              models: [],
+            },
+          },
+        },
+      },
+      prompter: oauthHarness.prompter,
+      runtime: oauthHarness.runtime,
+      setDefaultModel: true,
+    });
+
+    expect(oauthResult.config.models?.providers?.gigachat?.baseUrl).toBe(GIGACHAT_BASE_URL);
+  });
+
+  it("does not abort GigaChat OAuth reauth when a config-backed SecretRef is unresolved", async () => {
+    await setupTempState();
+
+    delete process.env.GIGACHAT_CREDENTIALS;
+    delete process.env.GIGACHAT_USER;
+    delete process.env.GIGACHAT_PASSWORD;
+    delete process.env.GIGACHAT_BASE_URL;
+    delete process.env.MISSING_GIGACHAT_CREDENTIALS;
+
+    const { prompter, runtime } = createApiKeyPromptHarness();
+    const oauthResult = await applyAuthChoice({
+      authChoice: "gigachat-personal",
+      config: {
+        models: {
+          providers: {
+            gigachat: {
+              api: "openai-completions",
+              apiKey: {
+                source: "env",
+                provider: "default",
+                id: "MISSING_GIGACHAT_CREDENTIALS",
+              },
+              baseUrl: "https://preview-basic.gigachat.example/api/v1",
+              models: [],
+            },
+          },
+        },
+      },
+      prompter,
+      runtime,
+      setDefaultModel: false,
+      opts: { gigachatApiKey: "gigachat-oauth-credentials==" },
+    });
+
+    expect(oauthResult.config.auth?.profiles?.["gigachat:default"]).toMatchObject({
+      provider: "gigachat",
+      mode: "api_key",
+    });
+    expect(await readAuthProfile("gigachat:default")).toMatchObject({
+      type: "api_key",
+      provider: "gigachat",
+      metadata: {
+        authMode: "oauth",
+        scope: "GIGACHAT_API_PERS",
+      },
     });
   });
 

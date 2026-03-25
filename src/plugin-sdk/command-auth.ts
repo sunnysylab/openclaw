@@ -71,6 +71,7 @@ export {
 } from "../auto-reply/skill-commands.js";
 export { buildCommandsPaginationKeyboard } from "../auto-reply/reply/commands-info.js";
 export {
+  buildConfiguredModelsProviderData,
   buildModelsProviderData,
   formatModelsAvailableHeader,
   resolveModelsCommandReply,

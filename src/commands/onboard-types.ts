@@ -46,6 +46,11 @@ export type BuiltInAuthChoice =
   | "qwen-portal"
   | "xai-api-key"
   | "mistral-api-key"
+  | "gigachat-oauth"
+  | "gigachat-api-key"
+  | "gigachat-personal"
+  | "gigachat-business"
+  | "gigachat-basic"
   | "volcengine-api-key"
   | "byteplus-api-key"
   | "qianfan-api-key"
@@ -77,6 +82,7 @@ export type BuiltInAuthChoiceGroupId =
   | "synthetic"
   | "venice"
   | "mistral"
+  | "gigachat"
   | "qwen"
   | "together"
   | "huggingface"
@@ -122,6 +128,7 @@ export type OnboardOptions = {
   deepseekApiKey?: string;
   openaiApiKey?: string;
   mistralApiKey?: string;
+  gigachatApiKey?: string;
   openrouterApiKey?: string;
   kilocodeApiKey?: string;
   litellmApiKey?: string;

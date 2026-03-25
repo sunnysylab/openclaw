@@ -1,7 +1,12 @@
 import { rm } from "node:fs/promises";
 import type { PluginInteractiveTelegramHandlerContext } from "openclaw/plugin-sdk/core";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { expectChannelInboundContextContract as expectInboundContextContract } from "../../../src/channels/plugins/contracts/suites.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+  type OpenClawConfig,
+} from "../../../src/config/config.js";
 import {
   clearPluginInteractiveHandlers,
   registerPluginInteractiveHandler,
@@ -34,12 +39,18 @@ let loadSessionStore: typeof import("../../../src/config/sessions.js").loadSessi
 let normalizeTelegramCommandName: typeof import("../../../src/config/telegram-custom-commands.js").normalizeTelegramCommandName;
 let createTelegramBotBase: typeof import("./bot.js").createTelegramBot;
 let setTelegramBotRuntimeForTest: typeof import("./bot.js").setTelegramBotRuntimeForTest;
-let createTelegramBot: (
-  opts: Parameters<typeof import("./bot.js").createTelegramBot>[0],
-) => ReturnType<typeof import("./bot.js").createTelegramBot>;
-
 const loadConfig = getLoadConfigMock();
 const readChannelAllowFromStore = getReadChannelAllowFromStoreMock();
+const resolveHarnessConfig = () => (loadConfig as unknown as () => OpenClawConfig)();
+const createTelegramBot = (opts: Parameters<typeof createTelegramBotBase>[0]) => {
+  const cfg = opts.config ?? resolveHarnessConfig();
+  setRuntimeConfigSnapshot(cfg);
+  return createTelegramBotBase({
+    ...opts,
+    config: cfg,
+    telegramDeps: telegramBotDepsForTest,
+  });
+};
 
 function resolveSkillCommands(config: Parameters<typeof listNativeCommandSpecsForConfig>[0]) {
   void config;
@@ -65,6 +76,9 @@ describe("createTelegramBot", () => {
   afterAll(() => {
     process.env.TZ = ORIGINAL_TZ;
   });
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
+  });
 
   beforeEach(() => {
     setMyCommandsSpy.mockClear();
@@ -82,11 +96,6 @@ describe("createTelegramBot", () => {
     setTelegramBotRuntimeForTest(
       telegramBotRuntimeForTest as unknown as Parameters<typeof setTelegramBotRuntimeForTest>[0],
     );
-    createTelegramBot = (opts) =>
-      createTelegramBotBase({
-        ...opts,
-        telegramDeps: telegramBotDepsForTest,
-      });
   });
 
   it("merges custom commands with native commands", async () => {
@@ -738,6 +747,70 @@ describe("createTelegramBot", () => {
       'Could not resolve model "shared-model".',
     );
     expect(answerCallbackQuerySpy).toHaveBeenCalledWith("cbq-model-compact-2");
+  });
+
+  it("does not resolve compact model callbacks through a narrower configured subset", async () => {
+    onSpy.mockClear();
+    replySpy.mockClear();
+    editMessageTextSpy.mockClear();
+
+    const buildModelsProviderDataMock =
+      telegramBotDepsForTest.buildModelsProviderData as unknown as ReturnType<typeof vi.fn>;
+    const modelId = "us.anthropic.claude-3-5-sonnet-20240620-v1:0";
+    buildModelsProviderDataMock.mockImplementationOnce(async (_cfg: OpenClawConfig) => ({
+      byProvider: new Map([
+        ["anthropic", new Set([modelId])],
+        ["openai", new Set([modelId])],
+      ]),
+      providers: ["anthropic", "openai"],
+      resolvedDefault: { provider: "openai", model: modelId },
+    }));
+
+    createTelegramBot({
+      token: "tok",
+      config: {
+        agents: {
+          defaults: {
+            model: `openai/${modelId}`,
+            models: {
+              [`openai/${modelId}`]: {},
+            },
+          },
+        },
+        channels: {
+          telegram: {
+            dmPolicy: "open",
+            allowFrom: ["*"],
+          },
+        },
+      },
+    });
+    const callbackHandler = onSpy.mock.calls.find((call) => call[0] === "callback_query")?.[1] as (
+      ctx: Record<string, unknown>,
+    ) => Promise<void>;
+    expect(callbackHandler).toBeDefined();
+
+    await callbackHandler({
+      callbackQuery: {
+        id: "cbq-model-compact-3",
+        data: `mdl_sel/${modelId}`,
+        from: { id: 9, first_name: "Ada", username: "ada_bot" },
+        message: {
+          chat: { id: 1234, type: "private" },
+          date: 1736380800,
+          message_id: 17,
+        },
+      },
+      me: { username: "openclaw_bot" },
+      getFile: async () => ({ download: async () => new Uint8Array() }),
+    });
+
+    expect(replySpy).not.toHaveBeenCalled();
+    expect(editMessageTextSpy).toHaveBeenCalledTimes(1);
+    expect(editMessageTextSpy.mock.calls[0]?.[2]).toContain(
+      `Could not resolve model "${modelId}".`,
+    );
+    expect(answerCallbackQuerySpy).toHaveBeenCalledWith("cbq-model-compact-3");
   });
 
   it("includes sender identity in group envelope headers", async () => {

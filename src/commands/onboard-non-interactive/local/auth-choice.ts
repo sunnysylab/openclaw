@@ -1,3 +1,5 @@
+import { resolveOpenClawAgentDir } from "../../../agents/agent-paths.js";
+import { resolveAgentDir, resolveDefaultAgentId } from "../../../agents/agent-scope.js";
 import type { ApiKeyCredential } from "../../../agents/auth-profiles/types.js";
 import type { OpenClawConfig } from "../../../config/config.js";
 import type { SecretInput } from "../../../config/types.secrets.js";
@@ -38,6 +40,13 @@ export async function applyNonInteractiveAuthChoice(params: {
     env: process.env,
   });
   let nextConfig = params.nextConfig;
+  const defaultAgentId = resolveDefaultAgentId(nextConfig);
+  const hasAgentDirEnvOverride =
+    Boolean(process.env.OPENCLAW_AGENT_DIR?.trim()) ||
+    Boolean(process.env.PI_CODING_AGENT_DIR?.trim());
+  const agentDir = hasAgentDirEnvOverride
+    ? resolveOpenClawAgentDir()
+    : resolveAgentDir(nextConfig, defaultAgentId);
   const requestedSecretInputMode = normalizeSecretInputModeInput(opts.secretInputMode);
   if (opts.secretInputMode && !requestedSecretInputMode) {
     runtime.error('Invalid --secret-input-mode. Use "plaintext" or "ref".');
@@ -76,6 +85,7 @@ export async function applyNonInteractiveAuthChoice(params: {
   const resolveApiKey = (input: Parameters<typeof resolveNonInteractiveApiKey>[0]) =>
     resolveNonInteractiveApiKey({
       ...input,
+      agentDir,
       secretInputMode: requestedSecretInputMode,
     });
   const toApiKeyCredential = (params: {
@@ -179,12 +189,28 @@ export async function applyNonInteractiveAuthChoice(params: {
     baseConfig,
     opts,
     runtime,
+    agentDir,
     apiKeyStorageOptions,
     resolveApiKey,
     maybeSetResolvedApiKey,
   });
   if (simpleApiKeyChoice !== undefined) {
     return simpleApiKeyChoice;
+  }
+
+  if (
+    authChoice === "gigachat-basic" ||
+    authChoice === "gigachat-business" ||
+    authChoice === "gigachat-personal"
+  ) {
+    runtime.error(
+      [
+        `Auth choice "${authChoice}" requires interactive mode.`,
+        'Use "--gigachat-api-key" for non-interactive personal OAuth onboarding, or run interactive onboarding for business/basic GigaChat setup.',
+      ].join("\n"),
+    );
+    runtime.exit(1);
+    return null;
   }
 
   if (authChoice === "cloudflare-ai-gateway-api-key") {

@@ -416,6 +416,10 @@ async function run() {
     process.exit(printNoTestsMessage(plan, requireTests));
   }
 
+  if (plan.testFiles.length === 0) {
+    process.exit(printNoTestsMessage(plan, requireTests));
+  }
+
   console.log(
     `[test-extension] Running ${plan.testFiles.length} test files for ${plan.extensionId} with ${plan.config}`,
   );

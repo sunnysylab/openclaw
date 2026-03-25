@@ -47,12 +47,21 @@ import { ensureCustomApiRegistered } from "../custom-api-registry.js";
 import { formatUserTime, resolveUserTimeFormat, resolveUserTimezone } from "../date-time.js";
 import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { resolveOpenClawDocsPath } from "../docs-path.js";
+import {
+  resolveConfiguredGigachatBaseUrl,
+  resolveGigachatAuthMode,
+  resolveGigachatAuthProfileMetadata,
+  resolveGigachatInsecureTlsOverride,
+} from "../gigachat-auth.js";
+import { createGigachatStreamFn } from "../gigachat-stream.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
 import {
   applyLocalNoAuthHeaderOverride,
+  ensureAuthProfileStore,
   getApiKeyForModel,
   resolveModelAuthMode,
 } from "../model-auth.js";
+import { normalizeProviderId } from "../model-selection.js";
 import { supportsModelTools } from "../model-tool-support.js";
 import { ensureOpenClawModelsJson } from "../models-config.js";
 import { createConfiguredOllamaStreamFn } from "../ollama-stream.js";
@@ -1063,6 +1072,37 @@ export async function compactEmbeddedPiSessionDirect(
             providerBaseUrl,
           }),
         );
+      } else if (normalizeProviderId(provider) === "gigachat") {
+        const providerConfig = params.config?.models?.providers?.[provider];
+        const gigachatStore = ensureAuthProfileStore(agentDir, { allowKeychainPrompt: false });
+        const resolvedGigachatProfileId = apiKeyInfo?.profileId?.trim() || authProfileId?.trim();
+        const gigachatMeta = resolveGigachatAuthProfileMetadata(
+          gigachatStore,
+          resolvedGigachatProfileId,
+          {
+            allowDefaultProfileFallback: Boolean(resolvedGigachatProfileId),
+          },
+        );
+        const baseUrl = resolveConfiguredGigachatBaseUrl({
+          baseUrl:
+            (typeof providerConfig?.baseUrl === "string" ? providerConfig.baseUrl : undefined) ??
+            (typeof model.baseUrl === "string" ? model.baseUrl : undefined),
+          envBaseUrl: process.env.GIGACHAT_BASE_URL,
+          metadata: gigachatMeta,
+          apiKey: apiKeyInfo?.apiKey,
+          authProfileId: resolvedGigachatProfileId,
+        });
+
+        session.agent.streamFn = createGigachatStreamFn({
+          baseUrl,
+          authMode: resolveGigachatAuthMode({
+            metadata: gigachatMeta,
+            apiKey: apiKeyInfo?.apiKey,
+            authProfileId: resolvedGigachatProfileId,
+          }),
+          insecureTls: resolveGigachatInsecureTlsOverride(gigachatMeta),
+          scope: gigachatMeta?.scope,
+        });
       }
 
       try {

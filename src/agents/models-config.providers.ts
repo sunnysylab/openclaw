@@ -1,3 +1,7 @@
+import {
+  buildGigachatModelDefinition,
+  GIGACHAT_BASE_URL,
+} from "../commands/onboard-auth.models.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { coerceSecretRef, resolveSecretInputRef } from "../config/types.secrets.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -18,8 +22,16 @@ import {
 import { isRecord } from "../utils.js";
 import { normalizeOptionalSecretInput } from "../utils/normalize-secret-input.js";
 import { hasAnthropicVertexAvailableAuth } from "./anthropic-vertex-provider.js";
-import { ensureAuthProfileStore, listProfilesForProvider } from "./auth-profiles.js";
+import {
+  ensureAuthProfileStore,
+  listProfilesForProvider,
+  resolveAuthProfileOrder,
+} from "./auth-profiles.js";
 import { discoverBedrockModels } from "./bedrock-discovery.js";
+import {
+  resolveImplicitGigachatBaseUrl,
+  resolveGigachatAuthProfileMetadata,
+} from "./gigachat-auth.js";
 import {
   normalizeGoogleGenerativeAiBaseUrl,
   shouldNormalizeGoogleGenerativeAiProviderConfig,
@@ -54,6 +66,7 @@ import {
 import { resolveAwsSdkEnvVarName, resolveEnvApiKey } from "./model-auth.js";
 export { resolveOllamaApiBase } from "./models-config.providers.discovery.js";
 export { normalizeGoogleModelId, normalizeXaiModelId };
+export { resolveImplicitGigachatBaseUrl } from "./gigachat-auth.js";
 
 type ModelsConfig = NonNullable<OpenClawConfig["models"]>;
 export type ProviderConfig = NonNullable<ModelsConfig["providers"]>[string];
@@ -127,6 +140,15 @@ function normalizeProviderBaseUrl(baseUrl: string | undefined): string {
   } catch {
     return trimmed.replace(/\/+$/, "").toLowerCase();
   }
+}
+
+function buildGigachatProvider(params: { apiKey?: string; baseUrl?: string }): ProviderConfig {
+  return {
+    baseUrl: params.baseUrl?.trim() || GIGACHAT_BASE_URL,
+    api: "openai-completions",
+    ...(params.apiKey ? { apiKey: params.apiKey } : {}),
+    models: [buildGigachatModelDefinition()],
+  } satisfies ProviderConfig;
 }
 
 function withStreamingUsageCompat(provider: ProviderConfig): ProviderConfig {
@@ -681,6 +703,66 @@ type ProviderAuthResolver = (
   profileId?: string;
 };
 
+export function resolveStoredProviderAuth(params: {
+  cfg?: OpenClawConfig;
+  store: ReturnType<typeof ensureAuthProfileStore>;
+  provider: string;
+  env?: NodeJS.ProcessEnv;
+  oauthMarker?: string;
+}): ReturnType<ProviderAuthResolver> {
+  const ids = resolveAuthProfileOrder({
+    cfg: params.cfg,
+    store: params.store,
+    provider: params.provider,
+  });
+  let oauthCandidate:
+    | {
+        apiKey: string | undefined;
+        discoveryApiKey?: string;
+        mode: "oauth";
+        source: "profile";
+        profileId: string;
+      }
+    | undefined;
+  for (const id of ids) {
+    const cred = params.store.profiles[id];
+    if (!cred) {
+      continue;
+    }
+    if (cred.type === "oauth") {
+      oauthCandidate ??= {
+        apiKey: params.oauthMarker,
+        discoveryApiKey: toDiscoveryApiKey(cred.access),
+        mode: "oauth",
+        source: "profile",
+        profileId: id,
+      };
+      continue;
+    }
+    const resolved = resolveApiKeyFromCredential(cred, params.env);
+    if (!resolved) {
+      continue;
+    }
+    return {
+      apiKey: resolved.apiKey,
+      discoveryApiKey: resolved.discoveryApiKey,
+      mode: cred.type,
+      source: "profile",
+      profileId: id,
+    };
+  }
+  if (oauthCandidate) {
+    return oauthCandidate;
+  }
+
+  return {
+    apiKey: undefined,
+    discoveryApiKey: undefined,
+    mode: "none",
+    source: "none",
+  };
+}
+
 type ImplicitProviderContext = ImplicitProviderParams & {
   authStore: ReturnType<typeof ensureAuthProfileStore>;
   env: NodeJS.ProcessEnv;
@@ -778,6 +860,28 @@ async function resolvePluginImplicitProviders(
   return Object.keys(discovered).length > 0 ? discovered : undefined;
 }
 
+function resolveImplicitGigachatProvider(ctx: ImplicitProviderContext): ProviderConfig | null {
+  const auth = ctx.resolveProviderAuth("gigachat");
+  if (!auth.apiKey) {
+    return null;
+  }
+  const metadata = resolveGigachatAuthProfileMetadata(ctx.authStore, auth.profileId, {
+    // Env-backed GIGACHAT_CREDENTIALS has no profile id, so do not inherit
+    // stale auth-mode metadata from a stored default profile.
+    allowDefaultProfileFallback: Boolean(auth.profileId?.trim()),
+  });
+
+  return buildGigachatProvider({
+    apiKey: auth.apiKey,
+    baseUrl: resolveImplicitGigachatBaseUrl({
+      envBaseUrl: ctx.env.GIGACHAT_BASE_URL,
+      metadata,
+      apiKey: auth.discoveryApiKey ?? auth.apiKey,
+      authProfileId: auth.profileId,
+    }),
+  });
+}
+
 export async function resolveImplicitProviders(
   params: ImplicitProviderParams,
 ): Promise<ModelsConfig["providers"]> {
@@ -816,53 +920,13 @@ export async function resolveImplicitProviders(
       };
     }
 
-    const ids = listProfilesForProvider(authStore, provider);
-    let oauthCandidate:
-      | {
-          apiKey: string | undefined;
-          discoveryApiKey?: string;
-          mode: "oauth";
-          source: "profile";
-          profileId: string;
-        }
-      | undefined;
-    for (const id of ids) {
-      const cred = authStore.profiles[id];
-      if (!cred) {
-        continue;
-      }
-      if (cred.type === "oauth") {
-        oauthCandidate ??= {
-          apiKey: options?.oauthMarker,
-          discoveryApiKey: toDiscoveryApiKey(cred.access),
-          mode: "oauth",
-          source: "profile",
-          profileId: id,
-        };
-        continue;
-      }
-      const resolved = resolveApiKeyFromCredential(cred, env);
-      if (!resolved) {
-        continue;
-      }
-      return {
-        apiKey: resolved.apiKey,
-        discoveryApiKey: resolved.discoveryApiKey,
-        mode: cred.type,
-        source: "profile",
-        profileId: id,
-      };
-    }
-    if (oauthCandidate) {
-      return oauthCandidate;
-    }
-
-    return {
-      apiKey: undefined,
-      discoveryApiKey: undefined,
-      mode: "none",
-      source: "none",
-    };
+    return resolveStoredProviderAuth({
+      cfg: params.config,
+      store: authStore,
+      provider,
+      env,
+      oauthMarker: options?.oauthMarker,
+    });
   };
   const context: ImplicitProviderContext = {
     ...params,
@@ -876,6 +940,11 @@ export async function resolveImplicitProviders(
   mergeImplicitProviderSet(providers, await resolvePluginImplicitProviders(context, "profile"));
   mergeImplicitProviderSet(providers, await resolvePluginImplicitProviders(context, "paired"));
   mergeImplicitProviderSet(providers, await resolvePluginImplicitProviders(context, "late"));
+
+  const implicitGigachat = resolveImplicitGigachatProvider(context);
+  if (implicitGigachat) {
+    providers.gigachat = implicitGigachat;
+  }
 
   const implicitBedrock = await resolveImplicitBedrockProvider({
     agentDir: params.agentDir,

@@ -63,7 +63,6 @@ describe("loadEnabledBundleMcpConfig", () => {
       const loadedServer = loaded.config.mcpServers.bundleProbe;
       const loadedArgs = getServerArgs(loadedServer);
       const loadedServerPath = typeof loadedArgs?.[0] === "string" ? loadedArgs[0] : undefined;
-      const resolvedPluginRoot = await fs.realpath(pluginRoot);
 
       expect(loaded.diagnostics).toEqual([]);
       expect(isRecord(loadedServer) ? loadedServer.command : undefined).toBe("node");
@@ -75,7 +74,7 @@ describe("loadEnabledBundleMcpConfig", () => {
       expect(normalizePathForAssertion(await fs.realpath(loadedServerPath))).toBe(
         normalizePathForAssertion(resolvedServerPath),
       );
-      await expectResolvedPathEqual(loadedServer.cwd, resolvedPluginRoot);
+      await expectResolvedPathEqual(loadedServer.cwd, pluginRoot);
     } finally {
       env.restore();
     }
