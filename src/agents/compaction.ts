@@ -24,6 +24,8 @@ const MERGE_SUMMARIES_INSTRUCTIONS = [
   "- Decisions made and their rationale",
   "- TODOs, open questions, and constraints",
   "- Any commitments or follow-ups promised",
+  "- Standing user instructions, recurring directives, and persistent requirements",
+  '  (e.g., "always do X", "never do Y", "before every commit, do Z")',
   "",
   "PRIORITIZE recent context over older history. The agent needs to know",
   "what it was doing, not just what was discussed.",
@@ -51,22 +53,33 @@ function resolveIdentifierPreservationInstructions(
   return IDENTIFIER_PRESERVATION_INSTRUCTIONS;
 }
 
+const STANDING_INSTRUCTIONS_PRESERVATION =
+  "Preserve any standing user instructions or recurring directives verbatim.";
+
 export function buildCompactionSummarizationInstructions(
   customInstructions?: string,
   instructions?: CompactionSummarizationInstructions,
 ): string | undefined {
   const custom = customInstructions?.trim();
   const identifierPreservation = resolveIdentifierPreservationInstructions(instructions);
+  // Always include standing instruction preservation so custom/event
+  // instructions don't silently drop the directive.
+  const needsStandingPreservation = !custom?.includes("standing user instructions");
+  const standingLine = needsStandingPreservation ? STANDING_INSTRUCTIONS_PRESERVATION : undefined;
   if (!identifierPreservation && !custom) {
-    return undefined;
+    // standingLine is always set when custom is falsy, so this branch is only
+    // reached if the caller explicitly passes custom text containing
+    // "standing user instructions" — return just the standing line in that case.
+    return standingLine ?? undefined;
   }
+  const parts = [identifierPreservation, standingLine].filter(Boolean).join("\n");
   if (!custom) {
-    return identifierPreservation;
+    return parts || undefined;
   }
-  if (!identifierPreservation) {
+  if (!parts) {
     return `Additional focus:\n${custom}`;
   }
-  return `${identifierPreservation}\n\nAdditional focus:\n${custom}`;
+  return `${parts}\n\nAdditional focus:\n${custom}`;
 }
 
 export function estimateMessagesTokens(messages: AgentMessage[]): number {
