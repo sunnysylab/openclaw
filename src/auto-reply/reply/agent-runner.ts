@@ -65,6 +65,67 @@ import type { TypingController } from "./typing.js";
 
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
 
+function shouldApplyPostRotationStartupSteer(params: {
+  sessionEntry?: SessionEntry;
+  followupRun: FollowupRun;
+  sessionCtx: TemplateContext;
+  now?: number;
+}): boolean {
+  const now = params.now ?? Date.now();
+  return Boolean(
+    params.followupRun.run.senderIsOwner &&
+    params.sessionCtx.Provider === "discord" &&
+    typeof params.sessionEntry?.postRotationStartupUntilMs === "number" &&
+    params.sessionEntry.postRotationStartupUntilMs > now,
+  );
+}
+
+function buildPostRotationStartupSteerPrompt(text: string): string {
+  const trimmed = text.trim();
+  const ownerMessage = trimmed.length > 0 ? trimmed : text;
+  return [
+    "System: This is the first owner message after /new or /reset in a Discord channel or thread session.",
+    "It arrived while Session Startup preload reads were still running.",
+    "Treat it as implicit-mention-equivalent for this turn. Prioritize the owner message now.",
+    "If any Session Startup preload reads were interrupted or skipped because this message was queued, continue and finish them before you end the turn.",
+    "Do not re-greet or explain the startup mechanics unless the owner asks.",
+    "Owner message:",
+    ownerMessage,
+  ].join("\n\n");
+}
+
+async function clearPostRotationStartupWindow(params: {
+  sessionEntry?: SessionEntry;
+  sessionStore?: Record<string, SessionEntry>;
+  sessionKey?: string;
+  storePath?: string;
+  /** Captured before the field is cleared in-memory so the disk update is not skipped. */
+  prevPostRotationStartupUntilMs?: number;
+}): Promise<void> {
+  const { sessionEntry, sessionStore, sessionKey, storePath, prevPostRotationStartupUntilMs } = params;
+  if (!sessionKey) {
+    return;
+  }
+  // Write clear to store if the field was previously set (prevPostRotationStartupUntilMs
+  // is captured before in-memory clearing so this is never skipped).
+  const shouldPersistClear =
+    typeof prevPostRotationStartupUntilMs === "number" && prevPostRotationStartupUntilMs > 0;
+  sessionEntry && (sessionEntry.postRotationStartupUntilMs = undefined);
+  if (sessionStore) {
+    sessionStore[sessionKey] = {
+      ...sessionStore[sessionKey],
+      postRotationStartupUntilMs: undefined,
+    };
+  }
+  if (storePath && shouldPersistClear) {
+    await updateSessionStoreEntry({
+      storePath,
+      sessionKey,
+      update: async () => ({ postRotationStartupUntilMs: undefined }),
+    });
+  }
+}
+
 export async function runReplyAgent(params: {
   commandBody: string;
   followupRun: FollowupRun;
@@ -202,7 +263,14 @@ export async function runReplyAgent(params: {
   };
 
   if (shouldSteer && isStreaming) {
-    const steered = queueEmbeddedPiMessage(followupRun.run.sessionId, followupRun.prompt);
+    const steerPrompt = shouldApplyPostRotationStartupSteer({
+      sessionEntry: activeSessionEntry,
+      followupRun,
+      sessionCtx,
+    })
+      ? buildPostRotationStartupSteerPrompt(followupRun.prompt)
+      : followupRun.prompt;
+    const steered = queueEmbeddedPiMessage(followupRun.run.sessionId, steerPrompt);
     if (steered && !shouldFollowup) {
       await touchActiveSessionEntry();
       typing.cleanup();
@@ -255,7 +323,12 @@ export async function runReplyAgent(params: {
 
   await typingSignals.signalRunStart();
 
-  activeSessionEntry = await runMemoryFlushIfNeeded({
+  // Capture the postRotationStartupUntilMs value before clearing it in-memory,
+  // so we can persist the clear to disk in the finally block.
+  const prevPostRotationStartupUntilMs = activeSessionEntry?.postRotationStartupUntilMs;
+
+  activeSessionEntry = {
+    ...(await runMemoryFlushIfNeeded({
     cfg,
     followupRun,
     promptForEstimate: followupRun.prompt,
@@ -269,7 +342,9 @@ export async function runReplyAgent(params: {
     sessionKey,
     storePath,
     isHeartbeat,
-  });
+    })),
+    postRotationStartupUntilMs: undefined,
+  };
 
   const runFollowupTurn = createFollowupRunner({
     opts,
@@ -386,8 +461,10 @@ export async function runReplyAgent(params: {
         `Role ordering conflict (${reason}). Restarting session ${sessionKey} -> ${nextSessionId}.`,
       cleanupTranscripts: true,
     });
+  let startedRun = false;
   try {
     const runStartedAt = Date.now();
+    startedRun = true;
     const runOutcome = await runAgentTurnWithFallback({
       commandBody,
       followupRun,
@@ -770,6 +847,15 @@ export async function runReplyAgent(params: {
     finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
     throw error;
   } finally {
+    if (startedRun) {
+      await clearPostRotationStartupWindow({
+        sessionEntry: activeSessionEntry,
+        sessionStore: activeSessionStore,
+        sessionKey,
+        storePath,
+        prevPostRotationStartupUntilMs,
+      });
+    }
     blockReplyPipeline?.stop();
     typing.markRunComplete();
     // Safety net: the dispatcher's onIdle callback normally fires
