@@ -2,6 +2,15 @@ import {
   listMSTeamsDirectoryGroupsLive as listMSTeamsDirectoryGroupsLiveImpl,
   listMSTeamsDirectoryPeersLive as listMSTeamsDirectoryPeersLiveImpl,
 } from "./directory-live.js";
+import {
+  getMessageMSTeams as getMessageMSTeamsImpl,
+  listPinsMSTeams as listPinsMSTeamsImpl,
+  listReactionsMSTeams as listReactionsMSTeamsImpl,
+  pinMessageMSTeams as pinMessageMSTeamsImpl,
+  reactMessageMSTeams as reactMessageMSTeamsImpl,
+  unpinMessageMSTeams as unpinMessageMSTeamsImpl,
+  unreactMessageMSTeams as unreactMessageMSTeamsImpl,
+} from "./graph-messages.js";
 import { msteamsOutbound as msteamsOutboundImpl } from "./outbound.js";
 import { probeMSTeams as probeMSTeamsImpl } from "./probe.js";
 import {
@@ -13,6 +22,13 @@ import {
 export const msTeamsChannelRuntime = {
   deleteMessageMSTeams: deleteMessageMSTeamsImpl,
   editMessageMSTeams: editMessageMSTeamsImpl,
+  getMessageMSTeams: getMessageMSTeamsImpl,
+  listPinsMSTeams: listPinsMSTeamsImpl,
+  listReactionsMSTeams: listReactionsMSTeamsImpl,
+  pinMessageMSTeams: pinMessageMSTeamsImpl,
+  reactMessageMSTeams: reactMessageMSTeamsImpl,
+  unpinMessageMSTeams: unpinMessageMSTeamsImpl,
+  unreactMessageMSTeams: unreactMessageMSTeamsImpl,
   listMSTeamsDirectoryGroupsLive: listMSTeamsDirectoryGroupsLiveImpl,
   listMSTeamsDirectoryPeersLive: listMSTeamsDirectoryPeersLiveImpl,
   msteamsOutbound: { ...msteamsOutboundImpl },
