@@ -230,9 +230,25 @@ function createPluginUpdateIntegrityDriftHandler(params: {
   pluginId: string;
   dryRun: boolean;
   logger: PluginUpdateLogger;
+  storedResolvedSpec?: string;
   onIntegrityDrift?: (params: PluginUpdateIntegrityDriftParams) => boolean | Promise<boolean>;
 }) {
   return async (drift: InstallIntegrityDrift) => {
+    // If the resolved spec changed AND matches what we explicitly asked for,
+    // the tarball is intentionally different from the previously installed one
+    // — no drift to report. Drift is only meaningful when the same resolved
+    // spec has a different hash, which indicates a tampered/re-published
+    // package. We also require that the resolution matches drift.spec (the
+    // requested spec) so that an anomalous registry redirect for a pinned spec
+    // still flows through onIntegrityDrift.
+    if (
+      params.storedResolvedSpec &&
+      drift.resolution.resolvedSpec &&
+      drift.resolution.resolvedSpec !== params.storedResolvedSpec &&
+      drift.resolution.resolvedSpec === drift.spec
+    ) {
+      return true;
+    }
     const payload: PluginUpdateIntegrityDriftParams = {
       pluginId: params.pluginId,
       spec: drift.spec,
@@ -365,6 +381,7 @@ export async function updateNpmInstalledPlugins(params: {
                   pluginId,
                   dryRun: true,
                   logger,
+                  storedResolvedSpec: record.resolvedSpec,
                   onIntegrityDrift: params.onIntegrityDrift,
                 }),
                 logger,
@@ -462,6 +479,7 @@ export async function updateNpmInstalledPlugins(params: {
                 pluginId,
                 dryRun: false,
                 logger,
+                storedResolvedSpec: record.resolvedSpec,
                 onIntegrityDrift: params.onIntegrityDrift,
               }),
               logger,
