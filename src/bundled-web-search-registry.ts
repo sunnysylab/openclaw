@@ -3,6 +3,7 @@ import duckduckgoPlugin from "../extensions/duckduckgo/index.js";
 import exaPlugin from "../extensions/exa/index.js";
 import firecrawlPlugin from "../extensions/firecrawl/index.js";
 import googlePlugin from "../extensions/google/index.js";
+import minimaxPlugin from "../extensions/minimax/index.js";
 import moonshotPlugin from "../extensions/moonshot/index.js";
 import perplexityPlugin from "../extensions/perplexity/index.js";
 import tavilyPlugin from "../extensions/tavily/index.js";
@@ -47,6 +48,12 @@ export const bundledWebSearchPluginRegistrations: ReadonlyArray<{
       return googlePlugin;
     },
     credentialValue: "AIza-test",
+  },
+  {
+    get plugin() {
+      return minimaxPlugin;
+    },
+    credentialValue: "sk-test",
   },
   {
     get plugin() {

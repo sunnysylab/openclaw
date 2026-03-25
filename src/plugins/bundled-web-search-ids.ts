@@ -4,6 +4,7 @@ export const BUNDLED_WEB_SEARCH_PLUGIN_IDS = [
   "exa",
   "firecrawl",
   "google",
+  "minimax",
   "moonshot",
   "perplexity",
   "tavily",

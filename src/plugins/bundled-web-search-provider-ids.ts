@@ -5,6 +5,7 @@ const BUNDLED_WEB_SEARCH_PROVIDER_PLUGIN_IDS = {
   gemini: "google",
   grok: "xai",
   kimi: "moonshot",
+  minimax: "minimax",
   perplexity: "perplexity",
   tavily: "tavily",
 } as const satisfies Record<string, string>;

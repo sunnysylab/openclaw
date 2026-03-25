@@ -1802,7 +1802,21 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
       configSchema: {
         type: "object",
         additionalProperties: false,
-        properties: {},
+        properties: {
+          webSearch: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              apiKey: {
+                type: ["string", "object"],
+              },
+              region: {
+                type: "string",
+                enum: ["global", "cn"],
+              },
+            },
+          },
+        },
       },
       providers: ["minimax", "minimax-portal"],
       providerAuthEnvVars: {

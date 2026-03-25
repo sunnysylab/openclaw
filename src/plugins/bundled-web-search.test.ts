@@ -76,6 +76,7 @@ describe("bundled web search metadata", () => {
       "exa",
       "firecrawl",
       "google",
+      "minimax",
       "moonshot",
       "perplexity",
       "tavily",
@@ -97,6 +98,7 @@ describe("bundled web search metadata", () => {
     expect(resolveBundledWebSearchPluginId("firecrawl")).toBe("firecrawl");
     expect(resolveBundledWebSearchPluginId("gemini")).toBe("google");
     expect(resolveBundledWebSearchPluginId("kimi")).toBe("moonshot");
+    expect(resolveBundledWebSearchPluginId("minimax")).toBe("minimax");
     expect(resolveBundledWebSearchPluginId("perplexity")).toBe("perplexity");
     expect(resolveBundledWebSearchPluginId("tavily")).toBe("tavily");
     expect(resolveBundledWebSearchPluginId("grok")).toBe("xai");

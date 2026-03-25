@@ -23,6 +23,7 @@ import {
 import type { MiniMaxRegion } from "./oauth.js";
 import { applyMinimaxApiConfig, applyMinimaxApiConfigCn } from "./onboard.js";
 import { buildMinimaxPortalProvider, buildMinimaxProvider } from "./provider-catalog.js";
+import { createMiniMaxWebSearchProvider } from "./src/minimax-web-search-provider.js";
 
 const API_PROVIDER_ID = "minimax";
 const PORTAL_PROVIDER_ID = "minimax-portal";
@@ -287,5 +288,6 @@ export default definePluginEntry({
     });
     api.registerMediaUnderstandingProvider(minimaxMediaUnderstandingProvider);
     api.registerMediaUnderstandingProvider(minimaxPortalMediaUnderstandingProvider);
+    api.registerWebSearchProvider(createMiniMaxWebSearchProvider());
   },
 });
