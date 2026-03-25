@@ -4,6 +4,10 @@ import {
   resolveAgentModelPrimaryValue,
 } from "../config/model-input.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import {
+  getPrivateModeAllowedProviders,
+  isProviderAllowedInPrivateMode,
+} from "../private-mode/policy.js";
 import { sanitizeForLog } from "../terminal/ansi.js";
 import {
   ensureAuthProfileStore,
@@ -530,6 +534,18 @@ export async function runWithModelFallback<T>(params: {
     model: params.model,
     fallbacksOverride: params.fallbacksOverride,
   });
+  const runtimeCandidates =
+    params.cfg?.privateMode?.enabled === true
+      ? candidates.filter((candidate) =>
+          isProviderAllowedInPrivateMode(candidate.provider, params.cfg),
+        )
+      : candidates;
+  if (params.cfg?.privateMode?.enabled === true && runtimeCandidates.length === 0) {
+    const allowedProviders = getPrivateModeAllowedProviders(params.cfg);
+    throw new Error(
+      `privateMode blocked all runtime model fallback candidates; allowed providers: [${allowedProviders.join(", ")}]`,
+    );
+  }
   const authStore = params.cfg
     ? ensureAuthProfileStore(params.agentDir, { allowKeychainPrompt: false })
     : null;
@@ -537,10 +553,10 @@ export async function runWithModelFallback<T>(params: {
   let lastError: unknown;
   const cooldownProbeUsedProviders = new Set<string>();
 
-  const hasFallbackCandidates = candidates.length > 1;
+  const hasFallbackCandidates = runtimeCandidates.length > 1;
 
-  for (let i = 0; i < candidates.length; i += 1) {
-    const candidate = candidates[i];
+  for (let i = 0; i < runtimeCandidates.length; i += 1) {
+    const candidate = runtimeCandidates[i];
     const isPrimary = i === 0;
     const requestedModel =
       params.provider === candidate.provider && params.model === candidate.model;
@@ -584,10 +600,10 @@ export async function runWithModelFallback<T>(params: {
             requestedModel: params.model,
             candidate,
             attempt: i + 1,
-            total: candidates.length,
+            total: runtimeCandidates.length,
             reason: decision.reason,
             error: decision.error,
-            nextCandidate: candidates[i + 1],
+            nextCandidate: runtimeCandidates[i + 1],
             isPrimary,
             requestedModelMatched: requestedModel,
             fallbackConfigured: hasFallbackCandidates,
@@ -619,10 +635,10 @@ export async function runWithModelFallback<T>(params: {
               requestedModel: params.model,
               candidate,
               attempt: i + 1,
-              total: candidates.length,
+              total: runtimeCandidates.length,
               reason: decision.reason,
               error,
-              nextCandidate: candidates[i + 1],
+              nextCandidate: runtimeCandidates[i + 1],
               isPrimary,
               requestedModelMatched: requestedModel,
               fallbackConfigured: hasFallbackCandidates,
@@ -643,9 +659,9 @@ export async function runWithModelFallback<T>(params: {
           requestedModel: params.model,
           candidate,
           attempt: i + 1,
-          total: candidates.length,
+          total: runtimeCandidates.length,
           reason: decision.reason,
-          nextCandidate: candidates[i + 1],
+          nextCandidate: runtimeCandidates[i + 1],
           isPrimary,
           requestedModelMatched: requestedModel,
           fallbackConfigured: hasFallbackCandidates,
@@ -670,7 +686,7 @@ export async function runWithModelFallback<T>(params: {
           requestedModel: params.model,
           candidate,
           attempt: i + 1,
-          total: candidates.length,
+          total: runtimeCandidates.length,
           previousAttempts: attempts,
           isPrimary,
           requestedModelMatched: requestedModel,
@@ -712,7 +728,7 @@ export async function runWithModelFallback<T>(params: {
       // there are remaining candidates.  Only abort/context-overflow errors
       // (handled above) are truly non-retryable.
       const isKnownFailover = isFailoverError(normalized);
-      if (!isKnownFailover && i === candidates.length - 1) {
+      if (!isKnownFailover && i === runtimeCandidates.length - 1) {
         throw err;
       }
 
@@ -733,12 +749,12 @@ export async function runWithModelFallback<T>(params: {
         requestedModel: params.model,
         candidate,
         attempt: i + 1,
-        total: candidates.length,
+        total: runtimeCandidates.length,
         reason: described.reason,
         status: described.status,
         code: described.code,
         error: described.message,
-        nextCandidate: candidates[i + 1],
+        nextCandidate: runtimeCandidates[i + 1],
         isPrimary,
         requestedModelMatched: requestedModel,
         fallbackConfigured: hasFallbackCandidates,
@@ -748,14 +764,14 @@ export async function runWithModelFallback<T>(params: {
         model: candidate.model,
         error: isKnownFailover ? normalized : err,
         attempt: i + 1,
-        total: candidates.length,
+        total: runtimeCandidates.length,
       });
     }
   }
 
   throwFallbackFailureSummary({
     attempts,
-    candidates,
+    candidates: runtimeCandidates,
     lastError,
     label: "models",
     formatAttempt: (attempt) =>
