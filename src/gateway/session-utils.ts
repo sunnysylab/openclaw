@@ -1057,7 +1057,7 @@ function resolveGatewaySessionTotalTokens(params: {
   // 2. Fall back to a fresh transcript total. This ensures that authoritative
   // context data (including an explicit zero after /reset) is preferred over
   // a stale zero estimate in the store.
-  if (transcriptFresh && transcriptTotal !== undefined) {
+  if (transcriptFresh && transcriptTotal !== undefined && (transcriptTotal > 0 || !estimate)) {
     return transcriptTotal;
   }
 

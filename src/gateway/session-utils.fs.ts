@@ -435,8 +435,8 @@ function extractTranscriptUsageCost(raw: unknown): number | undefined {
   return typeof total === "number" && Number.isFinite(total) && total >= 0 ? total : undefined;
 }
 
-function resolveNonNegativeUsageNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+function resolvePositiveUsageNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function extractLatestUsageFromTranscriptChunk(
@@ -477,7 +477,7 @@ function extractLatestUsageFromTranscriptChunk(
             ? parsed.usage
             : undefined;
       const usage = normalizeUsage(usageRaw);
-      const totalTokens = resolveNonNegativeUsageNumber(deriveSessionTotalTokens({ usage }));
+      const totalTokens = resolvePositiveUsageNumber(deriveSessionTotalTokens({ usage }));
       const costUsd = extractTranscriptUsageCost(usageRaw);
       const modelProvider =
         typeof message.provider === "string"

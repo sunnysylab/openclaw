@@ -125,7 +125,7 @@ jobs:
         run: bash scripts/openclaw-npm-publish.sh --dry-run
 
   publish_openclaw_npm:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     # npm trusted publishing + provenance requires a GitHub-hosted runner.
     runs-on: ubuntu-latest
     environment: npm-release

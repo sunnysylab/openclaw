@@ -1,7 +1,6 @@
 import { setCliSessionId } from "../../agents/cli-session.js";
 import {
   deriveSessionTotalTokens,
-  hasExplicitUsage,
   hasNonzeroUsage,
   type NormalizedUsage,
 } from "../../agents/usage.js";
@@ -46,7 +45,7 @@ function estimateSessionRunCostUsd(params: {
   providerUsed?: string;
   modelUsed?: string;
 }): number | undefined {
-  if (!hasExplicitUsage(params.usage)) {
+  if (!hasNonzeroUsage(params.usage)) {
     return undefined;
   }
   const cost = resolveModelCostConfig({
@@ -84,7 +83,7 @@ export async function persistSessionUsageUpdate(params: {
 
   const label = params.logLabel ? `${params.logLabel} ` : "";
   const cfg = params.cfg ?? loadConfig();
-  const hasUsage = hasExplicitUsage(params.usage);
+  const hasUsage = hasNonzeroUsage(params.usage);
   const hasFreshContextSnapshot =
     hasNonzeroUsage(params.lastCallUsage) ||
     (typeof params.promptTokens === "number" && params.promptTokens > 0);

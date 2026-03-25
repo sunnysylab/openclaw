@@ -529,7 +529,8 @@ export function buildStatusMessage(args: StatusArgs): string {
         logUsage.totalTokensFresh &&
         (freshTotal === undefined || candidate > freshTotal) &&
         (entry?.totalTokensEstimate === undefined ||
-          (candidate > 0 && (hasZeroEstimate || candidate > entry.totalTokensEstimate)));
+          (candidate > 0 && (hasZeroEstimate || candidate > entry.totalTokensEstimate))) &&
+        (!totalTokens || totalTokens === 0 || candidate > totalTokens);
 
       if (shouldFallbackToTranscript) {
         // Session transcript is authoritative when the store has no fresh data

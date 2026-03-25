@@ -23,7 +23,7 @@ import {
   listDescendantRunsForRequester,
 } from "../../agents/subagent-registry.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
-import { deriveSessionTotalTokens, hasExplicitUsage, hasNonzeroUsage } from "../../agents/usage.js";
+import { deriveSessionTotalTokens, hasNonzeroUsage } from "../../agents/usage.js";
 import { ensureAgentWorkspace } from "../../agents/workspace.js";
 import {
   normalizeThinkLevel,
@@ -656,7 +656,7 @@ export async function runCronIsolatedAgentTurn(params: {
         setCliSessionId(cronSession.sessionEntry, providerUsed, cliSessionId);
       }
     }
-    if (hasExplicitUsage(usage) || (typeof promptTokens === "number" && promptTokens >= 0)) {
+    if (hasNonzeroUsage(usage) || (typeof promptTokens === "number" && promptTokens >= 0)) {
       const input = usage?.input;
       const output = usage?.output;
       const totalTokens = deriveSessionTotalTokens({
@@ -675,7 +675,7 @@ export async function runCronIsolatedAgentTurn(params: {
         }),
       );
       const hasCurrentUsage =
-        hasExplicitUsage(usage) || (typeof promptTokens === "number" && promptTokens >= 0);
+        hasNonzeroUsage(usage) || (typeof promptTokens === "number" && promptTokens >= 0);
       const useFallback = !modelChanged && !hasCurrentUsage;
       cronSession.sessionEntry.inputTokens =
         input ?? (useFallback ? cronSession.sessionEntry.inputTokens : undefined);

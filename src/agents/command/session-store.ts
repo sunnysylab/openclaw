@@ -10,7 +10,7 @@ import { setCliSessionId } from "../cli-session.js";
 import { resolveContextTokensForModel } from "../context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
 import { isCliProvider } from "../model-selection.js";
-import { deriveSessionTotalTokens, hasExplicitUsage, hasNonzeroUsage } from "../usage.js";
+import { deriveSessionTotalTokens, hasNonzeroUsage } from "../usage.js";
 
 type RunResult = Awaited<ReturnType<(typeof import("../pi-embedded.js"))["runEmbeddedPiAgent"]>>;
 
@@ -102,7 +102,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
   if (result.meta.systemPromptReport) {
     next.systemPromptReport = result.meta.systemPromptReport;
   }
-  if (hasExplicitUsage(usage) || (typeof promptTokens === "number" && promptTokens >= 0)) {
+  if (hasNonzeroUsage(usage) || (typeof promptTokens === "number" && promptTokens >= 0)) {
     const input = usage?.input;
     const output = usage?.output;
     const totalTokens = deriveSessionTotalTokens({
@@ -121,7 +121,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
       }),
     );
     const lastCallUsage = result.meta.agentMeta?.lastCallUsage;
-    const hasCurrentUsage = hasExplicitUsage(usage) || Boolean(lastCallUsage) || promptTokens === 0;
+    const hasCurrentUsage = hasNonzeroUsage(usage) || Boolean(lastCallUsage) || promptTokens === 0;
     const useFallback = !modelChanged && !hasCurrentUsage;
     next.inputTokens = input ?? (useFallback ? entry.inputTokens : undefined);
     next.outputTokens = output ?? (useFallback ? entry.outputTokens : undefined);
