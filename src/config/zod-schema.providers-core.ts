@@ -413,6 +413,7 @@ export const DiscordGuildChannelSchema = z
     users: DiscordIdListSchema.optional(),
     roles: DiscordIdListSchema.optional(),
     systemPrompt: z.string().optional(),
+    model: z.string().optional(),
     includeThreadStarter: z.boolean().optional(),
     autoThread: z.boolean().optional(),
     /** Naming strategy for auto-created threads. "message" uses message text; "generated" creates an LLM title after thread creation. */
