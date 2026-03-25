@@ -1,9 +1,18 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { writeBundleProbeMcpServer, writeClaudeBundle } from "./bundle-mcp.test-harness.js";
+import {
+  writeBundleProbeMcpServer,
+  writeClaudeBundle,
+  writeExecutable,
+} from "./bundle-mcp.test-harness.js";
 import { createBundleMcpToolRuntime } from "./pi-bundle-mcp-tools.js";
+
+const require = createRequire(import.meta.url);
+const SDK_SERVER_MCP_PATH = require.resolve("@modelcontextprotocol/sdk/server/mcp.js");
+const SDK_SERVER_STDIO_PATH = require.resolve("@modelcontextprotocol/sdk/server/stdio.js");
 
 const tempDirs: string[] = [];
 
@@ -107,6 +116,41 @@ describe("createBundleMcpToolRuntime", () => {
         mcpServer: "configuredProbe",
         mcpTool: "bundle_probe",
       });
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("returns tools sorted alphabetically for stable prompt-cache keys", async () => {
+    const workspaceDir = await makeTempDir("openclaw-bundle-mcp-tools-");
+    const serverScriptPath = path.join(workspaceDir, "servers", "multi-tool.mjs");
+    // Register tools in non-alphabetical order; runtime must sort them.
+    await writeExecutable(
+      serverScriptPath,
+      `#!/usr/bin/env node
+import { McpServer } from ${JSON.stringify(SDK_SERVER_MCP_PATH)};
+import { StdioServerTransport } from ${JSON.stringify(SDK_SERVER_STDIO_PATH)};
+const server = new McpServer({ name: "multi", version: "1.0.0" });
+server.tool("zeta", "z", async () => ({ content: [{ type: "text", text: "z" }] }));
+server.tool("alpha", "a", async () => ({ content: [{ type: "text", text: "a" }] }));
+server.tool("mu", "m", async () => ({ content: [{ type: "text", text: "m" }] }));
+await server.connect(new StdioServerTransport());
+`,
+    );
+
+    const runtime = await createBundleMcpToolRuntime({
+      workspaceDir,
+      cfg: {
+        mcp: {
+          servers: {
+            multi: { command: "node", args: [serverScriptPath] },
+          },
+        },
+      },
+    });
+
+    try {
+      expect(runtime.tools.map((tool) => tool.name)).toEqual(["alpha", "mu", "zeta"]);
     } finally {
       await runtime.dispose();
     }
