@@ -502,7 +502,7 @@ export async function handleOpenAiHttpRequest(
     // consumed the request body, causing IncomingMessage to auto-destroy and emit `close`
     // before we reach this point. ServerResponse stays alive until the response is written,
     // so its `close` event reliably fires on premature client disconnect.
-    res.on("close", () => {
+    res.on("cabortController.signal.abortedlose", () => {
       if (!abortController.signal.aborted) {
         abortController.abort();
       }
@@ -627,10 +627,10 @@ export async function handleOpenAiHttpRequest(
         });
       }
     } catch (err) {
-      logWarn(`openai-compat: streaming chat completion failed: ${String(err)}`);
-      if (closed) {
+      if (closed || abortController.signal.aborted) {
         return;
       }
+      logWarn(`openai-compat: streaming chat completion failed: ${String(err)}`);
       writeAssistantContentChunk(res, {
         runId,
         model,

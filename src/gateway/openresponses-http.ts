@@ -1100,10 +1100,10 @@ export async function handleOpenResponsesHttpRequest(
         });
       }
     } catch (err) {
-      logWarn(`openresponses: streaming response failed: ${String(err)}`);
-      if (closed) {
+      if (closed || abortController.signal.aborted) {
         return;
       }
+      logWarn(`openresponses: streaming response failed: ${String(err)}`);
 
       finalUsage = finalUsage ?? createEmptyUsage();
       const errorResponse = createResponseResource({
