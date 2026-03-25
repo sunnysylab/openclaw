@@ -94,6 +94,9 @@ import type {
 import { type ChatAttachment, type ChatQueueItem, type CronFormState } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
+import "./components/claw-image-panel.ts";
+import "./components/claw-browser-panel.ts";
+import "./components/claw-computer-panel.ts";
 
 declare global {
   interface Window {
@@ -180,6 +183,10 @@ export class OpenClawApp extends LitElement {
   @state() sidebarContent: string | null = null;
   @state() sidebarError: string | null = null;
   @state() splitRatio = this.settings.splitRatio;
+
+  @state() showClawComputer = false;
+  @state() clawComputerWidth = 600;
+  @state() activeClawTool = "vnc"; // vnc, browser, images
 
   @state() nodesLoading = false;
   @state() nodes: Array<Record<string, unknown>> = [];
@@ -408,11 +415,9 @@ export class OpenClawApp extends LitElement {
   @state() skillsReport: SkillStatusReport | null = null;
   @state() skillsError: string | null = null;
   @state() skillsFilter = "";
-  @state() skillsStatusFilter: "all" | "ready" | "needs-setup" | "disabled" = "all";
   @state() skillEdits: Record<string, string> = {};
   @state() skillsBusyKey: string | null = null;
   @state() skillMessages: Record<string, SkillMessage> = {};
-  @state() skillsDetailKey: string | null = null;
 
   @state() healthLoading = false;
   @state() healthResult: HealthSummary | null = null;
@@ -754,6 +759,18 @@ export class OpenClawApp extends LitElement {
     const newRatio = Math.max(0.4, Math.min(0.7, ratio));
     this.splitRatio = newRatio;
     this.applySettings({ ...this.settings, splitRatio: newRatio });
+  }
+
+  toggleClawComputer() {
+    this.showClawComputer = !this.showClawComputer;
+  }
+
+  setClawComputerWidth(width: number) {
+    this.clawComputerWidth = width;
+  }
+
+  setActiveClawTool(tool: string) {
+    this.activeClawTool = tool;
   }
 
   render() {

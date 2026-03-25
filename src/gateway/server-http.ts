@@ -14,7 +14,6 @@ import { CANVAS_WS_PATH, handleA2uiHttpRequest } from "../canvas-host/a2ui.js";
 import type { CanvasHostHandler } from "../canvas-host/server.js";
 import { loadConfig } from "../config/config.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
-import { resolveHookExternalContentSource as resolveHookExternalContentSourceFromSession } from "../security/external-content.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
 import {
   AUTH_RATE_LIMIT_SCOPE_HOOK_AUTH,
@@ -87,19 +86,6 @@ type HookDispatchers = {
   dispatchWakeHook: (value: { text: string; mode: "now" | "next-heartbeat" }) => void;
   dispatchAgentHook: (value: HookAgentDispatchPayload) => string;
 };
-
-function resolveMappedHookExternalContentSource(params: {
-  subPath: string;
-  payload: Record<string, unknown>;
-  sessionKey: string;
-}) {
-  const payloadSource =
-    typeof params.payload.source === "string" ? params.payload.source.trim().toLowerCase() : "";
-  if (params.subPath === "gmail" || payloadSource === "gmail") {
-    return "gmail" as const;
-  }
-  return resolveHookExternalContentSourceFromSession(params.sessionKey) ?? "webhook";
-}
 
 export type HookClientIpConfig = Readonly<{
   trustedProxies?: string[];
@@ -618,7 +604,6 @@ export function createHooksRequestHandler(
         idempotencyKey,
         sessionKey: normalizedDispatchSessionKey,
         agentId: targetAgentId,
-        externalContentSource: "webhook",
       });
       rememberHookRunId(replayKey, runId, now);
       sendJson(res, 200, { ok: true, runId });
@@ -712,11 +697,6 @@ export function createHooksRequestHandler(
             thinking: mapped.action.thinking,
             timeoutSeconds: mapped.action.timeoutSeconds,
             allowUnsafeExternalContent: mapped.action.allowUnsafeExternalContent,
-            externalContentSource: resolveMappedHookExternalContentSource({
-              subPath,
-              payload: payload as Record<string, unknown>,
-              sessionKey: sessionKey.value,
-            }),
           });
           rememberHookRunId(replayKey, runId, now);
           sendJson(res, 200, { ok: true, runId });
@@ -1024,6 +1004,115 @@ export function attachGatewayUpgradeHandler(opts: {
       if (scopedCanvas.rewrittenUrl) {
         req.url = scopedCanvas.rewrittenUrl;
       }
+
+      const url = new URL(req.url ?? "/", "http://localhost");
+
+      const debugBrowserMatch = url.pathname.match(/^\/api\/debug-browser-(\d+)$/);
+      if (debugBrowserMatch) {
+        // Transparent TCP proxy to Chrome's CDP port based on path.
+        // E.g. /api/debug-browser-18800 proxies to 127.0.0.1:18800
+        const cdpPort = parseInt(debugBrowserMatch[1], 10);
+        try {
+          const cdpHost = "127.0.0.1";
+
+          // Get the actual browser debugger WS path from Chrome
+          const versionRes = await globalThis.fetch(`http://${cdpHost}:${cdpPort}/json/version`);
+          if (!versionRes.ok) {
+            socket.destroy();
+            return;
+          }
+          const versionInfo = (await versionRes.json()) as { webSocketDebuggerUrl?: string };
+          const debuggerUrl = versionInfo.webSocketDebuggerUrl;
+          if (!debuggerUrl) {
+            socket.destroy();
+            return;
+          }
+          // Extract just the path portion (e.g. /devtools/browser/UUID)
+          const wsPath = new URL(debuggerUrl).pathname;
+
+          const net = await import("node:net");
+          const cdpSocket = net.connect(cdpPort, cdpHost, () => {
+            // Rebuild the HTTP upgrade request to forward to Chrome
+            const rawHeaders: string[] = [];
+            for (let i = 0; i < req.rawHeaders.length; i += 2) {
+              const key = req.rawHeaders[i];
+              const val = req.rawHeaders[i + 1];
+              if (key.toLowerCase() === "host") {
+                rawHeaders.push(`Host: ${cdpHost}:${cdpPort}`);
+              } else {
+                rawHeaders.push(`${key}: ${val}`);
+              }
+            }
+            const upgradeRequest = `GET ${wsPath} HTTP/1.1\r\n${rawHeaders.join("\r\n")}\r\n\r\n`;
+            cdpSocket.write(upgradeRequest);
+            if (head.length > 0) {
+              cdpSocket.write(head);
+            }
+            // Bi-directional pipe
+            socket.pipe(cdpSocket);
+            cdpSocket.pipe(socket);
+          });
+
+          cdpSocket.on("error", () => socket.destroy());
+          socket.on("error", () => cdpSocket.destroy());
+          socket.on("close", () => cdpSocket.destroy());
+          cdpSocket.on("close", () => socket.destroy());
+        } catch {
+          socket.destroy();
+        }
+        return;
+      }
+
+      if (url.pathname === "/api/debug-vnc") {
+        const target = url.searchParams.get("target");
+        let host = process.env.OPENCLAW_VNC_HOST || "localhost";
+        let port = parseInt(process.env.OPENCLAW_VNC_PORT || "5900", 10);
+        if (target) {
+          if (target.includes(":")) {
+            const parts = target.split(":");
+            host = parts[0] || host;
+            const p = parseInt(parts[1] || "", 10);
+            if (!isNaN(p)) {
+              port = p;
+            }
+          } else {
+            host = target;
+          }
+        }
+
+        const net = await import("node:net");
+        // Reuse the same wss for upgrading, but handle connection directly
+        // Or better yet, we can create an ad-hoc WebSocketServer just for this upgrade
+        // to avoid mixing with gateway clients.
+        const { WebSocketServer: VncWss } = await import("ws");
+        const vncWss = new VncWss({ noServer: true, perMessageDeflate: false });
+        vncWss.handleUpgrade(req, socket, head, (ws) => {
+          const tcpSocket = net.connect(port, host);
+          tcpSocket.on("data", (data) => {
+            if (ws.readyState === ws.OPEN) {
+              ws.send(data);
+            }
+          });
+          ws.on("message", (data) => {
+            if (!tcpSocket.writable) {
+              return;
+            }
+            if (Buffer.isBuffer(data)) {
+              tcpSocket.write(data);
+            } else if (Array.isArray(data)) {
+              tcpSocket.write(Buffer.concat(data));
+            } else {
+              tcpSocket.write(Buffer.from(data));
+            }
+          });
+          ws.on("close", () => tcpSocket.end());
+          tcpSocket.on("close", () => ws.close());
+          tcpSocket.on("error", () => ws.close());
+          ws.on("error", () => tcpSocket.end());
+        });
+        return;
+      }
+
       if (canvasHost) {
         const url = new URL(req.url ?? "/", "http://localhost");
         if (url.pathname === CANVAS_WS_PATH) {

@@ -35,6 +35,9 @@ type ToolStreamHost = {
   toolStreamOrder: string[];
   chatToolMessages: Record<string, unknown>[];
   toolStreamSyncTimer: number | null;
+  showClawComputer: boolean;
+  activeClawTool: string;
+  requestUpdate: () => void;
 };
 
 function toTrimmedString(value: unknown): string | null {
