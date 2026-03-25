@@ -208,7 +208,7 @@ For the generic Docker flow, see [Docker](/install/docker).
   </Step>
 
   <Step title="Hetzner-specific access">
-    After the shared build and launch steps, tunnel from your laptop:
+    After the shared build and launch steps, complete the following setup to open the tunnel:
 
     **Prerequisite:** Ensure your VPS sshd config allows TCP forwarding. If you
     have hardened your SSH config, check `/etc/ssh/sshd_config` and set:
