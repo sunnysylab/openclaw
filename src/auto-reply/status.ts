@@ -522,13 +522,18 @@ export function buildStatusMessage(args: StatusArgs): string {
       const candidate = logUsage.promptTokens || logUsage.total;
       const hasZeroEstimate = entry?.totalTokensEstimate === 0;
 
-      if (
+      // Ensure the transcript can act as an authoritative fallback when the store lacks
+      // fresh data (even if explicitly marked stale via totalTokensFresh === false),
+      // unless there is a larger, preserved estimate that should take precedence.
+      const shouldFallbackToTranscript =
         logUsage.totalTokensFresh &&
         (freshTotal === undefined || candidate > freshTotal) &&
-        (entry?.totalTokensEstimate === undefined || (candidate > 0 && hasZeroEstimate))
-      ) {
-        // Session transcript is authoritative only when the store has no fresh data
-        // and no preserved estimate (or a zero estimate being overridden by fresh usage).
+        (entry?.totalTokensEstimate === undefined ||
+          (candidate > 0 && (hasZeroEstimate || candidate > entry.totalTokensEstimate)));
+
+      if (shouldFallbackToTranscript) {
+        // Session transcript is authoritative when the store has no fresh data
+        // and no larger preserved estimate (or a zero estimate being overridden by fresh usage).
         totalTokens = candidate;
       }
       if (!entry?.model && logUsage.model) {
