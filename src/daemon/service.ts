@@ -65,6 +65,7 @@ export type GatewayService = {
   stage: (args: GatewayServiceStageArgs) => Promise<void>;
   install: (args: GatewayServiceInstallArgs) => Promise<void>;
   uninstall: (args: GatewayServiceManageArgs) => Promise<void>;
+  start?: (args: GatewayServiceControlArgs) => Promise<GatewayServiceRestartResult>;
   stop: (args: GatewayServiceControlArgs) => Promise<void>;
   restart: (args: GatewayServiceControlArgs) => Promise<GatewayServiceRestartResult>;
   isLoaded: (args: GatewayServiceEnvArgs) => Promise<boolean>;
@@ -107,6 +108,7 @@ const GATEWAY_SERVICE_REGISTRY: Record<SupportedGatewayServicePlatform, GatewayS
     stage: ignoreServiceWriteResult(stageLaunchAgent),
     install: ignoreServiceWriteResult(installLaunchAgent),
     uninstall: uninstallLaunchAgent,
+    start: restartLaunchAgent,
     stop: stopLaunchAgent,
     restart: restartLaunchAgent,
     isLoaded: isLaunchAgentLoaded,
