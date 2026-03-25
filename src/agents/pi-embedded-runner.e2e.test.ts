@@ -93,6 +93,7 @@ const installRunEmbeddedMocks = () => {
   }));
   vi.doMock("./pi-embedded-runner/run/attempt.js", () => ({
     runEmbeddedAttempt: (params: unknown) => runEmbeddedAttemptMock(params),
+    shouldInjectOllamaCompatNumCtx: vi.fn(() => false),
   }));
   vi.doMock("./pi-embedded-runner/model.js", async (importOriginal) => {
     const actual = await importOriginal<typeof import("./pi-embedded-runner/model.js")>();

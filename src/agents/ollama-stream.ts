@@ -431,9 +431,80 @@ function resolveOllamaModelHeaders(model: {
   return model.headers as Record<string, string>;
 }
 
+const MAX_OLLAMA_NUM_CTX = 131_072;
+
+export function clampOllamaNumCtx(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.min(MAX_OLLAMA_NUM_CTX, Math.max(1, Math.floor(value)));
+}
+
+function clampOllamaRepeatPenalty(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return Math.min(2, Math.max(0, value));
+}
+
+function sanitizeOllamaOptions(input: unknown): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {};
+  }
+
+  const raw = input as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = {};
+
+  const numCtx = clampOllamaNumCtx(raw.num_ctx);
+  if (numCtx !== undefined) {
+    sanitized.num_ctx = numCtx;
+  }
+
+  const repeatPenalty = clampOllamaRepeatPenalty(raw.repeat_penalty);
+  if (repeatPenalty !== undefined) {
+    sanitized.repeat_penalty = repeatPenalty;
+  }
+
+  return sanitized;
+}
+
+function resolveOllamaModelOptions(model: unknown): Record<string, unknown> | undefined {
+  if (!model || typeof model !== "object" || Array.isArray(model)) {
+    return undefined;
+  }
+  const modelOptions = (model as { options?: unknown }).options;
+  if (!modelOptions || typeof modelOptions !== "object" || Array.isArray(modelOptions)) {
+    return undefined;
+  }
+  return modelOptions as Record<string, unknown>;
+}
+
+function resolveOllamaModelId(model: unknown): string | undefined {
+  if (!model || typeof model !== "object" || Array.isArray(model)) {
+    return undefined;
+  }
+  const modelId = (model as { id?: unknown }).id;
+  if (typeof modelId !== "string") {
+    return undefined;
+  }
+  const trimmed = modelId.trim();
+  return trimmed || undefined;
+}
+
+export function resolveOllamaContextWindowTokens(
+  model: { contextWindow?: unknown; options?: unknown },
+  defaultNumCtx: number = 65_536,
+): number {
+  const modelOptions = sanitizeOllamaOptions(resolveOllamaModelOptions(model));
+  const optionsNumCtx = typeof modelOptions.num_ctx === "number" ? modelOptions.num_ctx : undefined;
+  return clampOllamaNumCtx(model.contextWindow) ?? optionsNumCtx ?? defaultNumCtx;
+}
+
 export function createOllamaStreamFn(
   baseUrl: string,
   defaultHeaders?: Record<string, string>,
+  defaultModelOptions?: Record<string, unknown>,
+  defaultModelId?: string,
 ): StreamFn {
   const chatUrl = resolveOllamaChatUrl(baseUrl);
 
@@ -451,7 +522,20 @@ export function createOllamaStreamFn(
 
         // Ollama defaults to num_ctx=4096 which is too small for large
         // system prompts + many tool definitions. Use model's contextWindow.
-        const ollamaOptions: Record<string, unknown> = { num_ctx: model.contextWindow ?? 65536 };
+        // Only forward bounded sampling controls from config. Runtime knobs
+        // like threads, GPU layers, and mmap/mlock stay blocked here.
+        const perCallModelOptions = resolveOllamaModelOptions(model);
+        const fallbackModelOptions =
+          perCallModelOptions || !defaultModelId || resolveOllamaModelId(model) !== defaultModelId
+            ? undefined
+            : defaultModelOptions;
+        const modelOptions = sanitizeOllamaOptions(perCallModelOptions ?? fallbackModelOptions);
+        const optionsNumCtx =
+          typeof modelOptions.num_ctx === "number" ? modelOptions.num_ctx : undefined;
+        const ollamaOptions: Record<string, unknown> = {
+          ...modelOptions,
+          num_ctx: clampOllamaNumCtx(model.contextWindow) ?? optionsNumCtx ?? 65536,
+        };
         if (typeof options?.temperature === "number") {
           ollamaOptions.temperature = options.temperature;
         }
@@ -561,7 +645,7 @@ export function createOllamaStreamFn(
 }
 
 export function createConfiguredOllamaStreamFn(params: {
-  model: { baseUrl?: string; headers?: unknown };
+  model: { id?: string; baseUrl?: string; headers?: unknown; options?: Record<string, unknown> };
   providerBaseUrl?: string;
 }): StreamFn {
   const modelBaseUrl = typeof params.model.baseUrl === "string" ? params.model.baseUrl : undefined;
@@ -571,5 +655,7 @@ export function createConfiguredOllamaStreamFn(params: {
       providerBaseUrl: params.providerBaseUrl,
     }),
     resolveOllamaModelHeaders(params.model),
+    params.model.options,
+    typeof params.model.id === "string" ? params.model.id : undefined,
   );
 }

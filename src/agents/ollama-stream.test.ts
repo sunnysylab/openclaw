@@ -5,6 +5,7 @@ import {
   convertToOllamaMessages,
   buildAssistantMessage,
   parseNdjsonStream,
+  resolveOllamaContextWindowTokens,
   resolveOllamaBaseUrlForRun,
 } from "./ollama-stream.js";
 
@@ -569,6 +570,20 @@ describe("resolveOllamaBaseUrlForRun", () => {
   });
 });
 
+describe("resolveOllamaContextWindowTokens", () => {
+  it("uses configured num_ctx when contextWindow is absent", () => {
+    expect(resolveOllamaContextWindowTokens({ options: { num_ctx: 32768 } })).toBe(32768);
+  });
+
+  it("uses the native default when contextWindow and num_ctx are absent", () => {
+    expect(resolveOllamaContextWindowTokens({})).toBe(65536);
+  });
+
+  it("caps oversized contextWindow to the native request ceiling", () => {
+    expect(resolveOllamaContextWindowTokens({ contextWindow: 200000 })).toBe(131072);
+  });
+});
+
 describe("createConfiguredOllamaStreamFn", () => {
   it("uses provider-level baseUrl when model baseUrl is absent", async () => {
     await withMockNdjsonFetch(
@@ -606,6 +621,208 @@ describe("createConfiguredOllamaStreamFn", () => {
         expect(requestInit.headers).toMatchObject({
           Authorization: "Bearer proxy-token",
         });
+      },
+    );
+  });
+
+  it("forwards configured model options and uses num_ctx when contextWindow is absent", async () => {
+    await withMockNdjsonFetch(
+      [
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":"ok"},"done":false}',
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":1,"eval_count":1}',
+      ],
+      async (fetchMock) => {
+        const streamFn = createConfiguredOllamaStreamFn({
+          model: {
+            id: "qwen3:32b",
+            options: {
+              num_ctx: 32768,
+              repeat_penalty: 1.05,
+            },
+          },
+          providerBaseUrl: "http://provider-host:11434/v1",
+        });
+        const stream = await Promise.resolve(
+          streamFn(
+            {
+              id: "qwen3:32b",
+              api: "ollama",
+              provider: "custom-ollama",
+            } as never,
+            {
+              messages: [{ role: "user", content: "hello" }],
+            } as never,
+            undefined as never,
+          ),
+        );
+
+        await collectStreamEvents(stream);
+        const [, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        const requestBody = JSON.parse(requestInit.body as string) as {
+          options: {
+            num_ctx?: number;
+            repeat_penalty?: number;
+          };
+        };
+
+        expect(requestBody.options).toMatchObject({
+          num_ctx: 32768,
+          repeat_penalty: 1.05,
+        });
+      },
+    );
+  });
+
+  it("prefers per-call model options over factory defaults", async () => {
+    await withMockNdjsonFetch(
+      [
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":"ok"},"done":false}',
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":1,"eval_count":1}',
+      ],
+      async (fetchMock) => {
+        const streamFn = createConfiguredOllamaStreamFn({
+          model: {
+            id: "qwen3:32b",
+            options: {
+              num_ctx: 32768,
+              repeat_penalty: 1.05,
+            },
+          },
+          providerBaseUrl: "http://provider-host:11434/v1",
+        });
+        const stream = await Promise.resolve(
+          streamFn(
+            {
+              id: "qwen3:32b",
+              api: "ollama",
+              provider: "custom-ollama",
+              options: {
+                num_ctx: 8192,
+                repeat_penalty: 1.2,
+                num_thread: 64,
+              },
+            } as never,
+            {
+              messages: [{ role: "user", content: "hello" }],
+            } as never,
+            undefined as never,
+          ),
+        );
+
+        await collectStreamEvents(stream);
+        const [, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        const requestBody = JSON.parse(requestInit.body as string) as {
+          options: {
+            num_ctx?: number;
+            repeat_penalty?: number;
+            num_thread?: number;
+          };
+        };
+
+        expect(requestBody.options).toMatchObject({
+          num_ctx: 8192,
+          repeat_penalty: 1.2,
+        });
+        expect(requestBody.options).not.toHaveProperty("num_thread");
+      },
+    );
+  });
+
+  it("does not reuse factory defaults for a different model without options", async () => {
+    await withMockNdjsonFetch(
+      [
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":"ok"},"done":false}',
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":1,"eval_count":1}',
+      ],
+      async (fetchMock) => {
+        const streamFn = createConfiguredOllamaStreamFn({
+          model: {
+            id: "qwen3:32b",
+            options: {
+              num_ctx: 32768,
+              repeat_penalty: 1.05,
+            },
+          },
+          providerBaseUrl: "http://provider-host:11434/v1",
+        });
+        const stream = await Promise.resolve(
+          streamFn(
+            {
+              id: "llama3.2:3b",
+              api: "ollama",
+              provider: "custom-ollama",
+            } as never,
+            {
+              messages: [{ role: "user", content: "hello" }],
+            } as never,
+            undefined as never,
+          ),
+        );
+
+        await collectStreamEvents(stream);
+        const [, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        const requestBody = JSON.parse(requestInit.body as string) as {
+          options: {
+            num_ctx?: number;
+            repeat_penalty?: number;
+          };
+        };
+
+        expect(requestBody.options).toMatchObject({
+          num_ctx: 65536,
+        });
+        expect(requestBody.options).not.toHaveProperty("repeat_penalty");
+      },
+    );
+  });
+
+  it("caps num_ctx and drops unsupported configured options", async () => {
+    await withMockNdjsonFetch(
+      [
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":"ok"},"done":false}',
+        '{"model":"m","created_at":"t","message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":1,"eval_count":1}',
+      ],
+      async (fetchMock) => {
+        const streamFn = createConfiguredOllamaStreamFn({
+          model: {
+            id: "qwen3:32b",
+            options: {
+              num_ctx: 999999,
+              repeat_penalty: 1.05,
+              num_thread: 64,
+            },
+          },
+          providerBaseUrl: "http://provider-host:11434/v1",
+        });
+        const stream = await Promise.resolve(
+          streamFn(
+            {
+              id: "qwen3:32b",
+              api: "ollama",
+              provider: "custom-ollama",
+            } as never,
+            {
+              messages: [{ role: "user", content: "hello" }],
+            } as never,
+            undefined as never,
+          ),
+        );
+
+        await collectStreamEvents(stream);
+        const [, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        const requestBody = JSON.parse(requestInit.body as string) as {
+          options: {
+            num_ctx?: number;
+            repeat_penalty?: number;
+            num_thread?: number;
+          };
+        };
+
+        expect(requestBody.options).toMatchObject({
+          num_ctx: 131072,
+          repeat_penalty: 1.05,
+        });
+        expect(requestBody.options).not.toHaveProperty("num_thread");
       },
     );
   });
