@@ -1,5 +1,6 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { emitAgentEvent } from "../infra/agent-events.js";
+import { emitDiagnosticEvent } from "../infra/diagnostic-events.js";
 import {
   buildExecApprovalPendingReplyPayload,
   buildExecApprovalUnavailableReplyPayload,
@@ -368,6 +369,17 @@ export async function handleToolExecutionStart(
     `embedded run tool start: runId=${ctx.params.runId} tool=${toolName} toolCallId=${toolCallId}`,
   );
 
+  // Emit generic diagnostic event for external observability (Studio, plugins, etc.)
+  emitDiagnosticEvent({
+    type: "tool.call",
+    sessionKey: ctx.params.sessionKey,
+    sessionId: ctx.params.sessionId,
+    runId: ctx.params.runId,
+    toolCallId,
+    toolName,
+    summary: meta,
+  });
+
   const shouldEmitToolEvents = ctx.shouldEmitToolResult();
   emitAgentEvent({
     runId: ctx.params.runId,
@@ -572,6 +584,20 @@ export async function handleToolExecutionEnd(
     },
   });
 
+  // Emit generic diagnostic event for external observability (Studio, plugins, etc.)
+  const durationMs = startData?.startTime != null ? Date.now() - startData.startTime : undefined;
+  emitDiagnosticEvent({
+    type: "tool.result",
+    sessionKey: ctx.params.sessionKey,
+    sessionId: ctx.params.sessionId,
+    runId: ctx.params.runId,
+    toolCallId,
+    toolName,
+    summary: meta,
+    durationMs,
+    success: !isToolError,
+  });
+
   ctx.log.debug(
     `embedded run tool end: runId=${ctx.params.runId} tool=${toolName} toolCallId=${toolCallId}`,
   );
@@ -581,7 +607,6 @@ export async function handleToolExecutionEnd(
   // Run after_tool_call plugin hook (fire-and-forget)
   const hookRunnerAfter = ctx.hookRunner ?? getGlobalHookRunner();
   if (hookRunnerAfter?.hasHooks("after_tool_call")) {
-    const durationMs = startData?.startTime != null ? Date.now() - startData.startTime : undefined;
     const hookEvent: PluginHookAfterToolCallEvent = {
       toolName,
       params: afterToolCallArgs,
