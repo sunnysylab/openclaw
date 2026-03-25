@@ -60,14 +60,16 @@ async function sendSignalOutbound(params: {
   text: string;
   mediaUrl?: string;
   mediaLocalRoots?: readonly string[];
+  viewOnce?: boolean;
   accountId?: string;
   deps?: { [channelId: string]: unknown };
 }) {
   const { send, maxBytes } = resolveSignalSendContext(params);
   return await send(params.to, params.text, {
     cfg: params.cfg,
-    ...(params.mediaUrl ? { mediaUrl: params.mediaUrl } : {}),
-    ...(params.mediaLocalRoots?.length ? { mediaLocalRoots: params.mediaLocalRoots } : {}),
+    mediaUrl: params.mediaUrl,
+    mediaLocalRoots: params.mediaLocalRoots,
+    viewOnce: params.viewOnce,
     maxBytes,
     accountId: params.accountId ?? undefined,
   });
@@ -186,6 +188,7 @@ async function sendFormattedSignalMedia(ctx: {
   text: string;
   mediaUrl: string;
   mediaLocalRoots?: readonly string[];
+  viewOnce?: boolean;
   accountId?: string | null;
   deps?: { [channelId: string]: unknown };
   abortSignal?: AbortSignal;
@@ -211,6 +214,7 @@ async function sendFormattedSignalMedia(ctx: {
     cfg: ctx.cfg,
     mediaUrl: ctx.mediaUrl,
     mediaLocalRoots: ctx.mediaLocalRoots,
+    viewOnce: ctx.viewOnce,
     maxBytes,
     accountId: ctx.accountId ?? undefined,
     textMode: "plain",
@@ -325,6 +329,7 @@ export const signalPlugin: ChannelPlugin<ResolvedSignalAccount, SignalProbe> =
           text,
           mediaUrl,
           mediaLocalRoots,
+          viewOnce,
           accountId,
           deps,
           abortSignal,
@@ -335,6 +340,7 @@ export const signalPlugin: ChannelPlugin<ResolvedSignalAccount, SignalProbe> =
             text,
             mediaUrl,
             mediaLocalRoots,
+            viewOnce,
             accountId,
             deps,
             abortSignal,
@@ -350,13 +356,23 @@ export const signalPlugin: ChannelPlugin<ResolvedSignalAccount, SignalProbe> =
             accountId: accountId ?? undefined,
             deps,
           }),
-        sendMedia: async ({ cfg, to, text, mediaUrl, mediaLocalRoots, accountId, deps }) =>
+        sendMedia: async ({
+          cfg,
+          to,
+          text,
+          mediaUrl,
+          mediaLocalRoots,
+          viewOnce,
+          accountId,
+          deps,
+        }) =>
           await sendSignalOutbound({
             cfg,
             to,
             text,
             mediaUrl,
             mediaLocalRoots,
+            viewOnce,
             accountId: accountId ?? undefined,
             deps,
           }),

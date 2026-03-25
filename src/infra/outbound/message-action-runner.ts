@@ -479,6 +479,7 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
     readBooleanParam(params, "forceDocument") ?? readBooleanParam(params, "asDocument") ?? false;
   const bestEffort = readBooleanParam(params, "bestEffort");
   const silent = readBooleanParam(params, "silent");
+  const viewOnce = readBooleanParam(params, "viewOnce");
 
   const replyToId = readStringParam(params, "replyTo");
   const { resolvedThreadId, outboundRoute } = await prepareOutboundMirrorRoute({
@@ -528,6 +529,7 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
     gifPlayback,
     forceDocument,
     bestEffort: bestEffort ?? undefined,
+    viewOnce: viewOnce ?? undefined,
     replyToId: replyToId ?? undefined,
     threadId: resolvedThreadId ?? undefined,
   });
