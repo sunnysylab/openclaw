@@ -1905,6 +1905,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                       },
                       {
                         type: "string",
+                        const: "lmstudio",
+                      },
+                      {
+                        type: "string",
                         const: "ollama",
                       },
                     ],
@@ -2041,6 +2045,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                       {
                         type: "string",
                         const: "mistral",
+                      },
+                      {
+                        type: "string",
+                        const: "lmstudio",
                       },
                       {
                         type: "string",
@@ -3522,6 +3530,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                         },
                         {
                           type: "string",
+                          const: "lmstudio",
+                        },
+                        {
+                          type: "string",
                           const: "ollama",
                         },
                       ],
@@ -3658,6 +3670,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                         {
                           type: "string",
                           const: "mistral",
+                        },
+                        {
+                          type: "string",
+                          const: "lmstudio",
                         },
                         {
                           type: "string",
@@ -13389,7 +13405,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
     },
     "agents.defaults.memorySearch.provider": {
       label: "Memory Search Provider",
-      help: 'Selects the embedding backend used to build/query memory vectors: "openai", "gemini", "voyage", "mistral", "ollama", or "local". Keep your most reliable provider here and configure fallback for resilience.',
+      help: 'Selects the embedding backend used to build/query memory vectors: "openai", "gemini", "voyage", "mistral", "lmstudio", "ollama", or "local". Keep your most reliable provider here and configure fallback for resilience.',
       tags: ["advanced"],
     },
     "agents.defaults.memorySearch.remote.baseUrl": {
@@ -13445,7 +13461,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
     },
     "agents.defaults.memorySearch.fallback": {
       label: "Memory Search Fallback",
-      help: 'Backup provider used when primary embeddings fail: "openai", "gemini", "voyage", "mistral", "ollama", "local", or "none". Set a real fallback for production reliability; use "none" only if you prefer explicit failures.',
+      help: 'Backup provider used when primary embeddings fail: "openai", "gemini", "voyage", "mistral", "lmstudio", "ollama", "local", or "none". Set a real fallback for production reliability; use "none" only if you prefer explicit failures.',
       tags: ["reliability"],
     },
     "agents.defaults.memorySearch.local.modelPath": {

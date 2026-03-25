@@ -24,6 +24,7 @@ import {
   normalizeGoogleGenerativeAiBaseUrl,
   shouldNormalizeGoogleGenerativeAiProviderConfig,
 } from "./google-generative-ai.js";
+import { resolveLmstudioInferenceBase } from "./lmstudio-models.js";
 import { normalizeGoogleModelId, normalizeXaiModelId } from "./model-id-normalization.js";
 import { resolveOllamaApiBase } from "./models-config.providers.discovery.js";
 export {
@@ -631,6 +632,17 @@ export function normalizeProviders(params: {
         mutated = true;
       }
       normalizedProvider = antigravityNormalized;
+    }
+
+    if (normalizedKey === "lmstudio") {
+      const normalizedBaseUrl = resolveLmstudioInferenceBase(normalizedProvider.baseUrl);
+      if (normalizedBaseUrl !== normalizedProvider.baseUrl) {
+        mutated = true;
+        normalizedProvider = {
+          ...normalizedProvider,
+          baseUrl: normalizedBaseUrl,
+        };
+      }
     }
 
     const existing = next[normalizedKey];

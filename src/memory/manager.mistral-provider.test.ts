@@ -3,10 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
+import { DEFAULT_LMSTUDIO_EMBEDDING_MODEL } from "./embeddings-lmstudio.js";
 import { DEFAULT_OLLAMA_EMBEDDING_MODEL } from "./embeddings-ollama.js";
 import type {
   EmbeddingProvider,
   EmbeddingProviderResult,
+  LmstudioEmbeddingClient,
   MistralEmbeddingClient,
   OllamaEmbeddingClient,
   OpenAiEmbeddingClient,
@@ -22,7 +24,10 @@ vi.mock("./embeddings.js", () => ({
 }));
 
 vi.mock("./sqlite-vec.js", () => ({
-  loadSqliteVecExtension: async () => ({ ok: false, error: "sqlite-vec disabled in tests" }),
+  loadSqliteVecExtension: async () => ({
+    ok: false,
+    error: "sqlite-vec disabled in tests",
+  }),
 }));
 
 type MemoryIndexModule = typeof import("./index.js");
@@ -42,8 +47,8 @@ function createProvider(id: string): EmbeddingProvider {
 function buildConfig(params: {
   workspaceDir: string;
   indexPath: string;
-  provider: "openai" | "mistral";
-  fallback?: "none" | "mistral" | "ollama";
+  provider: "openai" | "mistral" | "lmstudio";
+  fallback?: "none" | "mistral" | "ollama" | "lmstudio";
 }): OpenClawConfig {
   return {
     agents: {
@@ -139,7 +144,12 @@ describe("memory manager mistral provider wiring", () => {
       mistral: mistralClient,
     } as EmbeddingProviderResult);
 
-    const cfg = buildConfig({ workspaceDir, indexPath, provider: "openai", fallback: "mistral" });
+    const cfg = buildConfig({
+      workspaceDir,
+      indexPath,
+      provider: "openai",
+      fallback: "mistral",
+    });
     const result = await getMemorySearchManager({ cfg, agentId: "main" });
     if (!result.manager) {
       throw new Error(`manager missing: ${result.error ?? "no error provided"}`);
@@ -181,7 +191,12 @@ describe("memory manager mistral provider wiring", () => {
       ollama: ollamaClient,
     } as EmbeddingProviderResult);
 
-    const cfg = buildConfig({ workspaceDir, indexPath, provider: "openai", fallback: "ollama" });
+    const cfg = buildConfig({
+      workspaceDir,
+      indexPath,
+      provider: "openai",
+      fallback: "ollama",
+    });
     const result = await getMemorySearchManager({ cfg, agentId: "main" });
     if (!result.manager) {
       throw new Error(`manager missing: ${result.error ?? "no error provided"}`);
@@ -204,5 +219,58 @@ describe("memory manager mistral provider wiring", () => {
       | undefined;
     expect(fallbackCall?.provider).toBe("ollama");
     expect(fallbackCall?.model).toBe(DEFAULT_OLLAMA_EMBEDDING_MODEL);
+  });
+
+  it("uses default lmstudio model when activating lmstudio fallback", async () => {
+    const openAiClient: OpenAiEmbeddingClient = {
+      baseUrl: "https://api.openai.com/v1",
+      headers: { authorization: "Bearer openai-key" },
+      model: "text-embedding-3-small",
+    };
+    const lmstudioClient: LmstudioEmbeddingClient = {
+      baseUrl: "http://localhost:1234/v1",
+      headers: { authorization: "Bearer lmstudio-key" },
+      model: DEFAULT_LMSTUDIO_EMBEDDING_MODEL,
+    };
+    createEmbeddingProviderMock.mockResolvedValueOnce({
+      requestedProvider: "openai",
+      provider: createProvider("openai"),
+      openAi: openAiClient,
+    } as EmbeddingProviderResult);
+    createEmbeddingProviderMock.mockResolvedValueOnce({
+      requestedProvider: "lmstudio",
+      provider: createProvider("lmstudio"),
+      lmstudio: lmstudioClient,
+    } as EmbeddingProviderResult);
+
+    const cfg = buildConfig({
+      workspaceDir,
+      indexPath,
+      provider: "openai",
+      fallback: "lmstudio",
+    });
+    const result = await getMemorySearchManager({ cfg, agentId: "main" });
+    if (!result.manager) {
+      throw new Error(`manager missing: ${result.error ?? "no error provided"}`);
+    }
+    manager = result.manager as unknown as MemoryIndexManager;
+    await manager.probeEmbeddingAvailability();
+    const internal = manager as unknown as {
+      activateFallbackProvider: (reason: string) => Promise<boolean>;
+      lmstudio?: LmstudioEmbeddingClient;
+    };
+
+    const activated = await internal.activateFallbackProvider("forced lmstudio fallback");
+    expect(activated).toBe(true);
+    expect(internal.lmstudio).toBe(lmstudioClient);
+
+    const fallbackCall = createEmbeddingProviderMock.mock.calls[1]?.[0] as
+      | {
+          provider?: string;
+          model?: string;
+        }
+      | undefined;
+    expect(fallbackCall?.provider).toBe("lmstudio");
+    expect(fallbackCall?.model).toBe(DEFAULT_LMSTUDIO_EMBEDDING_MODEL);
   });
 });

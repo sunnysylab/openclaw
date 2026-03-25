@@ -6,6 +6,8 @@ import { registerProviders, requireProvider } from "./testkit.js";
 
 const resolveCopilotApiTokenMock = vi.hoisted(() => vi.fn());
 const buildOllamaProviderMock = vi.hoisted(() => vi.fn());
+const buildLmstudioProviderMock = vi.hoisted(() => vi.fn());
+const discoverLmstudioProviderMock = vi.hoisted(() => vi.fn());
 const buildVllmProviderMock = vi.hoisted(() => vi.fn());
 const buildSglangProviderMock = vi.hoisted(() => vi.fn());
 const ensureAuthProfileStoreMock = vi.hoisted(() => vi.fn());
@@ -15,6 +17,7 @@ let runProviderCatalog: typeof import("../provider-discovery.js").runProviderCat
 let qwenPortalProvider: Awaited<ReturnType<typeof requireProvider>>;
 let githubCopilotProvider: Awaited<ReturnType<typeof requireProvider>>;
 let ollamaProvider: Awaited<ReturnType<typeof requireProvider>>;
+let lmstudioProvider: Awaited<ReturnType<typeof requireProvider>>;
 let vllmProvider: Awaited<ReturnType<typeof requireProvider>>;
 let sglangProvider: Awaited<ReturnType<typeof requireProvider>>;
 let minimaxProvider: Awaited<ReturnType<typeof requireProvider>>;
@@ -145,6 +148,7 @@ describe("provider discovery contract", () => {
       return {
         ...actual,
         buildOllamaProvider: (...args: unknown[]) => buildOllamaProviderMock(...args),
+        buildLmstudioProvider: (...args: unknown[]) => buildLmstudioProviderMock(...args),
         buildVllmProvider: (...args: unknown[]) => buildVllmProviderMock(...args),
         buildSglangProvider: (...args: unknown[]) => buildSglangProviderMock(...args),
       };
@@ -157,6 +161,13 @@ describe("provider discovery contract", () => {
         ...actual,
         buildVllmProvider: (...args: unknown[]) => buildVllmProviderMock(...args),
         buildSglangProvider: (...args: unknown[]) => buildSglangProviderMock(...args),
+      };
+    });
+    vi.doMock("openclaw/plugin-sdk/lmstudio-setup", async () => {
+      const actual = await vi.importActual<object>("openclaw/plugin-sdk/lmstudio-setup");
+      return {
+        ...actual,
+        discoverLmstudioProvider: (...args: unknown[]) => discoverLmstudioProviderMock(...args),
       };
     });
     vi.doMock("openclaw/plugin-sdk/ollama-setup", async () => {
@@ -172,6 +183,7 @@ describe("provider discovery contract", () => {
       { default: qwenPortalPlugin },
       { default: githubCopilotPlugin },
       { default: ollamaPlugin },
+      { default: lmstudioPlugin },
       { default: vllmPlugin },
       { default: sglangPlugin },
       { default: minimaxPlugin },
@@ -181,6 +193,7 @@ describe("provider discovery contract", () => {
       import("../../../extensions/qwen-portal-auth/index.js"),
       import("../../../extensions/github-copilot/index.js"),
       import("../../../extensions/ollama/index.js"),
+      import("../../../extensions/lmstudio/index.js"),
       import("../../../extensions/vllm/index.js"),
       import("../../../extensions/sglang/index.js"),
       import("../../../extensions/minimax/index.js"),
@@ -193,6 +206,7 @@ describe("provider discovery contract", () => {
       "github-copilot",
     );
     ollamaProvider = requireProvider(registerProviders(ollamaPlugin), "ollama");
+    lmstudioProvider = requireProvider(registerProviders(lmstudioPlugin), "lmstudio");
     vllmProvider = requireProvider(registerProviders(vllmPlugin), "vllm");
     sglangProvider = requireProvider(registerProviders(sglangPlugin), "sglang");
     minimaxProvider = requireProvider(registerProviders(minimaxPlugin), "minimax");
@@ -209,6 +223,8 @@ describe("provider discovery contract", () => {
     vi.restoreAllMocks();
     resolveCopilotApiTokenMock.mockReset();
     buildOllamaProviderMock.mockReset();
+    buildLmstudioProviderMock.mockReset();
+    discoverLmstudioProviderMock.mockReset();
     buildVllmProviderMock.mockReset();
     buildSglangProviderMock.mockReset();
     ensureAuthProfileStoreMock.mockReset();
@@ -354,7 +370,9 @@ describe("provider discovery contract", () => {
         }),
       }),
     ).resolves.toBeNull();
-    expect(buildOllamaProviderMock).toHaveBeenCalledWith(undefined, { quiet: true });
+    expect(buildOllamaProviderMock).toHaveBeenCalledWith(undefined, {
+      quiet: true,
+    });
   });
 
   it("keeps vLLM self-hosted discovery provider-owned", async () => {
@@ -393,6 +411,82 @@ describe("provider discovery contract", () => {
     expect(buildVllmProviderMock).toHaveBeenCalledWith({
       apiKey: "env-vllm-key",
     });
+  });
+
+  it("keeps LM Studio self-hosted discovery provider-owned", async () => {
+    const provider = lmstudioProvider;
+    discoverLmstudioProviderMock.mockResolvedValueOnce({
+      provider: {
+        baseUrl: "http://localhost:1234/v1",
+        api: "openai-completions",
+        apiKey: "LM_API_TOKEN",
+        models: [{ id: "qwen3-8b-instruct", name: "Qwen3 8B (MLX, loaded)" }],
+      },
+    });
+
+    await expect(
+      runProviderCatalog({
+        provider,
+        config: {},
+        env: {
+          LM_API_TOKEN: "env-lmstudio-key",
+        } as NodeJS.ProcessEnv,
+        resolveProviderApiKey: () => ({
+          apiKey: "LM_API_TOKEN",
+          discoveryApiKey: "env-lmstudio-key",
+        }),
+        resolveProviderAuth: () => ({
+          apiKey: "LM_API_TOKEN",
+          discoveryApiKey: "env-lmstudio-key",
+          mode: "api_key",
+          source: "env",
+        }),
+      }),
+    ).resolves.toEqual({
+      provider: {
+        baseUrl: "http://localhost:1234/v1",
+        api: "openai-completions",
+        apiKey: "LM_API_TOKEN",
+        models: [{ id: "qwen3-8b-instruct", name: "Qwen3 8B (MLX, loaded)" }],
+      },
+    });
+    expect(discoverLmstudioProviderMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps LM Studio unauthenticated discovery configs unauthenticated", async () => {
+    const provider = lmstudioProvider;
+    discoverLmstudioProviderMock.mockResolvedValueOnce({
+      provider: {
+        baseUrl: "http://localhost:1234/v1",
+        api: "openai-completions",
+        models: [{ id: "qwen3-8b-instruct", name: "Qwen3 8B (MLX, loaded)" }],
+      },
+    });
+
+    await expect(
+      runProviderCatalog({
+        provider,
+        config: {},
+        env: {} as NodeJS.ProcessEnv,
+        resolveProviderApiKey: () => ({
+          apiKey: undefined,
+          discoveryApiKey: undefined,
+        }),
+        resolveProviderAuth: () => ({
+          apiKey: undefined,
+          discoveryApiKey: undefined,
+          mode: "none",
+          source: "none",
+        }),
+      }),
+    ).resolves.toEqual({
+      provider: {
+        baseUrl: "http://localhost:1234/v1",
+        api: "openai-completions",
+        models: [{ id: "qwen3-8b-instruct", name: "Qwen3 8B (MLX, loaded)" }],
+      },
+    });
+    expect(discoverLmstudioProviderMock).toHaveBeenCalledTimes(1);
   });
 
   it("keeps SGLang self-hosted discovery provider-owned", async () => {
