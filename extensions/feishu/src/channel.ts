@@ -60,6 +60,15 @@ function readFeishuMediaParam(params: Record<string, unknown>): string | undefin
   return media.trim() ? media : undefined;
 }
 
+function isValidFeishuCard(card: Record<string, unknown> | undefined): boolean {
+  if (!card || typeof card !== "object") {
+    return false;
+  }
+  // Feishu cards must have at least one key to be valid
+  // Empty objects {} are not valid and will cause 400 errors from Feishu API
+  return Object.keys(card).length > 0;
+}
+
 const meta: ChannelMeta = {
   id: "feishu",
   label: "Feishu",
@@ -512,10 +521,11 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount, FeishuProbeResul
                 : undefined;
             const text = readFirstString(ctx.params, ["text", "message"]);
             const mediaUrl = readFeishuMediaParam(ctx.params);
-            if (card && mediaUrl) {
+            const hasValidCard = isValidFeishuCard(card);
+            if (hasValidCard && mediaUrl) {
               throw new Error(`Feishu ${ctx.action} does not support card with media.`);
             }
-            if (!card && !text && !mediaUrl) {
+            if (!hasValidCard && !text && !mediaUrl) {
               throw new Error(`Feishu ${ctx.action} requires text/message, media, or card.`);
             }
             const runtime = await loadFeishuChannelRuntime();
@@ -525,11 +535,11 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount, FeishuProbeResul
             }
             const sendMedia = maybeSendMedia;
             let result;
-            if (card) {
+            if (hasValidCard) {
               result = await runtime.sendCardFeishu({
                 cfg: ctx.cfg,
                 to,
-                card,
+                card: card!,
                 accountId: ctx.accountId ?? undefined,
                 replyToMessageId,
                 replyInThread: ctx.action === "thread-reply",
@@ -600,12 +610,13 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount, FeishuProbeResul
               ctx.params.card && typeof ctx.params.card === "object"
                 ? (ctx.params.card as Record<string, unknown>)
                 : undefined;
+            const hasValidCard = isValidFeishuCard(card);
             const { editMessageFeishu } = await loadFeishuChannelRuntime();
             const result = await editMessageFeishu({
               cfg: ctx.cfg,
               messageId,
               text,
-              card,
+              card: hasValidCard ? card : undefined,
               accountId: ctx.accountId ?? undefined,
             });
             return jsonActionResult({
