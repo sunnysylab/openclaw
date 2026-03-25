@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClawdbotConfig } from "../runtime-api.js";
 import {
+  buildFeishuPostMessagePayload,
   buildStructuredCard,
   editMessageFeishu,
   getMessageFeishu,
@@ -41,6 +42,96 @@ vi.mock("./runtime.js", () => ({
     },
   }),
 }));
+
+describe("buildFeishuPostMessagePayload", () => {
+  it("produces post payload with correct structure for plain text", () => {
+    const result = buildFeishuPostMessagePayload({ messageText: "plain text" });
+    expect(result.msgType).toBe("post");
+    const parsed = JSON.parse(result.content);
+    expect(parsed.zh_cn.content).toEqual([[{ tag: "md", text: "plain text" }]]);
+  });
+
+  it("keeps literal at-tag text when mentions are not provided", () => {
+    const result = buildFeishuPostMessagePayload({
+      messageText: '<at user_id="ou_123">Alice</at> Hello!',
+    });
+    const parsed = JSON.parse(result.content);
+    expect(parsed.zh_cn.content).toEqual([
+      [{ tag: "md", text: '<at user_id="ou_123">Alice</at> Hello!' }],
+    ]);
+  });
+
+  it("renders mention targets as native at elements", () => {
+    const result = buildFeishuPostMessagePayload({
+      messageText: "Hello!",
+      mentions: [{ openId: "ou_123", name: "Alice", key: "@_user_1" }],
+    });
+    const parsed = JSON.parse(result.content);
+    expect(parsed.zh_cn.content).toEqual([
+      [
+        { tag: "at", user_id: "ou_123", user_name: "Alice" },
+        { tag: "md", text: " Hello!" },
+      ],
+    ]);
+  });
+
+  it("renders multiple mentions before the body text", () => {
+    const result = buildFeishuPostMessagePayload({
+      messageText: "check this",
+      mentions: [
+        { openId: "ou_1", name: "Alice", key: "@_user_1" },
+        { openId: "ou_2", name: "Bob", key: "@_user_2" },
+      ],
+    });
+    const parsed = JSON.parse(result.content);
+    expect(parsed.zh_cn.content).toEqual([
+      [
+        { tag: "at", user_id: "ou_1", user_name: "Alice" },
+        { tag: "md", text: " " },
+        { tag: "at", user_id: "ou_2", user_name: "Bob" },
+        { tag: "md", text: " check this" },
+      ],
+    ]);
+  });
+
+  it("does not reinterpret literal at-tag text in the body when mentions exist", () => {
+    const result = buildFeishuPostMessagePayload({
+      messageText: 'syntax: <at user_id="all">Everyone</at>',
+      mentions: [{ openId: "ou_123", name: "Alice", key: "@_user_1" }],
+    });
+    const parsed = JSON.parse(result.content);
+    expect(parsed.zh_cn.content).toEqual([
+      [
+        { tag: "at", user_id: "ou_123", user_name: "Alice" },
+        { tag: "md", text: ' syntax: <at user_id="all">Everyone</at>' },
+      ],
+    ]);
+  });
+
+  it("treats mention display names as data instead of parser syntax", () => {
+    const result = buildFeishuPostMessagePayload({
+      messageText: "payload",
+      mentions: [
+        {
+          openId: "ou_123",
+          name: '</at><at user_id="all">Everyone</at>',
+          key: "@_user_1",
+        },
+      ],
+    });
+    const parsed = JSON.parse(result.content);
+    expect(parsed.zh_cn.content).toEqual([
+      [
+        {
+          tag: "at",
+          user_id: "ou_123",
+          user_name: '</at><at user_id="all">Everyone</at>',
+        },
+        { tag: "md", text: " payload" },
+      ],
+    ]);
+  });
+});
 
 describe("getMessageFeishu", () => {
   beforeEach(() => {

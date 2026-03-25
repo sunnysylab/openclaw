@@ -2,7 +2,7 @@ import type { ClawdbotConfig } from "../runtime-api.js";
 import { resolveFeishuRuntimeAccount } from "./accounts.js";
 import { createFeishuClient } from "./client.js";
 import type { MentionTarget } from "./mention.js";
-import { buildMentionedMessage, buildMentionedCardContent } from "./mention.js";
+import { buildMentionedCardContent } from "./mention.js";
 import { parsePostContent } from "./post.js";
 import { getFeishuRuntime } from "./runtime.js";
 import { assertFeishuMessageApiSuccess, toFeishuSendResult } from "./send-result.js";
@@ -418,22 +418,45 @@ export type SendFeishuMessageParams = {
   accountId?: string;
 };
 
-export function buildFeishuPostMessagePayload(params: { messageText: string }): {
+type FeishuPostElement =
+  | { tag: "md"; text: string }
+  | { tag: "at"; user_id: string; user_name?: string };
+
+function buildFeishuMentionElements(mentions: MentionTarget[]): FeishuPostElement[] {
+  const elements: FeishuPostElement[] = [];
+
+  for (const [index, mention] of mentions.entries()) {
+    elements.push({ tag: "at", user_id: mention.openId, user_name: mention.name || undefined });
+    if (index < mentions.length - 1) {
+      elements.push({ tag: "md", text: " " });
+    }
+  }
+
+  return elements;
+}
+
+export function buildFeishuPostMessagePayload(params: {
+  messageText: string;
+  mentions?: MentionTarget[];
+}): {
   content: string;
   msgType: string;
 } {
-  const { messageText } = params;
+  const { messageText, mentions } = params;
+  const elements: FeishuPostElement[] =
+    mentions != null && mentions.length > 0
+      ? [
+          ...buildFeishuMentionElements(mentions),
+          ...(messageText
+            ? [{ tag: "md", text: ` ${messageText}` } satisfies FeishuPostElement]
+            : []),
+        ]
+      : [{ tag: "md", text: messageText }];
+
   return {
     content: JSON.stringify({
       zh_cn: {
-        content: [
-          [
-            {
-              tag: "md",
-              text: messageText,
-            },
-          ],
-        ],
+        content: [elements],
       },
     }),
     msgType: "post",
@@ -451,13 +474,8 @@ export async function sendMessageFeishu(
   });
 
   // Build message content (with @mention support)
-  let rawText = text ?? "";
-  if (mentions && mentions.length > 0) {
-    rawText = buildMentionedMessage(mentions, rawText);
-  }
-  const messageText = getFeishuRuntime().channel.text.convertMarkdownTables(rawText, tableMode);
-
-  const { content, msgType } = buildFeishuPostMessagePayload({ messageText });
+  const messageText = getFeishuRuntime().channel.text.convertMarkdownTables(text ?? "", tableMode);
+  const { content, msgType } = buildFeishuPostMessagePayload({ messageText, mentions });
 
   const directParams = { receiveId, receiveIdType, content, msgType };
   return sendReplyOrFallbackDirect(client, {

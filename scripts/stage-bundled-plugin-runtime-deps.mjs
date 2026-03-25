@@ -92,6 +92,7 @@ export function resolveNpmRunner(params = {}) {
   const platform = params.platform ?? process.platform;
   const comSpec = params.comSpec ?? env.ComSpec ?? "cmd.exe";
   const pathImpl = platform === "win32" ? path.win32 : path.posix;
+  const pathDelimiter = pathImpl.delimiter;
   const nodeDir = pathImpl.dirname(execPath);
   const npmToolchain = resolveToolchainNpmRunner({
     comSpec,
@@ -127,7 +128,7 @@ export function resolveNpmRunner(params = {}) {
       ...env,
       [pathKey]:
         typeof currentPath === "string" && currentPath.length > 0
-          ? `${nodeDir}${path.delimiter}${currentPath}`
+          ? `${nodeDir}${pathDelimiter}${currentPath}`
           : nodeDir,
     },
   };
