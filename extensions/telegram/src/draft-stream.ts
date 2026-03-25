@@ -259,6 +259,8 @@ export function createTelegramDraftStream(params: {
       return true;
     }
     messageSendAttempted = true;
+    let actualSentText = effectiveText;
+    let actualSentParseMode = effectiveParseMode;
     let sent: Awaited<ReturnType<typeof sendRenderedMessageWithThreadFallback>>["sent"];
     try {
       ({ sent } = await sendRenderedMessageWithThreadFallback({
@@ -271,6 +273,8 @@ export function createTelegramDraftStream(params: {
       if (effectiveParseMode && isTelegramHtmlParseError(err)) {
         // HTML rejected on first send — retry as plain text.
         parseModeDisabledForGeneration = sendGeneration;
+        actualSentText = plainText;
+        actualSentParseMode = undefined;
         params.warn?.("telegram stream preview send: HTML parse error, retrying as plain text");
         try {
           ({ sent } = await sendRenderedMessageWithThreadFallback({
@@ -307,8 +311,8 @@ export function createTelegramDraftStream(params: {
     if (sendGeneration !== generation) {
       params.onSupersededPreview?.({
         messageId: normalizedMessageId,
-        textSnapshot: renderedText,
-        parseMode: renderedParseMode,
+        textSnapshot: actualSentText,
+        parseMode: actualSentParseMode,
       });
       return true;
     }
