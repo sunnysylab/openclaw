@@ -23,6 +23,18 @@ import { FeishuStreamingSession, mergeStreamingText } from "./streaming-card.js"
 import { resolveReceiveIdType } from "./targets.js";
 import { addTypingIndicator, removeTypingIndicator, type TypingIndicatorState } from "./typing.js";
 
+/**
+ * Strip leaked thinking/thought content that should never reach the user.
+ */
+function stripLeakedThinkingContent(text: string): string {
+  let cleaned = text.replace(
+    /<(thinking|thought|antthinking)\b[^>]*>[\s\S]*?<\/\1>/gi,
+    "",
+  );
+  cleaned = cleaned.replace(/<(thinking|thought|antthinking)\b[^>]*>[\s\S]*$/gi, "");
+  return cleaned;
+}
+
 /** Detect if text contains markdown elements that benefit from card rendering */
 function shouldUseCard(text: string): boolean {
   return /```[\s\S]*?```/.test(text) || /\|.+\|[\r\n]+\|[-:| ]+\|/.test(text);
@@ -485,7 +497,11 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             if (!payload.text) {
               return;
             }
-            queueStreamingUpdate(payload.text, {
+            const cleaned = stripLeakedThinkingContent(payload.text);
+            if (!cleaned) {
+              return;
+            }
+            queueStreamingUpdate(cleaned, {
               dedupeWithLastPartial: true,
               mode: "snapshot",
             });
