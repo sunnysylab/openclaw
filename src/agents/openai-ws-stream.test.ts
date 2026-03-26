@@ -651,6 +651,17 @@ describe("buildAssistantMessageFromResponse", () => {
     expect(msg.usage.totalTokens).toBe(150);
   });
 
+  it("maps DashScope-style prompt_tokens/completion_tokens usage (OpenAI-compatible)", () => {
+    const response = {
+      ...makeResponseObject("resp_5b", "Hello"),
+      usage: { prompt_tokens: 200, completion_tokens: 75, total_tokens: 275 },
+    } as unknown as ResponseObject;
+    const msg = buildAssistantMessageFromResponse(response, modelInfo);
+    expect(msg.usage.input).toBe(200);
+    expect(msg.usage.output).toBe(75);
+    expect(msg.usage.totalTokens).toBe(275);
+  });
+
   it("sets model/provider/api from modelInfo", () => {
     const response = makeResponseObject("resp_6", "Hi");
     const msg = buildAssistantMessageFromResponse(response, modelInfo);

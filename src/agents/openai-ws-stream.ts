@@ -50,6 +50,7 @@ import {
   buildUsageWithNoCost,
   buildStreamErrorAssistantMessage,
 } from "./stream-message-shared.js";
+import { normalizeUsage } from "./usage.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-session state
@@ -585,8 +586,7 @@ export function buildAssistantMessageFromResponse(
     content,
     stopReason,
     usage: buildUsageWithNoCost({
-      input: response.usage?.input_tokens ?? 0,
-      output: response.usage?.output_tokens ?? 0,
+      ...normalizeUsage(response.usage),
       totalTokens: response.usage?.total_tokens ?? 0,
     }),
   });
