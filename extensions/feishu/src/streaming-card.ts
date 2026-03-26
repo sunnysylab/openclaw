@@ -67,17 +67,18 @@ export function sanitizeCardKitMarkdown(text: string): string {
   // We replace bare `<` that don't look like valid HTML/Feishu tags.
   // Valid patterns we preserve: <br>, <b>, <i>, <a href=...>, <at ...>, etc.
   // Everything else (e.g. `< foo`, `<3`, `x < y`) gets escaped.
-  result = result.replace(
-    /`[^`]*`/g, // skip inline code
-    (match) => "\0CODE" + match + "CODE\0",
-  );
+  const codeSpans: string[] = [];
+  result = result.replace(/`[^`]*`/g, (match) => {
+    codeSpans.push(match);
+    return `\x00CODESPAN${codeSpans.length - 1}\x00`;
+  });
   result = result.replace(
     /<(?!\/?(?:a|b|i|em|strong|br|p|div|span|img|at|code|pre)\b)[^>\n]{0,80}(?!>)$/gm,
     (m) => {
       return m.replace(/</g, "\\<");
     },
   );
-  result = result.replace(/\0CODE/g, "").replace(/CODE\0/g, "");
+  result = result.replace(/\x00CODESPAN(\d+)\x00/g, (_, idx) => codeSpans[Number(idx)]);
 
   return result;
 }
