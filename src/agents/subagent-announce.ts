@@ -666,7 +666,7 @@ async function buildCompactAnnounceStatsLine(params: {
   const input = typeof entry?.inputTokens === "number" ? entry.inputTokens : 0;
   const output = typeof entry?.outputTokens === "number" ? entry.outputTokens : 0;
   const ioTotal = input + output;
-  const promptCache = resolveTotalTokens(entry, { allowStaleEstimate: true });
+  const promptCache = resolveTotalTokens(entry);
   const runtimeMs =
     typeof params.startedAt === "number" && typeof params.endedAt === "number"
       ? Math.max(0, params.endedAt - params.startedAt)

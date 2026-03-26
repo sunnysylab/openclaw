@@ -186,7 +186,7 @@ export function deriveSessionTotalTokens(params: {
         cacheRead: usage?.cacheRead,
         cacheWrite: usage?.cacheWrite,
       }) ??
-      (usage?.total !== undefined && usage.total > 0 && usage.output === 0
+      (usage?.total !== undefined && usage.total >= 0 && usage.output === 0
         ? usage.total
         : undefined));
 

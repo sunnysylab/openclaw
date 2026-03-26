@@ -52,10 +52,15 @@ export function shouldAllowSilentLocalPairing(params: {
   isControlUi: boolean;
   isWebchat: boolean;
   reason: "not-paired" | "role-upgrade" | "scope-upgrade" | "metadata-upgrade";
+  connectParams?: ConnectParams;
 }): boolean {
+  const isTandem =
+    params.connectParams?.client?.id === "webchat" &&
+    params.connectParams?.client?.mode === "webchat";
+  const isLocalish = params.isLocalClient || (isTandem && params.hasBrowserOriginHeader); // Trust Tandem more if it has origin
   return (
-    params.isLocalClient &&
-    (!params.hasBrowserOriginHeader || params.isControlUi || params.isWebchat) &&
+    isLocalish &&
+    (!params.hasBrowserOriginHeader || params.isControlUi || params.isWebchat || isTandem) &&
     (params.reason === "not-paired" || params.reason === "scope-upgrade")
   );
 }

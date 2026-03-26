@@ -143,7 +143,7 @@ export async function persistSessionUsageUpdate(params: {
             if (modelChanged) {
               patch.totalTokensEstimate = undefined;
             } else {
-              if (totalTokens > 0) {
+              if (totalTokens > 0 || (totalTokens === 0 && patch.totalTokensFresh)) {
                 patch.totalTokensEstimate = totalTokens;
               }
               if (totalTokens === 0 && !patch.totalTokensFresh) {
