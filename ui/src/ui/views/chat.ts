@@ -1225,9 +1225,10 @@ export function renderChat(props: ChatProps) {
       }
 
       <!-- Input bar -->
-      <div class="agent-chat__input">
+      <div class="agent-chat__input-wrap">
         ${renderSlashMenu(requestUpdate, props)}
-        ${renderAttachmentPreview(props)}
+        <div class="agent-chat__input">
+          ${renderAttachmentPreview(props)}
 
         <input
           type="file"
@@ -1369,7 +1370,8 @@ export function renderChat(props: ChatProps) {
           </div>
         </div>
       </div>
-    </section>
+    </div>
+  </section>
   `;
 }
 
