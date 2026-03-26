@@ -1754,6 +1754,70 @@ describe("wrapOllamaCompatNumCtx", () => {
     expect((payloadSeen?.options as Record<string, unknown> | undefined)?.num_ctx).toBe(202752);
     expect(downstream).toHaveBeenCalledTimes(1);
   });
+
+  it("deserializes assistant tool_call arguments for Ollama OpenAI-compatible payloads", () => {
+    let payloadSeen: Record<string, unknown> | undefined;
+    const baseFn = vi.fn((_model, _context, options) => {
+      const payload: Record<string, unknown> = {
+        messages: [
+          {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: {
+                  name: "read",
+                  arguments: '{"path":"/tmp/test.txt"}',
+                },
+              },
+            ],
+          },
+        ],
+      };
+      options?.onPayload?.(payload, _model);
+      payloadSeen = payload;
+      return {} as never;
+    });
+
+    const wrapped = wrapOllamaCompatNumCtx(baseFn as never, 8192);
+    void wrapped({} as never, {} as never, undefined as never);
+
+    expect(((payloadSeen?.messages as Array<Record<string, unknown>>)[0]?.tool_calls as Array<
+      Record<string, unknown>
+    >)[0]?.function).toEqual({
+      name: "read",
+      arguments: { path: "/tmp/test.txt" },
+    });
+  });
+
+  it("deserializes assistant function_call arguments for Ollama OpenAI-compatible payloads", () => {
+    let payloadSeen: Record<string, unknown> | undefined;
+    const baseFn = vi.fn((_model, _context, options) => {
+      const payload: Record<string, unknown> = {
+        messages: [
+          {
+            role: "assistant",
+            function_call: {
+              name: "exec",
+              arguments: '{"command":"pwd"}',
+            },
+          },
+        ],
+      };
+      options?.onPayload?.(payload, _model);
+      payloadSeen = payload;
+      return {} as never;
+    });
+
+    const wrapped = wrapOllamaCompatNumCtx(baseFn as never, 8192);
+    void wrapped({} as never, {} as never, undefined as never);
+
+    expect((payloadSeen?.messages as Array<Record<string, unknown>>)[0]?.function_call).toEqual({
+      name: "exec",
+      arguments: { command: "pwd" },
+    });
+  });
 });
 
 describe("resolveOllamaCompatNumCtxEnabled", () => {

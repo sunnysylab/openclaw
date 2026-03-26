@@ -467,6 +467,63 @@ export function shouldInjectOllamaCompatNumCtx(params: {
   });
 }
 
+function ensureOllamaCompatArgsObject(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // fall through to empty object
+    }
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function normalizeOllamaCompatMessageToolArgs(payloadRecord: Record<string, unknown>): void {
+  const messages = payloadRecord.messages;
+  if (!Array.isArray(messages)) {
+    return;
+  }
+
+  for (const message of messages) {
+    if (!message || typeof message !== "object" || Array.isArray(message)) {
+      continue;
+    }
+    const messageRecord = message as Record<string, unknown>;
+
+    const functionCall = messageRecord.function_call;
+    if (functionCall && typeof functionCall === "object" && !Array.isArray(functionCall)) {
+      const functionCallRecord = functionCall as Record<string, unknown>;
+      if (Object.hasOwn(functionCallRecord, "arguments")) {
+        functionCallRecord.arguments = ensureOllamaCompatArgsObject(functionCallRecord.arguments);
+      }
+    }
+
+    const toolCalls = messageRecord.tool_calls;
+    if (!Array.isArray(toolCalls)) {
+      continue;
+    }
+    for (const toolCall of toolCalls) {
+      if (!toolCall || typeof toolCall !== "object" || Array.isArray(toolCall)) {
+        continue;
+      }
+      const functionSpec = (toolCall as Record<string, unknown>).function;
+      if (!functionSpec || typeof functionSpec !== "object" || Array.isArray(functionSpec)) {
+        continue;
+      }
+      const functionRecord = functionSpec as Record<string, unknown>;
+      if (Object.hasOwn(functionRecord, "arguments")) {
+        functionRecord.arguments = ensureOllamaCompatArgsObject(functionRecord.arguments);
+      }
+    }
+  }
+}
+
 export function wrapOllamaCompatNumCtx(baseFn: StreamFn | undefined, numCtx: number): StreamFn {
   const streamFn = baseFn ?? streamSimple;
   return (model, context, options) =>
@@ -477,6 +534,7 @@ export function wrapOllamaCompatNumCtx(baseFn: StreamFn | undefined, numCtx: num
           return options?.onPayload?.(payload, model);
         }
         const payloadRecord = payload as Record<string, unknown>;
+        normalizeOllamaCompatMessageToolArgs(payloadRecord);
         if (!payloadRecord.options || typeof payloadRecord.options !== "object") {
           payloadRecord.options = {};
         }
