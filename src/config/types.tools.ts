@@ -529,6 +529,18 @@ export type ToolsConfig = {
         timeoutSeconds?: number;
       };
     };
+    research?: {
+      /** Enable web research tool (default: true when API key is present). */
+      enabled?: boolean;
+      /** You.com API key for research (optional; defaults to YDC_API_KEY env var). */
+      apiKey?: SecretInput;
+      /** Default research effort level ("low", "standard", or "high"). */
+      defaultEffort?: string;
+      /** Timeout in seconds for research requests. */
+      timeoutSeconds?: number;
+      /** Cache TTL in minutes for research results. */
+      cacheTtlMinutes?: number;
+    };
   };
   media?: MediaToolsConfig;
   links?: LinkToolsConfig;

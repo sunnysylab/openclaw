@@ -346,7 +346,6 @@ function collectToolsWebResearchAssignments(params: {
   });
 }
 
-
 function collectCronAssignments(params: {
   config: OpenClawConfig;
   defaults: SecretDefaults | undefined;
