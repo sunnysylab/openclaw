@@ -755,7 +755,6 @@ export function attachGatewayWsMessageHandler(params: {
               isControlUi,
               isWebchat,
               reason,
-              connectParams,
             });
             logWsControl.info(
               `Silent pairing for ${clientLabel}: allow=${allowSilentLocalPairing} reason=${reason} isLocalClient=${isLocalClient} hasBrowserOriginHeader=${hasBrowserOriginHeader} isControlUi=${isControlUi} isWebchat=${isWebchat}`,
