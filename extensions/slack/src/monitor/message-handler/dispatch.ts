@@ -229,6 +229,9 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     },
   });
 
+  const suppressAssistantText =
+    prepared.channelConfig?.suppressAssistantText ?? account.config.suppressAssistantText ?? false;
+
   const slackStreaming = resolveSlackStreamingConfig({
     streaming: account.config.streaming,
     streamMode: account.config.streamMode,
@@ -253,10 +256,12 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     streamingEnabled,
     threadTs: streamThreadHint,
   });
-  const shouldUseDraftStream = shouldInitializeSlackDraftStream({
-    previewStreamingEnabled,
-    useStreaming,
-  });
+  const shouldUseDraftStream =
+    !suppressAssistantText &&
+    shouldInitializeSlackDraftStream({
+      previewStreamingEnabled,
+      useStreaming,
+    });
   let streamSession: SlackStreamSession | null = null;
   let streamFailed = false;
   let usedReplyThreadTs: string | undefined;
@@ -333,6 +338,10 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     ...replyPipeline,
     humanDelay: resolveHumanDelayConfig(cfg, route.agentId),
     deliver: async (payload) => {
+      if (suppressAssistantText) {
+        logVerbose("slack: suppressed assistant text (suppressAssistantText=true)");
+        return;
+      }
       if (useStreaming) {
         await deliverWithStreaming(payload);
         return;
@@ -512,35 +521,22 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     }
   }
 
-  const anyReplyDelivered = queuedFinal || (counts.block ?? 0) > 0 || (counts.final ?? 0) > 0;
+  const anyReplyDelivered =
+    !suppressAssistantText && (queuedFinal || (counts.block ?? 0) > 0 || (counts.final ?? 0) > 0);
 
   // Record thread participation only when we actually delivered a reply and
   // know the thread ts that was used (set by deliverNormally, streaming start,
   // or draft stream). Falls back to statusThreadTs for edge cases.
+  // Note: when suppressAssistantText is true, the message tool records
+  // participation independently via action-runtime.ts.
   const participationThreadTs = usedReplyThreadTs ?? statusThreadTs;
   if (anyReplyDelivered && participationThreadTs) {
     recordSlackThreadParticipation(account.accountId, message.channel, participationThreadTs);
   }
 
-  if (!anyReplyDelivered) {
-    await draftStream?.clear();
-    if (prepared.isRoomish) {
-      clearHistoryEntriesIfEnabled({
-        historyMap: ctx.channelHistories,
-        historyKey: prepared.historyKey,
-        limit: ctx.historyLimit,
-      });
-    }
-    return;
-  }
-
-  if (shouldLogVerbose()) {
-    const finalCount = counts.final;
-    logVerbose(
-      `slack: delivered ${finalCount} reply${finalCount === 1 ? "" : "ies"} to ${prepared.replyTarget}`,
-    );
-  }
-
+  // Always clean up ack/typing reactions regardless of whether any text reply
+  // was delivered — the message tool may have already replied, or the agent
+  // may have been intentionally silent.
   removeAckReactionAfterReply({
     removeAfterReply: ctx.removeAckAfterReply,
     ackReactionPromise: prepared.ackReactionPromise,
@@ -564,6 +560,25 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
       });
     },
   });
+
+  if (!anyReplyDelivered) {
+    await draftStream?.clear();
+    if (prepared.isRoomish) {
+      clearHistoryEntriesIfEnabled({
+        historyMap: ctx.channelHistories,
+        historyKey: prepared.historyKey,
+        limit: ctx.historyLimit,
+      });
+    }
+    return;
+  }
+
+  if (shouldLogVerbose()) {
+    const finalCount = counts.final;
+    logVerbose(
+      `slack: delivered ${finalCount} reply${finalCount === 1 ? "" : "ies"} to ${prepared.replyTarget}`,
+    );
+  }
 
   if (prepared.isRoomish) {
     clearHistoryEntriesIfEnabled({
