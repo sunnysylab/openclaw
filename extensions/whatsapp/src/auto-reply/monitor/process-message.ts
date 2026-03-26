@@ -356,6 +356,14 @@ export async function processMessage(params: {
         )
       : undefined;
 
+  // Resolve per-group systemPrompt (specific JID entry, then wildcard "*" fallback).
+  const whatsAppGroups = params.cfg.channels?.whatsapp?.groups;
+  const groupEntry =
+    params.msg.chatType === "group"
+      ? (whatsAppGroups?.[params.msg.from] ?? whatsAppGroups?.["*"])
+      : undefined;
+  const groupSystemPrompt = groupEntry?.systemPrompt?.trim() || undefined;
+
   const ctxPayload = finalizeInboundContext({
     Body: combinedBody,
     BodyForAgent: params.msg.body,
@@ -376,6 +384,7 @@ export async function processMessage(params: {
     ChatType: params.msg.chatType,
     ConversationLabel: params.msg.chatType === "group" ? conversationId : params.msg.from,
     GroupSubject: params.msg.groupSubject,
+    GroupSystemPrompt: groupSystemPrompt,
     GroupMembers: formatGroupMembers({
       participants: params.msg.groupParticipants,
       roster: params.groupMemberNames.get(params.groupHistoryKey),

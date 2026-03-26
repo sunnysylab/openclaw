@@ -33,6 +33,7 @@ import { buildTtsSystemPromptHint } from "../../../tts/tts.js";
 import { resolveUserPath } from "../../../utils.js";
 import { normalizeMessageChannel } from "../../../utils/message-channel.js";
 import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
+import { resolveWhatsAppReactionLevel } from "../../../web/reaction-level.js";
 import { resolveOpenClawAgentDir } from "../../agent-paths.js";
 import { resolveSessionAgentIds } from "../../agent-scope.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
@@ -1915,6 +1916,14 @@ export async function runEmbeddedAttempt(
               const level = resolved.agentReactionGuidance;
               return level ? { level, channel: "Signal" } : undefined;
             }
+            if (runtimeChannel === "whatsapp") {
+              const resolved = resolveWhatsAppReactionLevel({
+                cfg: params.config,
+                accountId: params.agentAccountId ?? undefined,
+              });
+              const level = resolved.agentReactionGuidance;
+              return level ? { level, channel: "WhatsApp" } : undefined;
+            }
             return undefined;
           })()
         : undefined;
@@ -2605,6 +2614,7 @@ export async function runEmbeddedAttempt(
         onBlockReply: params.onBlockReply,
         onBlockReplyFlush: params.onBlockReplyFlush,
         blockReplyBreak: params.blockReplyBreak,
+        blockReplyPolicy: params.blockReplyPolicy,
         blockReplyChunking: params.blockReplyChunking,
         onPartialReply: params.onPartialReply,
         onAssistantMessageStart: params.onAssistantMessageStart,
