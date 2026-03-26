@@ -339,14 +339,6 @@ export async function doctorCommand(
       })
     : { checked: false, ready: false };
   await noteMemorySearchHealth(cfg, { gatewayMemoryProbe });
-  await maybeRepairGatewayDaemon({
-    cfg,
-    runtime,
-    prompter,
-    options,
-    gatewayDetailsMessage: gatewayDetails.message,
-    healthOk,
-  });
 
   const shouldWriteConfig =
     configResult.shouldWriteConfig || JSON.stringify(cfg) !== JSON.stringify(cfgForPersistence);
@@ -368,6 +360,28 @@ export async function doctorCommand(
     if (await shouldSuggestMemorySystem(workspaceDir)) {
       note(MEMORY_SYSTEM_PROMPT, "Workspace");
     }
+  }
+
+  const tokenChanged = cfg.gateway?.auth?.token !== cfgForPersistence.gateway?.auth?.token;
+
+  await maybeRepairGatewayDaemon({
+    cfg,
+    runtime,
+    prompter,
+    options,
+    gatewayDetailsMessage: gatewayDetails.message,
+    healthOk,
+  });
+
+  if (tokenChanged && healthOk) {
+    await maybeRepairGatewayDaemon({
+      cfg,
+      runtime,
+      prompter,
+      options,
+      gatewayDetailsMessage: "Token updated",
+      healthOk: false,
+    });
   }
 
   const finalSnapshot = await readConfigFileSnapshot();
