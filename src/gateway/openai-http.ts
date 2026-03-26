@@ -445,6 +445,7 @@ export async function handleOpenAiHttpRequest(
     req,
     model,
     user,
+    agentId: resolvedAgentId,
     sessionPrefix: providerPrefix,
     defaultMessageChannel: "webchat",
     useMessageChannelHeader: true,
