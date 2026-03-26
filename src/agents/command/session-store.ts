@@ -110,16 +110,18 @@ export async function updateSessionStoreAfterAgentRun(params: {
       contextTokens,
       promptTokens,
     });
-    const runEstimatedCostUsd = resolveNonNegativeNumber(
-      estimateUsageCost({
-        usage: usage ?? {},
-        cost: resolveModelCostConfig({
-          provider: providerUsed,
-          model: modelUsed,
-          config: cfg,
-        }),
-      }),
-    );
+    const runEstimatedCostUsd = usage
+      ? resolveNonNegativeNumber(
+          estimateUsageCost({
+            usage,
+            cost: resolveModelCostConfig({
+              provider: providerUsed,
+              model: modelUsed,
+              config: cfg,
+            }),
+          }),
+        )
+      : undefined;
     const lastCallUsage = result.meta.agentMeta?.lastCallUsage;
     const hasCurrentUsage =
       hasNonzeroUsage(usage) ||
