@@ -27,10 +27,7 @@ import { addTypingIndicator, removeTypingIndicator, type TypingIndicatorState } 
  * Strip leaked thinking/thought content that should never reach the user.
  */
 function stripLeakedThinkingContent(text: string): string {
-  let cleaned = text.replace(
-    /<(thinking|thought|antthinking)\b[^>]*>[\s\S]*?<\/\1>/gi,
-    "",
-  );
+  let cleaned = text.replace(/<(thinking|thought|antthinking)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
   cleaned = cleaned.replace(/<(thinking|thought|antthinking)\b[^>]*>[\s\S]*$/gi, "");
   return cleaned;
 }
