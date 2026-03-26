@@ -333,7 +333,7 @@ describe("resolveAllowAlwaysPatterns", () => {
 
     const { persisted } = resolvePersistedPatterns({
       command: `sh -lc "exec
-$0 \\"$1\\"" touch ${marker}`,
+$0 "$1"" touch ${marker}`,
       dir,
       env,
       safeBins,
@@ -342,7 +342,7 @@ $0 \\"$1\\"" touch ${marker}`,
 
     const second = evaluateShellAllowlist({
       command: `sh -lc "exec
-$0 \\"$1\\"" touch ${marker}`,
+$0 "$1"" touch ${marker}`,
       allowlist: [{ pattern: touch }],
       safeBins,
       cwd: dir,
