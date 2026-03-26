@@ -958,6 +958,7 @@ async function sendSubagentAnnounceDirectly(params: {
   sourceChannel?: string;
   sourceTool?: string;
   requesterIsSubagent: boolean;
+  announceType?: string;
   signal?: AbortSignal;
 }): Promise<SubagentAnnounceDeliveryResult> {
   if (params.signal?.aborted) {
@@ -989,9 +990,18 @@ async function sendSubagentAnnounceDirectly(params: {
       typeof effectiveDirectOrigin?.to === "string" ? effectiveDirectOrigin.to.trim() : "";
     const hasDeliverableDirectTarget =
       !params.requesterIsSubagent && Boolean(directChannel) && Boolean(directTo);
+    // When completionRouteViaParent is enabled, suppress external delivery for
+    // completion messages so the parent session can synthesize all sub-agent
+    // results before responding. Cron completions are excluded — they must
+    // always deliver directly to preserve the cron delivery contract.
+    const completionRouteViaParent =
+      params.expectsCompletionMessage &&
+      cfg?.agents?.defaults?.subagents?.completionRouteViaParent === true &&
+      params.announceType !== "cron job";
     const shouldDeliverExternally =
       !params.requesterIsSubagent &&
-      (!params.expectsCompletionMessage || hasDeliverableDirectTarget);
+      (!params.expectsCompletionMessage || hasDeliverableDirectTarget) &&
+      !completionRouteViaParent;
 
     const threadId =
       effectiveDirectOrigin?.threadId != null && effectiveDirectOrigin.threadId !== ""
@@ -1065,6 +1075,7 @@ async function deliverSubagentAnnouncement(params: {
   expectsCompletionMessage: boolean;
   bestEffortDeliver?: boolean;
   directIdempotencyKey: string;
+  announceType?: string;
   signal?: AbortSignal;
 }): Promise<SubagentAnnounceDeliveryResult> {
   return await runSubagentAnnounceDispatch({
@@ -1097,6 +1108,7 @@ async function deliverSubagentAnnouncement(params: {
         sourceTool: params.sourceTool,
         requesterIsSubagent: params.requesterIsSubagent,
         expectsCompletionMessage: params.expectsCompletionMessage,
+        announceType: params.announceType,
         signal: params.signal,
         bestEffortDeliver: params.bestEffortDeliver,
       }),
@@ -1666,6 +1678,7 @@ export async function runSubagentAnnounceFlow(params: {
       expectsCompletionMessage: expectsCompletionMessage,
       bestEffortDeliver: params.bestEffortDeliver,
       directIdempotencyKey,
+      announceType,
       signal: params.signal,
     });
     didAnnounce = delivery.delivered;
