@@ -72,6 +72,7 @@ describe("describeImageWithModel", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
 
+
     vi.clearAllMocks();
     fetchMock.mockResolvedValue({
       ok: true,
