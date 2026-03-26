@@ -10,14 +10,18 @@ const { resolvePluginToolsMock } = vi.hoisted(() => ({
 vi.mock("../plugins/tools.js", () => ({
   resolvePluginTools: resolvePluginToolsMock,
   getPluginToolMeta: vi.fn(() => undefined),
+  copyPluginToolMeta: vi.fn(),
 }));
 
-import { createOpenClawTools } from "./openclaw-tools.js";
-import { createOpenClawCodingTools } from "./pi-tools.js";
+let createOpenClawTools: typeof import("./openclaw-tools.js").createOpenClawTools;
+let createOpenClawCodingTools: typeof import("./pi-tools.js").createOpenClawCodingTools;
 
 describe("createOpenClawTools plugin context", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     resolvePluginToolsMock.mockClear();
+    ({ createOpenClawTools } = await import("./openclaw-tools.js"));
+    ({ createOpenClawCodingTools } = await import("./pi-tools.js"));
   });
 
   it("forwards trusted requester sender identity to plugin tool context", () => {
