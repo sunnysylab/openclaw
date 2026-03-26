@@ -129,6 +129,26 @@ describe("memory embedding batches", () => {
     expect(calls).toBe(2);
   }, 10000);
 
+  it("honors configured remote batch timeout for builtin embedding batches", async () => {
+    const memoryDir = fx.getMemoryDir();
+    const managerSmall = fx.getManagerSmall();
+    const line = "f".repeat(120);
+    const content = Array.from({ length: 4 }, () => line).join("\n");
+    await fs.writeFile(path.join(memoryDir, "2026-01-09.md"), content);
+
+    (managerSmall as unknown as { batch: { timeoutMs: number } }).batch.timeoutMs = 1000;
+    embedBatch.mockImplementation(
+      async () =>
+        await new Promise<number[][]>((resolve) => {
+          setTimeout(() => resolve([[0, 1, 0]]), 1500);
+        }),
+    );
+
+    await expect(managerSmall.sync({ reason: "test" })).rejects.toThrow(
+      "memory embeddings batch timed out after 1s",
+    );
+  }, 5000);
+
   it("skips empty chunks so embeddings input stays valid", async () => {
     const memoryDir = fx.getMemoryDir();
     const managerSmall = fx.getManagerSmall();

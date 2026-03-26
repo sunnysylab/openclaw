@@ -135,5 +135,4 @@ ui/src/ui/views/__screenshots__
 ui/.vitest-attachments
 docs/superpowers
 
-# Deprecated changelog fragment workflow
-changelog/fragments/
+dist-runtime/

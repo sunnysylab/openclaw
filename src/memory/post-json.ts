@@ -10,26 +10,34 @@ export async function postJson<T>(params: {
   attachStatus?: boolean;
   parse: (payload: unknown) => T | Promise<T>;
 }): Promise<T> {
-  return await withRemoteHttpResponse({
-    url: params.url,
-    ssrfPolicy: params.ssrfPolicy,
-    init: {
-      method: "POST",
-      headers: params.headers,
-      body: JSON.stringify(params.body),
-    },
-    onResponse: async (res) => {
-      if (!res.ok) {
-        const text = await res.text();
-        const err = new Error(`${params.errorPrefix}: ${res.status} ${text}`) as Error & {
-          status?: number;
-        };
-        if (params.attachStatus) {
-          err.status = res.status;
+  try {
+    return await withRemoteHttpResponse({
+      url: params.url,
+      ssrfPolicy: params.ssrfPolicy,
+      init: {
+        method: "POST",
+        headers: params.headers,
+        body: JSON.stringify(params.body),
+      },
+      onResponse: async (res) => {
+        if (!res.ok) {
+          const text = await res.text();
+          const err = new Error(`${params.errorPrefix}: ${res.status} ${text}`) as Error & {
+            status?: number;
+          };
+          if (params.attachStatus) {
+            err.status = res.status;
+          }
+          throw err;
         }
-        throw err;
-      }
-      return await params.parse(await res.json());
-    },
-  });
+        return await params.parse(await res.json());
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message === "fetch failed" || /:\s*fetch failed$/i.test(message)) {
+      throw new Error(`${params.errorPrefix}: ${message} (${params.url})`, { cause: err });
+    }
+    throw err;
+  }
 }
