@@ -292,6 +292,60 @@ function collectMessagesTtsAssignments(params: {
   });
 }
 
+function collectToolsWebFetchYouAssignments(params: {
+  config: OpenClawConfig;
+  defaults: SecretDefaults | undefined;
+  context: ResolverContext;
+}): void {
+  const tools = params.config.tools as Record<string, unknown> | undefined;
+  if (!isRecord(tools) || !isRecord(tools.web) || !isRecord(tools.web.fetch)) {
+    return;
+  }
+  const fetch = tools.web.fetch;
+  if (!isRecord(fetch.you)) {
+    return;
+  }
+  const you = fetch.you;
+  const active = fetch.enabled !== false && you.enabled !== false;
+  collectSecretInputAssignment({
+    value: you.apiKey,
+    path: "tools.web.fetch.you.apiKey",
+    expected: "string",
+    defaults: params.defaults,
+    context: params.context,
+    active,
+    inactiveReason: !active ? "tools.web.fetch.you is disabled." : undefined,
+    apply: (value) => {
+      you.apiKey = value;
+    },
+  });
+}
+
+function collectToolsWebResearchAssignments(params: {
+  config: OpenClawConfig;
+  defaults: SecretDefaults | undefined;
+  context: ResolverContext;
+}): void {
+  const tools = params.config.tools as Record<string, unknown> | undefined;
+  if (!isRecord(tools) || !isRecord(tools.web) || !isRecord(tools.web.research)) {
+    return;
+  }
+  const research = tools.web.research;
+  const active = research.enabled !== false;
+  collectSecretInputAssignment({
+    value: research.apiKey,
+    path: "tools.web.research.apiKey",
+    expected: "string",
+    defaults: params.defaults,
+    context: params.context,
+    active,
+    inactiveReason: !active ? "tools.web.research is disabled." : undefined,
+    apply: (value) => {
+      research.apiKey = value;
+    },
+  });
+}
+
 function collectCronAssignments(params: {
   config: OpenClawConfig;
   defaults: SecretDefaults | undefined;
@@ -425,5 +479,7 @@ export function collectCoreConfigAssignments(params: {
   collectGatewayAssignments(params);
   collectSandboxSshAssignments(params);
   collectMessagesTtsAssignments(params);
+  collectToolsWebFetchYouAssignments(params);
+  collectToolsWebResearchAssignments(params);
   collectCronAssignments(params);
 }
