@@ -486,7 +486,10 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             if (!payload.text) {
               return;
             }
-            const cleaned = stripReasoningTagsFromText(payload.text, { mode: "strict", trim: "both" });
+            const cleaned = stripReasoningTagsFromText(payload.text, {
+              mode: "strict",
+              trim: "both",
+            });
             if (!cleaned) {
               return;
             }
