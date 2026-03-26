@@ -1,4 +1,5 @@
 import type { SessionSendPolicyConfig } from "./types.base.js";
+import type { SecretInput } from "./types.secrets.js";
 
 export type MemoryBackend = "builtin" | "qmd";
 export type MemoryCitationsMode = "auto" | "on" | "off";
@@ -7,7 +8,29 @@ export type MemoryQmdSearchMode = "query" | "search" | "vsearch";
 export type MemoryConfig = {
   backend?: MemoryBackend;
   citations?: MemoryCitationsMode;
+  mem0?: MemoryMem0Config;
   qmd?: MemoryQmdConfig;
+};
+
+export type MemoryMem0Config = {
+  enabled?: boolean;
+  /**
+   * API key or secret reference. For local self-hosted instances this can be any
+   * non-empty string (e.g. "local") — the value is sent as a Bearer token but
+   * ignored by the default open-source Mem0 server.
+   */
+  apiKey?: SecretInput;
+  /**
+   * Base URL of the Mem0 REST API.
+   * Defaults to `http://localhost:8000/v1` (local Docker/OSS instance).
+   * For the Mem0 cloud set this to `https://api.mem0.ai/v1`.
+   */
+  baseUrl?: string;
+  /**
+   * How long (ms) to wait for a Mem0 response before falling back to local results only.
+   * Defaults to 3000 ms.
+   */
+  fallbackTimeoutMs?: number;
 };
 
 export type MemoryQmdConfig = {
