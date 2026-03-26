@@ -51,6 +51,7 @@ const DEFAULT_CLAUDE_BACKEND: CliBackendConfig = {
   ],
   output: "json",
   input: "arg",
+  maxPromptArgChars: 100_000,
   modelArg: "--model",
   modelAliases: CLAUDE_MODEL_ALIASES,
   sessionArg: "--session-id",
