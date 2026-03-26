@@ -91,8 +91,10 @@ describe("plugin-sdk exports", () => {
     expect([...runtimeExports].toSorted()).toEqual([
       "delegateCompactionToRuntime",
       "emptyPluginConfigSchema",
+      "normalizeAccountId",
       "onDiagnosticEvent",
       "registerContextEngine",
+      "resolvePreferredOpenClawTmpDir",
     ]);
   });
 
