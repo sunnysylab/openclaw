@@ -1,5 +1,4 @@
 #!/usr/bin/env -S node --import tsx
-
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
@@ -47,6 +46,7 @@ const MAX_CALVER_DISTANCE_DAYS = 2;
 const REQUIRED_PACKED_PATHS = ["dist/control-ui/index.html"];
 const CONTROL_UI_ASSET_PREFIX = "dist/control-ui/assets/";
 const NPM_PACK_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+const UTF8_DECODER = new TextDecoder();
 
 function normalizeRepoUrl(value: unknown): string {
   if (typeof value !== "string") {
@@ -339,12 +339,12 @@ type ExecFailure = Error & {
   stdout?: string | Uint8Array;
 };
 
-function toTrimmedUtf8(value: string | Uint8Array | undefined): string {
+export function toTrimmedUtf8(value: string | Uint8Array | undefined): string {
   if (typeof value === "string") {
     return value.trim();
   }
   if (value instanceof Uint8Array) {
-    return new TextDecoder().decode(value).trim();
+    return UTF8_DECODER.decode(value).trim();
   }
   return "";
 }

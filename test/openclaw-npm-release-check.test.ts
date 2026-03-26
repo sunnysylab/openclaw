@@ -7,6 +7,7 @@ import {
   parseReleaseTagVersion,
   parseReleaseVersion,
   resolveNpmCommandInvocation,
+  toTrimmedUtf8,
   utcCalendarDayDistance,
 } from "../scripts/openclaw-npm-release-check.ts";
 
@@ -242,5 +243,13 @@ describe("collectReleasePackageMetadataErrors", () => {
         peerDependencies: { "node-llama-cpp": "3.18.1" },
       }),
     ).toContain('package.json peerDependenciesMeta["node-llama-cpp"].optional must be true.');
+  });
+});
+
+describe("toTrimmedUtf8", () => {
+  it("decodes plain Uint8Array values as UTF-8 text", () => {
+    const encoded = new TextEncoder().encode("npm publish failed\n");
+
+    expect(toTrimmedUtf8(encoded)).toBe("npm publish failed");
   });
 });
