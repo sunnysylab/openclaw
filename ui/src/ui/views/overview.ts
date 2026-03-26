@@ -16,6 +16,7 @@ export type OverviewProps = {
   cronEnabled: boolean | null;
   cronNext: number | null;
   lastChannelsRefresh: number | null;
+  warnQueryToken: boolean;
   onSettingsChange: (next: UiSettings) => void;
   onPasswordChange: (next: string) => void;
   onSessionKeyChange: (next: string) => void;
@@ -124,6 +125,19 @@ export function renderOverview(props: OverviewProps) {
             >Docs: Insecure HTTP</a
           >
         </div>
+      </div>
+    `;
+  })();
+
+  const queryTokenHint = (() => {
+    if (props.connected || !props.lastError || !props.warnQueryToken) {
+      return null;
+    }
+    return html`
+      <div class="muted" style="margin-top: 8px">
+        Auth token must be passed as a URL fragment:
+        <span class="mono">/#token=&lt;token&gt;</span>.
+        Query parameters (<span class="mono">?token=</span>) are not sent securely.
       </div>
     `;
   })();
@@ -243,6 +257,7 @@ export function renderOverview(props: OverviewProps) {
               <div>${props.lastError}</div>
               ${authHint ?? ""}
               ${insecureContextHint ?? ""}
+              ${queryTokenHint ?? ""}
             </div>`
             : html`
                 <div class="callout" style="margin-top: 14px">

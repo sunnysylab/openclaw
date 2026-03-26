@@ -81,6 +81,9 @@ export function setLastActiveSessionKey(host: SettingsHost, next: string) {
   applySettings(host, { ...host.settings, lastActiveSessionKey: trimmed });
 }
 
+/** Set to true when the token is read from a query string (?token=) instead of a URL fragment. */
+export let warnQueryToken = false;
+
 export function applySettingsFromUrl(host: SettingsHost) {
   if (!window.location.search && !window.location.hash) {
     return;
@@ -89,13 +92,21 @@ export function applySettingsFromUrl(host: SettingsHost) {
   const params = new URLSearchParams(url.search);
   const hashParams = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
 
-  const tokenRaw = params.get("token") ?? hashParams.get("token");
+  const queryToken = params.get("token");
+  const hashToken = hashParams.get("token");
+  const tokenRaw = queryToken ?? hashToken;
   const passwordRaw = params.get("password") ?? hashParams.get("password");
   const sessionRaw = params.get("session") ?? hashParams.get("session");
   const gatewayUrlRaw = params.get("gatewayUrl") ?? hashParams.get("gatewayUrl");
   let shouldCleanUrl = false;
 
   if (tokenRaw != null) {
+    if (queryToken != null) {
+      warnQueryToken = true;
+      console.warn(
+        "[openclaw] Auth token passed as query parameter (?token=). Use URL fragment instead: #token=<token>. Query parameters may appear in server logs.",
+      );
+    }
     const token = tokenRaw.trim();
     if (token && token !== host.settings.token) {
       applySettings(host, { ...host.settings, token });
