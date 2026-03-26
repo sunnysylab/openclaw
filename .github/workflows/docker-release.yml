@@ -11,6 +11,8 @@ on:
       - "**/*.md"
       - "**/*.mdx"
       - ".agents/**"
+      - ".claude/**"
+      - ".codex/**"
       - "skills/**"
   workflow_dispatch:
     inputs:
