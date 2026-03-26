@@ -524,7 +524,52 @@ export function convertMessagesToInputItems(
     }
   }
 
-  return items;
+  // Collapse consecutive user messages that result from model-fallback retries.
+  // When error assistant messages are stripped (empty content), the user messages
+  // from each failed attempt become adjacent. Keep only the last in each run. (#31101)
+  return collapseConsecutiveUserMessages(items);
+}
+
+/**
+ * When model fallback retries inject duplicate user messages and the
+ * intervening error-assistant entries are dropped (empty content), the input
+ * ends up with consecutive user messages. Deduplicate by removing consecutive
+ * user messages with identical text content, keeping the last occurrence.
+ *
+ * Distinct consecutive user messages (e.g. user sends two different messages
+ * before the model responds) are preserved.
+ */
+function collapseConsecutiveUserMessages(items: InputItem[]): InputItem[] {
+  if (items.length <= 1) return items;
+  const out: InputItem[] = [];
+  for (const item of items) {
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      "role" in prev &&
+      prev.role === "user" &&
+      "role" in item &&
+      item.role === "user" &&
+      inputItemTextFingerprint(prev) === inputItemTextFingerprint(item)
+    ) {
+      out[out.length - 1] = item;
+      continue;
+    }
+    out.push(item);
+  }
+  return out;
+}
+
+/** Extract a comparable text fingerprint from a user input item. */
+function inputItemTextFingerprint(item: InputItem): string {
+  if (!("content" in item)) return "";
+  const content = (item as { content?: unknown }).content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((c: { type?: string }) => c.type === "input_text")
+    .map((c: { text?: string }) => c.text ?? "")
+    .join("\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
