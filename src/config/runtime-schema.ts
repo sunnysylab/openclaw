@@ -81,7 +81,7 @@ function mapChannelSchemaMetadataFromRegistry(
 
 export function loadGatewayRuntimeConfigSchema(): ConfigSchemaResponse {
   const cfg = loadConfig();
-  const pluginRegistry = loadPluginSchemaRegistry(cfg, { cache: true });
+  const pluginRegistry = loadPluginSchemaRegistry(cfg, { activate: false, cache: false });
   return buildConfigSchema({
     plugins: mapPluginSchemaMetadataFromRegistry(pluginRegistry),
     channels: mapActiveChannelSchemaMetadata(),
