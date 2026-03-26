@@ -259,10 +259,15 @@ gh auth status
 gh auth setup-git
 ```
 
-3. If `gh auth status` warns about missing `read:org`, refresh scopes:
+3. If `gh auth status` warns about missing `read:org`, mint a token that includes
+   that scope and re-assign the variable:
 
 ```powershell
-gh auth refresh -h github.com -s read:org
+$env:GH_TOKEN="<your-token-with-repo-and-read:org>"
+gh auth status
 ```
+
+`gh auth refresh -s read:org` only applies when you authenticated via `gh auth login`
+and have stored credentials to refresh (not when using `GH_TOKEN`).
 
 Never commit tokens or paste them into issues or pull requests.
