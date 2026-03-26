@@ -68,12 +68,15 @@ export function sanitizeCardKitMarkdown(text: string): string {
   // Valid patterns we preserve: <br>, <b>, <i>, <a href=...>, <at ...>, etc.
   // Everything else (e.g. `< foo`, `<3`, `x < y`) gets escaped.
   result = result.replace(
-    /`[^`]*`/g,                           // skip inline code
+    /`[^`]*`/g, // skip inline code
     (match) => "\0CODE" + match + "CODE\0",
   );
-  result = result.replace(/<(?!\/?(?:a|b|i|em|strong|br|p|div|span|img|at|code|pre)\b)[^>\n]{0,80}(?!>)$/gm, (m) => {
-    return m.replace(/</g, "\\<");
-  });
+  result = result.replace(
+    /<(?!\/?(?:a|b|i|em|strong|br|p|div|span|img|at|code|pre)\b)[^>\n]{0,80}(?!>)$/gm,
+    (m) => {
+      return m.replace(/</g, "\\<");
+    },
+  );
   result = result.replace(/\0CODE/g, "").replace(/CODE\0/g, "");
 
   return result;
