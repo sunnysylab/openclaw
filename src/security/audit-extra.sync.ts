@@ -24,6 +24,8 @@ import {
   DEFAULT_DANGEROUS_NODE_COMMANDS,
   resolveNodeCommandAllowlist,
 } from "../gateway/node-command-policy.js";
+import { listBundledWebSearchProviders } from "../plugins/bundled-web-search.js";
+import { normalizePluginsConfig, resolveEffectiveEnableState } from "../plugins/config-state.js";
 import { inferParamBFromIdOrName } from "../shared/model-param-b.js";
 import { pickSandboxToolPolicy } from "./audit-tool-policy.js";
 
@@ -330,15 +332,34 @@ function isWebSearchEnabled(cfg: OpenClawConfig, env: NodeJS.ProcessEnv): boolea
   if (enabled === false) {
     return false;
   }
-  // When a keyed provider is explicitly pinned, web_search is only capable
-  // if the corresponding credentials are present (otherwise it returns a
-  // missing-key error at runtime). When no provider is set, auto-detection
-  // falls through to You.com free tier which always works.
-  const provider = cfg.tools?.web?.search?.provider;
-  if (provider && provider !== "you") {
-    const search = cfg.tools?.web?.search;
-    // Check the top-level apiKey, provider sub-config key, and the env var(s)
-    // specific to the pinned provider — not all provider env vars.
+  const search = cfg.tools?.web?.search;
+  const provider =
+    search && "provider" in search && typeof search.provider === "string"
+      ? search.provider.trim().toLowerCase()
+      : "";
+
+  // Resolve which bundled providers are actually enabled under plugin config.
+  const normalizedPlugins = normalizePluginsConfig(cfg.plugins);
+  const bundledProviders = listBundledWebSearchProviders().filter(
+    (p) =>
+      resolveEffectiveEnableState({
+        id: p.pluginId,
+        origin: "bundled",
+        config: normalizedPlugins,
+        rootConfig: cfg,
+      }).enabled,
+  );
+
+  if (provider) {
+    // Explicit provider pinned — it must be enabled and have credentials
+    // (keyless providers are available without credentials).
+    const entry = bundledProviders.find((p) => p.id === provider);
+    if (!entry) {
+      return false;
+    }
+    if (entry.requiresCredential === false) {
+      return true;
+    }
     const sub =
       search && typeof search === "object"
         ? (search as Record<string, unknown>)[provider]
@@ -356,8 +377,16 @@ function isWebSearchEnabled(cfg: OpenClawConfig, env: NodeJS.ProcessEnv): boolea
     const hasEnvKey = envKeys.some((k) => Boolean(env[k]));
     return Boolean(search?.apiKey || subApiKey || hasEnvKey);
   }
-  // No provider pinned or provider="you" → always available (You.com free tier)
-  return true;
+
+  // No provider pinned — web search is available if at least one enabled
+  // bundled provider is keyless or has credentials configured.
+  return bundledProviders.some((p) => {
+    if (p.requiresCredential === false) {
+      return true;
+    }
+    const rawValue = p.getCredentialValue?.(search as Record<string, unknown> | undefined);
+    return Boolean(rawValue);
+  });
 }
 
 function isWebFetchEnabled(cfg: OpenClawConfig): boolean {
