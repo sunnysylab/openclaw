@@ -799,7 +799,7 @@ describe("buildStatusMessage", () => {
     expect(lines[contextIndex + 1]).toContain("Usage: Claude 80% left (5h)");
   });
 
-  it("hides cost when not using an API key", () => {
+  it("hides cost when no cost rates are configured", () => {
     const text = buildStatusMessage({
       config: {
         models: {
@@ -809,8 +809,8 @@ describe("buildStatusMessage", () => {
                 {
                   id: "claude-opus-4-5",
                   cost: {
-                    input: 1,
-                    output: 1,
+                    input: 0,
+                    output: 0,
                     cacheRead: 0,
                     cacheWrite: 0,
                   },
@@ -829,6 +829,38 @@ describe("buildStatusMessage", () => {
     });
 
     expect(text).not.toContain("💵 Cost:");
+  });
+
+  it("shows cost estimate for aws-sdk auth when model has explicit cost config", () => {
+    const text = buildStatusMessage({
+      config: {
+        models: {
+          providers: {
+            bedrock: {
+              models: [
+                {
+                  id: "claude-opus-4-5",
+                  cost: {
+                    input: 15,
+                    output: 75,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                  },
+                },
+              ],
+            },
+          },
+        },
+      } as unknown as OpenClawConfig,
+      agent: { model: "bedrock/claude-opus-4-5" },
+      sessionEntry: { sessionId: "c2", updatedAt: 0, inputTokens: 1000, outputTokens: 500 },
+      sessionKey: "agent:main:main",
+      sessionScope: "per-sender",
+      queue: { mode: "collect", depth: 0 },
+      modelAuth: "aws-sdk",
+    });
+
+    expect(text).toContain("Cost:");
   });
 
   function writeTranscriptUsageLog(params: {
