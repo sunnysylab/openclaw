@@ -6,6 +6,7 @@ import {
   getMessageFeishu,
   listFeishuThreadMessages,
   resolveFeishuCardTemplate,
+  sendCardFeishu,
 } from "./send.js";
 
 const {
@@ -319,6 +320,32 @@ describe("editMessageFeishu", () => {
       },
     });
     expect(result).toEqual({ messageId: "om_card", contentType: "interactive" });
+  });
+
+  it("rejects empty card edits before patching", async () => {
+    await expect(
+      editMessageFeishu({
+        cfg: {} as ClawdbotConfig,
+        messageId: "om_card",
+        card: {},
+      }),
+    ).rejects.toThrow("Feishu edit card payload cannot be empty.");
+
+    expect(mockClientPatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendCardFeishu", () => {
+  it("rejects empty card payloads before sending", async () => {
+    await expect(
+      sendCardFeishu({
+        cfg: {} as ClawdbotConfig,
+        to: "user:ou_target",
+        card: {},
+      }),
+    ).rejects.toThrow("Feishu card payload cannot be empty.");
+
+    expect(mockCreateFeishuClient).not.toHaveBeenCalled();
   });
 });
 

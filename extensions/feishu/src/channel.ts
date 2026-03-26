@@ -43,6 +43,7 @@ import { parseFeishuConversationId } from "./conversation-id.js";
 import { listFeishuDirectoryPeers, listFeishuDirectoryGroups } from "./directory.static.js";
 import { resolveFeishuGroupToolPolicy } from "./policy.js";
 import { getFeishuRuntime } from "./runtime.js";
+import { hasFeishuCardPayload } from "./send.js";
 import { resolveFeishuOutboundSessionRoute } from "./session-route.js";
 import { feishuSetupAdapter } from "./setup-core.js";
 import { feishuSetupWizard } from "./setup-surface.js";
@@ -502,12 +503,14 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
         if (ctx.action === "thread-reply" && !replyToMessageId) {
           throw new Error("Feishu thread-reply requires messageId.");
         }
-        const card =
-          ctx.params.card && typeof ctx.params.card === "object"
-            ? (ctx.params.card as Record<string, unknown>)
-            : undefined;
+        const rawCard = ctx.params.card;
+        const cardProvided = rawCard != null && typeof rawCard === "object";
+        const card = hasFeishuCardPayload(rawCard) ? rawCard : undefined;
         const text = readFirstString(ctx.params, ["text", "message"]);
         if (!card && !text) {
+          if (cardProvided) {
+            throw new Error(`Feishu ${ctx.action} card payload cannot be empty.`);
+          }
           throw new Error(`Feishu ${ctx.action} requires text/message or card.`);
         }
         const runtime = await loadFeishuChannelRuntime();
