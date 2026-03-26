@@ -614,6 +614,7 @@ export const MemorySearchSchema = z
         z.literal("voyage"),
         z.literal("mistral"),
         z.literal("ollama"),
+        z.literal("agentmemo"),
       ])
       .optional(),
     remote: z
@@ -651,6 +652,14 @@ export const MemorySearchSchema = z
       .object({
         modelPath: z.string().optional(),
         modelCacheDir: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    agentmemo: z
+      .object({
+        url: z.string().optional(),
+        apiKey: SecretInputSchema.optional().register(sensitive),
+        namespace: z.string().optional(),
       })
       .strict()
       .optional(),
