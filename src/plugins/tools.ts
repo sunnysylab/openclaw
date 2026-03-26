@@ -19,6 +19,13 @@ export function getPluginToolMeta(tool: AnyAgentTool): PluginToolMeta | undefine
   return pluginToolMeta.get(tool);
 }
 
+export function copyPluginToolMeta(source: AnyAgentTool, target: AnyAgentTool): void {
+  const meta = pluginToolMeta.get(source);
+  if (meta) {
+    pluginToolMeta.set(target, meta);
+  }
+}
+
 function normalizeAllowlist(list?: string[]) {
   return new Set((list ?? []).map(normalizeToolName).filter(Boolean));
 }
@@ -104,6 +111,11 @@ export function resolvePluginTools(params: {
       continue;
     }
     if (!resolved) {
+      if (entry.names.length > 0) {
+        log.debug(
+          `plugin tool factory returned null (${entry.pluginId}): [${entry.names.join(", ")}]`,
+        );
+      }
       continue;
     }
     const listRaw = Array.isArray(resolved) ? resolved : [resolved];

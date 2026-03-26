@@ -1,14 +1,23 @@
 import { normalizeProviderId } from "../agents/model-selection.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { isBlockedObjectKey } from "../infra/prototype-keys.js";
 import { resolveEffectivePluginRegistry } from "../plugins/effective-registry.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
 import type { ImageGenerationProviderPlugin } from "../plugins/types.js";
 
 const BUILTIN_IMAGE_GENERATION_PROVIDERS: readonly ImageGenerationProviderPlugin[] = [];
+const UNSAFE_PROVIDER_IDS = new Set(["__proto__", "constructor", "prototype"]);
 
 function normalizeImageGenerationProviderId(id: string | undefined): string | undefined {
   const normalized = normalizeProviderId(id ?? "");
-  return normalized || undefined;
+  if (!normalized || isBlockedObjectKey(normalized)) {
+    return undefined;
+  }
+  return normalized;
+}
+
+function isSafeImageGenerationProviderId(id: string | undefined): id is string {
+  return Boolean(id && !UNSAFE_PROVIDER_IDS.has(id));
 }
 
 function resolvePluginImageGenerationProviders(
@@ -28,14 +37,14 @@ function buildProviderMaps(cfg?: OpenClawConfig): {
   const aliases = new Map<string, ImageGenerationProviderPlugin>();
   const register = (provider: ImageGenerationProviderPlugin) => {
     const id = normalizeImageGenerationProviderId(provider.id);
-    if (!id) {
+    if (!isSafeImageGenerationProviderId(id)) {
       return;
     }
     canonical.set(id, provider);
     aliases.set(id, provider);
     for (const alias of provider.aliases ?? []) {
       const normalizedAlias = normalizeImageGenerationProviderId(alias);
-      if (normalizedAlias) {
+      if (isSafeImageGenerationProviderId(normalizedAlias)) {
         aliases.set(normalizedAlias, provider);
       }
     }

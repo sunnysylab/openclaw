@@ -96,9 +96,9 @@ describe("resolvePluginTools optional tools", () => {
   beforeEach(async () => {
     vi.resetModules();
     loadOpenClawPluginsMock.mockClear();
-    ({ resolvePluginTools } = await import("./tools.js"));
     ({ setActivePluginRegistry, resetPluginRuntimeStateForTest } = await import("./runtime.js"));
     resetPluginRuntimeStateForTest();
+    ({ resolvePluginTools } = await import("./tools.js"));
   });
 
   it("skips optional tools without explicit allowlist", () => {
