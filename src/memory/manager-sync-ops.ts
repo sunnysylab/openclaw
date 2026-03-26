@@ -149,6 +149,7 @@ export abstract class MemoryManagerSyncOps {
     string,
     { lastSize: number; pendingBytes: number; pendingMessages: number }
   >();
+  protected sessionEntryCache = new Map<string, SessionFileEntry>();
   private lastMetaSerialized: string | null = null;
 
   protected abstract readonly cache: { enabled: boolean; maxEntries?: number };
@@ -876,7 +877,11 @@ export abstract class MemoryManagerSyncOps {
         }
         return;
       }
-      const entry = await buildSessionEntry(absPath);
+      const previousEntry = this.sessionEntryCache.get(absPath);
+      const entry = await buildSessionEntry(
+        absPath,
+        previousEntry ? { previous: previousEntry } : undefined,
+      );
       if (!entry) {
         if (params.progress) {
           params.progress.completed += 1;
@@ -908,6 +913,7 @@ export abstract class MemoryManagerSyncOps {
         return;
       }
       await this.indexFile(entry, { source: "sessions", content: entry.content });
+      this.sessionEntryCache.set(absPath, entry);
       this.resetSessionDelta(absPath, entry.size);
       if (params.progress) {
         params.progress.completed += 1;
