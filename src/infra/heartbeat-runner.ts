@@ -561,7 +561,30 @@ export async function runHeartbeatOnce(opts: {
     return { status: "skipped", reason: "requests-in-flight" };
   }
 
-  // Pre-hook gate: run optional shell command before the heartbeat.
+  // Preflight centralizes trigger classification, event inspection, and HEARTBEAT.md gating.
+  // Run preflight BEFORE the pre-hook so that operators who disable heartbeats via
+  // HEARTBEAT.md (or other preflight conditions) do not trigger side-effecting
+  // shell commands on every interval.
+  const preflight = await resolveHeartbeatPreflight({
+    cfg,
+    agentId,
+    heartbeat,
+    forcedSessionKey: opts.sessionKey,
+    reason: opts.reason,
+  });
+  if (preflight.skipReason) {
+    emitHeartbeatEvent({
+      status: "skipped",
+      reason: preflight.skipReason,
+      durationMs: Date.now() - startedAt,
+    });
+    return { status: "skipped", reason: preflight.skipReason };
+  }
+
+  // Pre-hook gate: run optional shell command before the heartbeat turn.
+  // Placed after preflight so the hook only runs when the heartbeat will
+  // actually execute (not when HEARTBEAT.md is empty or other preflight
+  // conditions skip the run).
   // Fall back to the resolved agent default preHook when the override omits it
   // (e.g. cron wake-now passes partial heartbeat: { target: "last" }).
   const resolvedHb = resolveHeartbeatConfig(cfg, agentId);
@@ -577,23 +600,6 @@ export async function runHeartbeatOnce(opts: {
       log.warn(`heartbeat: pre-hook failed: ${hookResult.message}`);
       return { status: "failed", reason: `pre-hook: ${hookResult.message}` };
     }
-  }
-
-  // Preflight centralizes trigger classification, event inspection, and HEARTBEAT.md gating.
-  const preflight = await resolveHeartbeatPreflight({
-    cfg,
-    agentId,
-    heartbeat,
-    forcedSessionKey: opts.sessionKey,
-    reason: opts.reason,
-  });
-  if (preflight.skipReason) {
-    emitHeartbeatEvent({
-      status: "skipped",
-      reason: preflight.skipReason,
-      durationMs: Date.now() - startedAt,
-    });
-    return { status: "skipped", reason: preflight.skipReason };
   }
   const { entry, sessionKey, storePath } = preflight.session;
   const previousUpdatedAt = entry?.updatedAt;

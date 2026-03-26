@@ -1004,7 +1004,7 @@ Periodic heartbeat runs.
 - `isolatedSession`: when true, each heartbeat runs in a fresh session with no prior conversation history. Same isolation pattern as cron `sessionTarget: "isolated"`. Reduces per-heartbeat token cost from ~100K to ~2-5K tokens.
 - Per-agent: set `agents.list[].heartbeat`. When any agent defines `heartbeat`, **only those agents** run heartbeats.
 - Heartbeats run full agent turns — shorter intervals burn more tokens.
-- `preHook`: optional shell command to run before the heartbeat turn. If the command exits non-zero, the heartbeat is skipped. Useful for lightweight pre-flight checks (e.g. "are there new emails?") without waking an LLM agent.
+- `preHook`: optional shell command to run before the heartbeat turn. Exit `0` proceeds, exit `10` skips silently (not counted as a failure), any other non-zero exit code is treated as a failure. Useful for lightweight pre-flight checks (e.g. "are there new emails?") without waking an LLM agent.
   - `preHook.command`: shell command string.
   - `preHook.timeoutSeconds`: max seconds before the command is killed (default: 30, max: 300).
 
