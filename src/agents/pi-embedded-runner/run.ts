@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import {
@@ -1036,6 +1035,85 @@ export async function runEmbeddedPiAgent(
             provider,
             model: modelId,
           });
+
+          // Client-hosted tools must short-circuit before later error handling.
+          // The adapter returns a synthetic pending tool result to the model, so
+          // follow-up prompt/overflow branches can otherwise swallow the
+          // side-channel pendingToolCalls metadata and cause `/v1/responses` to
+          // return plain text instead of OpenResponses function_call items.
+          if (attempt.clientToolCall) {
+            const usageMeta = buildUsageAgentMetaFields({
+              usageAccumulator,
+              lastAssistantUsage: lastAssistant?.usage as UsageLike | undefined,
+              lastRunPromptUsage,
+              lastTurnTotal,
+            });
+            const agentMeta: EmbeddedPiAgentMeta = {
+              sessionId: sessionIdUsed,
+              provider: lastAssistant?.provider ?? provider,
+              model: lastAssistant?.model ?? model.id,
+              usage: usageMeta.usage,
+              lastCallUsage: usageMeta.lastCallUsage,
+              promptTokens: usageMeta.promptTokens,
+              compactionCount: autoCompactionCount > 0 ? autoCompactionCount : undefined,
+            };
+            const payloads = buildEmbeddedRunPayloads({
+              assistantTexts: attempt.assistantTexts,
+              toolMetas: attempt.toolMetas,
+              lastAssistant: attempt.lastAssistant,
+              lastToolError: attempt.lastToolError,
+              config: params.config,
+              sessionKey: params.sessionKey ?? params.sessionId,
+              provider: activeErrorContext.provider,
+              model: activeErrorContext.model,
+              verboseLevel: params.verboseLevel,
+              reasoningLevel: params.reasoningLevel,
+              toolResultFormat: resolvedToolResultFormat,
+              suppressToolErrorWarnings: params.suppressToolErrorWarnings,
+              inlineToolResultsAllowed: false,
+              didSendViaMessagingTool: attempt.didSendViaMessagingTool,
+              didSendDeterministicApprovalPrompt: attempt.didSendDeterministicApprovalPrompt,
+            });
+
+            if (lastProfileId) {
+              await markAuthProfileGood({
+                store: authStore,
+                provider,
+                profileId: lastProfileId,
+                agentDir: params.agentDir,
+              });
+              await markAuthProfileUsed({
+                store: authStore,
+                profileId: lastProfileId,
+                agentDir: params.agentDir,
+              });
+            }
+
+            return {
+              payloads: payloads.length ? payloads : undefined,
+              meta: {
+                durationMs: Date.now() - started,
+                agentMeta,
+                aborted,
+                systemPromptReport: attempt.systemPromptReport,
+                stopReason: "tool_calls",
+                pendingToolCalls: [
+                  {
+                    id: attempt.clientToolCall.id,
+                    name: attempt.clientToolCall.name,
+                    arguments: JSON.stringify(attempt.clientToolCall.params),
+                  },
+                ],
+              },
+              didSendViaMessagingTool: attempt.didSendViaMessagingTool,
+              didSendDeterministicApprovalPrompt: attempt.didSendDeterministicApprovalPrompt,
+              messagingToolSentTexts: attempt.messagingToolSentTexts,
+              messagingToolSentMediaUrls: attempt.messagingToolSentMediaUrls,
+              messagingToolSentTargets: attempt.messagingToolSentTargets,
+              successfulCronAdds: attempt.successfulCronAdds,
+            };
+          }
+
           const formattedAssistantErrorText = lastAssistant
             ? formatAssistantErrorText(lastAssistant, {
                 cfg: params.config,
@@ -1817,6 +1895,24 @@ export async function runEmbeddedPiAgent(
               agentDir: params.agentDir,
             });
           }
+          const pendingClientToolCall = attempt.clientToolCall as
+            | { id: string; name: string; params: Record<string, unknown> }
+            | undefined;
+          const stopReason = pendingClientToolCall
+            ? "tool_calls"
+            : attempt.yieldDetected
+              ? "end_turn"
+              : (lastAssistant?.stopReason as string | undefined);
+          let pendingToolCalls: Array<{ id: string; name: string; arguments: string }> | undefined;
+          if (pendingClientToolCall) {
+            pendingToolCalls = [
+              {
+                id: pendingClientToolCall.id,
+                name: pendingClientToolCall.name,
+                arguments: JSON.stringify(pendingClientToolCall.params),
+              },
+            ];
+          }
           return {
             payloads: payloads.length ? payloads : undefined,
             meta: {
@@ -1827,20 +1923,8 @@ export async function runEmbeddedPiAgent(
               // Handle client tool calls (OpenResponses hosted tools)
               // Propagate the LLM stop reason so callers (lifecycle events,
               // ACP bridge) can distinguish end_turn from max_tokens.
-              stopReason: attempt.clientToolCall
-                ? "tool_calls"
-                : attempt.yieldDetected
-                  ? "end_turn"
-                  : (lastAssistant?.stopReason as string | undefined),
-              pendingToolCalls: attempt.clientToolCall
-                ? [
-                    {
-                      id: randomBytes(5).toString("hex").slice(0, 9),
-                      name: attempt.clientToolCall.name,
-                      arguments: JSON.stringify(attempt.clientToolCall.params),
-                    },
-                  ]
-                : undefined,
+              stopReason,
+              pendingToolCalls,
             },
             didSendViaMessagingTool: attempt.didSendViaMessagingTool,
             didSendDeterministicApprovalPrompt: attempt.didSendDeterministicApprovalPrompt,
