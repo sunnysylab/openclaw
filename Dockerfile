@@ -41,6 +41,7 @@ RUN mkdir -p /out && \
 
 # ── Stage 2: Production dependencies ────────────────────────────
 FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS prod-deps
+ARG OPENCLAW_BUNDLED_PLUGIN_DIR
 
 RUN corepack enable
 
@@ -50,7 +51,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY ui/package.json ./ui/package.json
 COPY patches ./patches
 
-COPY --from=ext-deps /out/ ./extensions/
+COPY --from=ext-deps /out/ ./${OPENCLAW_BUNDLED_PLUGIN_DIR}/
 
 # Install only runtime dependencies while the workspace still contains just the
 # root manifests plus opted-in extensions. This avoids pnpm prune --prod
@@ -171,6 +172,9 @@ COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=runtime-assets --chown=node:node /app/package.json .
 COPY --from=runtime-assets --chown=node:node /app/openclaw.mjs .
 COPY --from=runtime-assets --chown=node:node /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} ./${OPENCLAW_BUNDLED_PLUGIN_DIR}
+# Keep extension-local node_modules and package manifests on the same pnpm graph
+# as the copied root node_modules to avoid broken symlink targets at runtime.
+COPY --from=prod-deps --chown=node:node /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} ./${OPENCLAW_BUNDLED_PLUGIN_DIR}
 COPY --from=runtime-assets --chown=node:node /app/skills ./skills
 COPY --from=runtime-assets --chown=node:node /app/docs ./docs
 
