@@ -1499,6 +1499,10 @@ export type PluginHookAgentContext = {
 export type PluginHookBeforeModelResolveEvent = {
   /** User prompt for this run. No session messages are available yet in this phase. */
   prompt: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookBeforeModelResolveResult = {
@@ -1513,6 +1517,10 @@ export type PluginHookBeforePromptBuildEvent = {
   prompt: string;
   /** Session messages prepared for this run. */
   messages: unknown[];
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookBeforePromptBuildResult = {
@@ -1551,6 +1559,10 @@ export type PluginHookBeforeAgentStartEvent = {
   prompt: string;
   /** Optional because legacy hook can run in pre-session phase. */
   messages?: unknown[];
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookBeforeAgentStartResult = PluginHookBeforePromptBuildResult &
@@ -1586,6 +1598,10 @@ export type PluginHookLlmInputEvent = {
   prompt: string;
   historyMessages: unknown[];
   imagesCount: number;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // llm_output hook
@@ -1603,6 +1619,10 @@ export type PluginHookLlmOutputEvent = {
     cacheWrite?: number;
     total?: number;
   };
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // agent_end hook
@@ -1611,6 +1631,10 @@ export type PluginHookAgentEndEvent = {
   success: boolean;
   error?: string;
   durationMs?: number;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // Compaction hooks
@@ -1625,6 +1649,10 @@ export type PluginHookBeforeCompactionEvent = {
    *  before compaction starts, so plugins can read this file asynchronously
    *  and process in parallel with the compaction LLM call. */
   sessionFile?: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // before_reset hook — fired when /new or /reset clears a session
@@ -1632,6 +1660,10 @@ export type PluginHookBeforeResetEvent = {
   sessionFile?: string;
   messages?: unknown[];
   reason?: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookAfterCompactionEvent = {
@@ -1642,6 +1674,10 @@ export type PluginHookAfterCompactionEvent = {
    *  preserved on disk, so plugins can read and process them asynchronously
    *  without blocking the compaction pipeline. */
   sessionFile?: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // Message context
@@ -1676,6 +1712,10 @@ export type PluginHookInboundClaimEvent = {
   commandAuthorized?: boolean;
   wasMentioned?: boolean;
   metadata?: Record<string, unknown>;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookInboundClaimResult = {
@@ -1721,6 +1761,10 @@ export type PluginHookMessageReceivedEvent = {
   content: string;
   timestamp?: number;
   metadata?: Record<string, unknown>;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // message_sending hook
@@ -1728,6 +1772,10 @@ export type PluginHookMessageSendingEvent = {
   to: string;
   content: string;
   metadata?: Record<string, unknown>;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookMessageSendingResult = {
@@ -1741,6 +1789,10 @@ export type PluginHookMessageSentEvent = {
   content: string;
   success: boolean;
   error?: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // Tool context
@@ -1764,6 +1816,10 @@ export type PluginHookBeforeToolCallEvent = {
   runId?: string;
   /** Provider-specific tool call ID when available. */
   toolCallId?: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookBeforeToolCallResult = {
@@ -1783,6 +1839,10 @@ export type PluginHookAfterToolCallEvent = {
   result?: unknown;
   error?: string;
   durationMs?: number;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // tool_result_persist hook
@@ -1803,6 +1863,10 @@ export type PluginHookToolResultPersistEvent = {
   message: AgentMessage;
   /** True when the tool result was synthesized by a guard/repair step. */
   isSynthetic?: boolean;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookToolResultPersistResult = {
@@ -1814,6 +1878,10 @@ export type PluginHookBeforeMessageWriteEvent = {
   message: AgentMessage;
   sessionKey?: string;
   agentId?: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookBeforeMessageWriteResult = {
@@ -1833,6 +1901,10 @@ export type PluginHookSessionStartEvent = {
   sessionId: string;
   sessionKey?: string;
   resumedFrom?: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // session_end hook
@@ -1841,6 +1913,10 @@ export type PluginHookSessionEndEvent = {
   sessionKey?: string;
   messageCount: number;
   durationMs?: number;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // Subagent context
@@ -1848,6 +1924,10 @@ export type PluginHookSubagentContext = {
   runId?: string;
   childSessionKey?: string;
   requesterSessionKey?: string;
+  /** Channel id of the requester — used to resolve bot_name via the registry. */
+  channelId?: string;
+  /** Account id of the requester — used to resolve bot_name via the registry. */
+  accountId?: string;
 };
 
 export type PluginHookSubagentTargetKind = "subagent" | "acp";
@@ -1864,6 +1944,10 @@ type PluginHookSubagentSpawnBase = {
     threadId?: string | number;
   };
   threadRequested: boolean;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // subagent_spawning hook
@@ -1892,6 +1976,10 @@ export type PluginHookSubagentDeliveryTargetEvent = {
   childRunId?: string;
   spawnMode?: "run" | "session";
   expectsCompletionMessage: boolean;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 export type PluginHookSubagentDeliveryTargetResult = {
@@ -1919,6 +2007,10 @@ export type PluginHookSubagentEndedEvent = {
   endedAt?: number;
   outcome?: "ok" | "error" | "timeout" | "killed" | "reset" | "deleted";
   error?: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // Gateway context
@@ -1929,11 +2021,19 @@ export type PluginHookGatewayContext = {
 // gateway_start hook
 export type PluginHookGatewayStartEvent = {
   port: number;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // gateway_stop hook
 export type PluginHookGatewayStopEvent = {
   reason?: string;
+  /** OpenClaw runtime version (e.g. "2025.1.0"). Injected automatically by the hook runner. */
+  openclaw_version?: string;
+  /** Display name of the bot account that received or sent this event. Injected automatically by the hook runner. */
+  bot_name?: string;
 };
 
 // Hook handler types mapped by hook name

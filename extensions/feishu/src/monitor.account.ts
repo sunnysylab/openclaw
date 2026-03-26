@@ -1,5 +1,6 @@
 import * as crypto from "crypto";
 import * as Lark from "@larksuiteoapi/node-sdk";
+import { registerBotName, unregisterBotName } from "openclaw/plugin-sdk/bot-name-registry";
 import type { ClawdbotConfig, RuntimeEnv, HistoryEntry } from "../runtime-api.js";
 import { resolveFeishuAccount } from "./accounts.js";
 import { raceWithTimeoutAndAbort } from "./async.js";
@@ -643,6 +644,17 @@ export async function monitorSingleAccount(params: MonitorSingleAccountParams): 
       ? { botOpenId: botOpenIdSource.botOpenId, botName: botOpenIdSource.botName }
       : await fetchBotIdentityForMonitor(account, { runtime, abortSignal });
   const { botOpenId } = applyBotIdentityState(accountId, botIdentity);
+  const botName = botIdentity.botName?.trim();
+  botOpenIds.set(accountId, botOpenId ?? "");
+  if (botName) {
+    botNames.set(accountId, botName);
+    registerBotName("feishu", accountId, botName);
+    log(`feishu[${accountId}]: bot name registered: "${botName}"`);
+  } else {
+    botNames.delete(accountId);
+    unregisterBotName("feishu", accountId);
+    log(`feishu[${accountId}]: bot name not available, skipping registry`);
+  }
   log(`feishu[${accountId}]: bot open_id resolved: ${botOpenId ?? "unknown"}`);
 
   if (!botOpenId && !abortSignal?.aborted) {

@@ -266,6 +266,8 @@ async function ensureThreadBindingForSubagentSpawn(params: {
       {
         childSessionKey: params.childSessionKey,
         requesterSessionKey: params.requesterSessionKey,
+        channelId: params.requester.channel,
+        accountId: params.requester.accountId,
       },
     );
     if (result?.status === "error") {
@@ -809,6 +811,8 @@ export async function spawnSubagentDirect(
           runId: childRunId,
           childSessionKey,
           requesterSessionKey: requesterInternalKey,
+          channelId: requesterOrigin?.channel,
+          accountId: requesterOrigin?.accountId,
         },
       );
     } catch {

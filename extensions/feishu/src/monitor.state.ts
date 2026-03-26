@@ -1,5 +1,6 @@
 import * as http from "http";
 import * as Lark from "@larksuiteoapi/node-sdk";
+import { unregisterBotName } from "openclaw/plugin-sdk/bot-name-registry";
 import {
   createFixedWindowRateLimiter,
   createWebhookAnomalyTracker,
@@ -152,6 +153,7 @@ export function stopFeishuMonitorState(accountId?: string): void {
     }
     botOpenIds.delete(accountId);
     botNames.delete(accountId);
+    unregisterBotName("feishu", accountId);
     return;
   }
 
@@ -164,5 +166,8 @@ export function stopFeishuMonitorState(accountId?: string): void {
   }
   httpServers.clear();
   botOpenIds.clear();
+  for (const id of botNames.keys()) {
+    unregisterBotName("feishu", id);
+  }
   botNames.clear();
 }
