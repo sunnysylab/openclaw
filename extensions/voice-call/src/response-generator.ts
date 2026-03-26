@@ -28,6 +28,7 @@ export type VoiceResponseParams = {
 export type VoiceResponseResult = {
   text: string | null;
   error?: string;
+  endCall?: boolean;
 };
 
 type VoiceResponsePayload = {
@@ -47,6 +48,42 @@ const VOICE_SPOKEN_OUTPUT_CONTRACT = [
 function normalizeSpokenText(value: string): string | null {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function resolveModelPrimary(raw: unknown): string | undefined {
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed || undefined;
+  }
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+  const primary = (raw as { primary?: unknown }).primary;
+  if (typeof primary !== "string") {
+    return undefined;
+  }
+  const trimmed = primary.trim();
+  return trimmed || undefined;
+}
+
+function resolveVoiceAgentPrimaryModel(
+  coreConfig: CoreConfig,
+  agentId: string,
+): string | undefined {
+  const agents =
+    (coreConfig?.agents as { defaults?: { model?: unknown }; list?: unknown } | undefined) ??
+    undefined;
+  const entries = Array.isArray(agents?.list) ? agents.list : [];
+  const normalizedAgentId = agentId.trim().toLowerCase();
+  const selectedAgent = entries.find((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return false;
+    }
+    const id = (entry as { id?: unknown }).id;
+    return typeof id === "string" && id.trim().toLowerCase() === normalizedAgentId;
+  }) as { model?: unknown } | undefined;
+
+  return resolveModelPrimary(selectedAgent?.model) ?? resolveModelPrimary(agents?.defaults?.model);
 }
 
 function tryParseSpokenJson(text: string): string | null {
@@ -186,7 +223,7 @@ export async function generateVoiceResponse(
   // Build voice-specific session key based on phone number
   const normalizedPhone = from.replace(/\D/g, "");
   const sessionKey = `voice:${normalizedPhone}`;
-  const agentId = "main";
+  const agentId = voiceConfig.responseAgent || "main";
 
   // Resolve paths
   const storePath = agentRuntime.session.resolveStorePath(cfg.session?.store, { agentId });
@@ -215,9 +252,13 @@ export async function generateVoiceResponse(
     agentId,
   });
 
-  // Resolve model from config
+  // Resolve model from config.
+  // Prefer explicit voice responseModel, then the selected response agent's model,
+  // then the global agent default, then runtime defaults.
   const modelRef =
-    voiceConfig.responseModel || `${agentRuntime.defaults.provider}/${agentRuntime.defaults.model}`;
+    voiceConfig.responseModel ||
+    resolveVoiceAgentPrimaryModel(coreConfig, agentId) ||
+    `${agentRuntime.defaults.provider}/${agentRuntime.defaults.model}`;
   const slashIndex = modelRef.indexOf("/");
   const provider =
     slashIndex === -1 ? agentRuntime.defaults.provider : modelRef.slice(0, slashIndex);
@@ -233,7 +274,17 @@ export async function generateVoiceResponse(
   // Build system prompt with conversation history
   const basePrompt =
     voiceConfig.responseSystemPrompt ??
-    `You are ${agentName}, a helpful voice assistant on a phone call. Keep responses brief and conversational (1-2 sentences max). Be natural and friendly. The caller's phone number is ${from}. You have access to tools - use them when helpful.`;
+    `You are ${agentName}, a helpful voice assistant on a phone call. Keep responses brief and conversational (1-2 sentences max). Be natural and friendly. The caller's phone number is ${from}. You have access to tools - use them when helpful.
+
+IMPORTANT: Your responses will be read aloud by a text-to-speech engine. Write everything as it should be spoken:
+- Numbers: "13 degrees Celsius" not "13°C", "5 percent" not "5%"
+- Times: "2 thirty PM" not "14:30" or "2:30 PM"
+- Dates: "February 5th" not "2026-02-05"
+- URLs/paths: skip or describe them, don't read raw URLs
+- Abbreviations: spell out or use spoken form
+- No markdown, bullet points, or special formatting
+
+When the conversation is naturally over or the caller says goodbye, say a brief farewell and end your response with the exact tag [END_CALL]. This signals the system to hang up the phone after your farewell is spoken.`;
 
   let extraSystemPrompt = basePrompt;
   if (transcript.length > 0) {
@@ -249,6 +300,8 @@ export async function generateVoiceResponse(
   const runId = `voice:${callId}:${Date.now()}`;
 
   try {
+    let endCallRequested = false;
+
     const result = await agentRuntime.runEmbeddedPiAgent({
       sessionId,
       sessionKey,
@@ -268,13 +321,19 @@ export async function generateVoiceResponse(
       agentDir,
     });
 
-    const text = extractSpokenTextFromPayloads((result.payloads ?? []) as VoiceResponsePayload[]);
+    let text = extractSpokenTextFromPayloads((result.payloads ?? []) as VoiceResponsePayload[]);
 
     if (!text && result.meta?.aborted) {
       return { text: null, error: "Response generation was aborted" };
     }
 
-    return { text };
+    // Check for [END_CALL] marker and strip it from spoken text
+    if (text && text.includes("[END_CALL]")) {
+      endCallRequested = true;
+      text = text.replace(/\s*\[END_CALL\]\s*/g, "").trim() || null;
+    }
+
+    return { text, endCall: endCallRequested };
   } catch (err) {
     console.error(`[voice-call] Response generation failed:`, err);
     return { text: null, error: String(err) };

@@ -16,8 +16,11 @@ import type { CallManager } from "./manager.js";
 import type { MediaStreamConfig } from "./media-stream.js";
 import { MediaStreamHandler } from "./media-stream.js";
 import type { VoiceCallProvider } from "./providers/base.js";
+import { ElevenLabsScribeSTTProvider } from "./providers/stt-elevenlabs-scribe.js";
 import { OpenAIRealtimeSTTProvider } from "./providers/stt-openai-realtime.js";
 import type { TwilioProvider } from "./providers/twilio.js";
+import { normalizeResolvedVoiceCallSecretString } from "./secret-input.js";
+import { SilenceFiller } from "./silence-filler.js";
 import type { CallRecord, NormalizedEvent, WebhookContext } from "./types.js";
 import { startStaleCallReaper } from "./webhook/stale-call-reaper.js";
 
@@ -89,6 +92,14 @@ export class VoiceCallWebhookServer {
   private mediaStreamHandler: MediaStreamHandler | null = null;
   /** Delayed auto-hangup timers keyed by provider call ID after stream disconnect. */
   private pendingDisconnectHangups = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Delayed farewell hangups keyed by call ID after [END_CALL] responses. */
+  private pendingFarewellHangups = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Silence filler — plays ambient SFX while agent is working */
+  private silenceFiller: SilenceFiller | null = null;
+
+  /** Maps callSid → streamSid for silence filler routing */
+  private callStreamSids = new Map<string, string>();
 
   constructor(
     config: VoiceCallConfig,
@@ -125,6 +136,15 @@ export class VoiceCallWebhookServer {
     this.pendingDisconnectHangups.delete(providerCallId);
   }
 
+  private clearPendingFarewellHangup(callId: string): void {
+    const existing = this.pendingFarewellHangups.get(callId);
+    if (!existing) {
+      return;
+    }
+    clearTimeout(existing);
+    this.pendingFarewellHangups.delete(callId);
+  }
+
   private shouldSuppressBargeInForInitialMessage(call: CallRecord | undefined): boolean {
     if (!call || call.direction !== "outbound") {
       return false;
@@ -147,23 +167,61 @@ export class VoiceCallWebhookServer {
   }
 
   /**
-   * Initialize media streaming with OpenAI Realtime STT.
+   * Initialize media streaming with configurable STT provider.
    */
   private initializeMediaStreaming(): void {
     const streaming = this.config.streaming;
-    const apiKey = streaming.openaiApiKey ?? process.env.OPENAI_API_KEY;
+    const sttProviderType = streaming.sttProvider;
 
-    if (!apiKey) {
-      console.warn("[voice-call] Streaming enabled but no OpenAI API key found");
-      return;
+    let sttProvider: OpenAIRealtimeSTTProvider | ElevenLabsScribeSTTProvider;
+
+    if (sttProviderType === "elevenlabs-scribe") {
+      const configuredApiKey =
+        this.config.streaming?.elevenlabsApiKey || this.config.tts?.elevenlabs?.apiKey;
+      const apiKey =
+        normalizeResolvedVoiceCallSecretString({
+          value: configuredApiKey,
+          path: "plugins.entries.voice-call.config.streaming.elevenlabsApiKey",
+        }) || process.env.ELEVENLABS_API_KEY;
+
+      if (!apiKey) {
+        console.warn(
+          "[voice-call] Streaming enabled but no ElevenLabs API key found for Scribe STT",
+        );
+        return;
+      }
+
+      sttProvider = new ElevenLabsScribeSTTProvider({
+        apiKey,
+        languageCode: this.config.streaming?.elevenlabsLanguageCode,
+        vadSilenceThresholdSecs: this.config.streaming?.silenceDurationMs
+          ? this.config.streaming.silenceDurationMs / 1000
+          : undefined,
+        vadThreshold: this.config.streaming?.vadThreshold,
+      });
+
+      console.log("[voice-call] Using ElevenLabs Scribe v2 for STT");
+    } else {
+      const apiKey =
+        normalizeResolvedVoiceCallSecretString({
+          value: this.config.streaming?.openaiApiKey,
+          path: "plugins.entries.voice-call.config.streaming.openaiApiKey",
+        }) || process.env.OPENAI_API_KEY;
+
+      if (!apiKey) {
+        console.warn("[voice-call] Streaming enabled but no OpenAI API key found");
+        return;
+      }
+
+      sttProvider = new OpenAIRealtimeSTTProvider({
+        apiKey,
+        model: this.config.streaming?.sttModel,
+        silenceDurationMs: this.config.streaming?.silenceDurationMs,
+        vadThreshold: this.config.streaming?.vadThreshold,
+      });
+
+      console.log("[voice-call] Using OpenAI Realtime for STT");
     }
-
-    const sttProvider = new OpenAIRealtimeSTTProvider({
-      apiKey,
-      model: streaming.sttModel,
-      silenceDurationMs: streaming.silenceDurationMs,
-      vadThreshold: streaming.vadThreshold,
-    });
 
     const streamConfig: MediaStreamConfig = {
       sttProvider,
@@ -195,6 +253,7 @@ export class VoiceCallWebhookServer {
           console.warn(`[voice-call] No active call found for provider ID: ${providerCallId}`);
           return;
         }
+        this.clearPendingFarewellHangup(call.callId);
         const suppressBargeIn = this.shouldSuppressBargeInForInitialMessage(call);
         if (suppressBargeIn) {
           console.log(
@@ -230,18 +289,35 @@ export class VoiceCallWebhookServer {
         }
       },
       onSpeechStart: (providerCallId) => {
-        if (this.provider.name !== "twilio") {
-          return;
-        }
         const call = this.manager.getCallByProviderCallId(providerCallId);
-        if (this.shouldSuppressBargeInForInitialMessage(call)) {
-          return;
+        if (call) {
+          this.clearPendingFarewellHangup(call.callId);
         }
-        (this.provider as TwilioProvider).clearTtsQueue(providerCallId);
+        // Only stop silence filler on VAD speech start (not TTS — too noise-sensitive)
+        const streamSid = this.callStreamSids.get(providerCallId);
+        if (streamSid) {
+          this.silenceFiller?.stop(streamSid);
+        }
       },
       onPartialTranscript: (callId, partial) => {
         const safePartial = sanitizeTranscriptForLog(partial);
         console.log(`[voice-call] Partial for ${callId}: ${safePartial} (chars=${partial.length})`);
+        const call = this.manager.getCallByProviderCallId(callId);
+        if (call) {
+          this.clearPendingFarewellHangup(call.callId);
+        }
+        // Barge-in: clear TTS when actual speech is recognized (not just VAD noise)
+        if (this.provider.name === "twilio") {
+          if (this.shouldSuppressBargeInForInitialMessage(call)) {
+            return;
+          }
+          (this.provider as TwilioProvider).clearTtsQueue(callId);
+        }
+        // Also stop silence filler on partial transcript
+        const streamSid = this.callStreamSids.get(callId);
+        if (streamSid) {
+          this.silenceFiller?.stop(streamSid);
+        }
       },
       onConnect: (callId, streamSid) => {
         console.log(`[voice-call] Media stream connected: ${callId} -> ${streamSid}`);
@@ -251,6 +327,8 @@ export class VoiceCallWebhookServer {
         if (this.provider.name === "twilio") {
           (this.provider as TwilioProvider).registerCallStream(callId, streamSid);
         }
+        // Track for silence filler
+        this.callStreamSids.set(callId, streamSid);
 
         // Speak initial message immediately (no delay) to avoid stream timeout
         this.manager.speakInitialMessage(callId).catch((err) => {
@@ -287,10 +365,21 @@ export class VoiceCallWebhookServer {
         }, STREAM_DISCONNECT_HANGUP_GRACE_MS);
         timer.unref?.();
         this.pendingDisconnectHangups.set(callId, timer);
+
+        // Clean up silence filler state for the disconnected stream.
+        this.silenceFiller?.stop(streamSid);
+        if (this.callStreamSids.get(callId) === streamSid) {
+          this.callStreamSids.delete(callId);
+        }
       },
     };
 
     this.mediaStreamHandler = new MediaStreamHandler(streamConfig);
+    this.silenceFiller = new SilenceFiller(this.mediaStreamHandler, {
+      thresholdMs: this.config.silenceFiller?.thresholdMs,
+      sfxSet: this.config.silenceFiller?.sfxSet,
+      enabled: this.config.silenceFiller?.enabled,
+    });
     console.log("[voice-call] Media streaming initialized");
   }
 
@@ -370,6 +459,13 @@ export class VoiceCallWebhookServer {
       this.stopStaleCallReaper();
       this.stopStaleCallReaper = null;
     }
+    this.silenceFiller?.dispose();
+    this.silenceFiller = null;
+    this.callStreamSids.clear();
+    for (const timer of this.pendingFarewellHangups.values()) {
+      clearTimeout(timer);
+    }
+    this.pendingFarewellHangups.clear();
     return new Promise((resolve) => {
       if (this.server) {
         this.server.close(() => {
@@ -609,6 +705,14 @@ export class VoiceCallWebhookServer {
       return;
     }
 
+    // Start silence filler while waiting for the LLM / tool calls
+    const streamSid = call.providerCallId
+      ? this.callStreamSids.get(call.providerCallId)
+      : undefined;
+    if (streamSid) {
+      this.silenceFiller?.start(streamSid);
+    }
+
     try {
       const { generateVoiceResponse } = await import("./response-generator.js");
 
@@ -622,16 +726,50 @@ export class VoiceCallWebhookServer {
         userMessage,
       });
 
+      // Stop filler before speaking the response
+      if (streamSid) {
+        this.silenceFiller?.stop(streamSid);
+      }
+
       if (result.error) {
         console.error(`[voice-call] Response generation error: ${result.error}`);
         return;
       }
 
+      let speakResult: { success: boolean } = { success: true };
       if (result.text) {
         console.log(`[voice-call] AI response: "${result.text}"`);
-        await this.manager.speak(callId, result.text);
+        speakResult = await this.manager.speak(callId, result.text);
+      }
+
+      if (result.endCall) {
+        if (!speakResult.success) {
+          console.warn(
+            `[voice-call] Skipping end_call for ${callId} because farewell playback failed`,
+          );
+          return;
+        }
+        // Agent requested hangup — give TTS a moment to finish, then hang up.
+        // If fallback <Say> is used, speak() resolves immediately, so we pad the timeout
+        // based on text length to avoid truncating the goodbye message.
+        const delayMs = result.text ? Math.max(1000, result.text.length * 80) : 1000;
+        console.log(`[voice-call] Agent requested end_call for ${callId} (delay: ${delayMs}ms)`);
+        this.clearPendingFarewellHangup(callId);
+        const timer = setTimeout(() => {
+          this.pendingFarewellHangups.delete(callId);
+          this.manager.endCall(callId).catch((err: unknown) => {
+            console.warn(`[voice-call] Hangup failed:`, err);
+          });
+        }, delayMs);
+        timer.unref?.();
+        this.pendingFarewellHangups.set(callId, timer);
+        return;
       }
     } catch (err) {
+      // Stop filler on error too
+      if (streamSid) {
+        this.silenceFiller?.stop(streamSid);
+      }
       console.error(`[voice-call] Auto-response error:`, err);
     }
   }

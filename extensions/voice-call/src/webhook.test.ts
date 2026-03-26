@@ -1,6 +1,7 @@
 import { request } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VoiceCallConfigSchema, type VoiceCallConfig } from "./config.js";
+import type { CoreConfig } from "./core-bridge.js";
 import type { CallManager } from "./manager.js";
 import type { VoiceCallProvider } from "./providers/base.js";
 import type { CallRecord, NormalizedEvent } from "./types.js";
@@ -650,6 +651,99 @@ describe("VoiceCallWebhookServer stream disconnect grace", () => {
   });
 });
 
+describe("VoiceCallWebhookServer farewell hangup cancellation", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.doUnmock("./response-generator.js");
+  });
+
+  it("cancels pending end_call hangup when the caller barges in during the farewell", async () => {
+    vi.doMock("./response-generator.js", () => ({
+      generateVoiceResponse: vi.fn(async () => ({
+        text: "Goodbye for now, talk to you soon.",
+        endCall: true,
+      })),
+    }));
+
+    const call = createCall(Date.now() - 1_000);
+    call.callId = "call-farewell";
+    call.providerCallId = "CA-farewell";
+    call.direction = "inbound";
+
+    const clearTtsQueue = vi.fn();
+    const endCall = vi.fn(async () => ({ success: true }));
+    const manager = {
+      getActiveCalls: () => [call],
+      getCallByProviderCallId: (providerCallId: string) =>
+        providerCallId === call.providerCallId ? call : undefined,
+      getCall: (callId: string) => (callId === call.callId ? call : undefined),
+      endCall,
+      speak: vi.fn(async () => ({ success: true })),
+      speakInitialMessage: vi.fn(async () => {}),
+      processEvent: vi.fn(),
+    } as unknown as CallManager;
+
+    const config = createConfig({
+      provider: "twilio",
+      streaming: {
+        ...createConfig().streaming,
+        enabled: true,
+        openaiApiKey: "test-key",
+      },
+    });
+    const server = new VoiceCallWebhookServer(
+      config,
+      manager,
+      {
+        name: "twilio" as const,
+        verifyWebhook: () => ({ ok: true, verifiedRequestKey: "twilio:req:test" }),
+        parseWebhookEvent: () => ({ events: [] }),
+        initiateCall: async () => ({
+          providerCallId: "provider-call",
+          status: "initiated" as const,
+        }),
+        hangupCall: async () => {},
+        playTts: async () => {},
+        startListening: async () => {},
+        stopListening: async () => {},
+        getCallStatus: async () => ({ status: "in-progress", isTerminal: false }),
+        isValidStreamToken: () => true,
+        registerCallStream: () => {},
+        unregisterCallStream: () => {},
+        hasRegisteredStream: () => true,
+        clearTtsQueue,
+      } as unknown as VoiceCallProvider,
+      {} as CoreConfig,
+      {} as never,
+    );
+
+    try {
+      const handleInboundResponse = (
+        server as unknown as {
+          handleInboundResponse: (callId: string, transcript: string) => Promise<void>;
+        }
+      ).handleInboundResponse.bind(server);
+      await handleInboundResponse(call.callId, "please hang up");
+
+      const media = server.getMediaStreamHandler() as unknown as {
+        config: {
+          onPartialTranscript?: (providerCallId: string, transcript: string) => void;
+        };
+      };
+      media.config.onPartialTranscript?.(call.providerCallId!, "wait");
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(endCall).not.toHaveBeenCalled();
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
 describe("VoiceCallWebhookServer barge-in suppression during initial message", () => {
   const createTwilioProvider = (clearTtsQueue: ReturnType<typeof vi.fn>) => ({
     name: "twilio" as const,
@@ -671,7 +765,7 @@ describe("VoiceCallWebhookServer barge-in suppression during initial message", (
   const getMediaCallbacks = (server: VoiceCallWebhookServer) =>
     server.getMediaStreamHandler() as unknown as {
       config: {
-        onSpeechStart?: (providerCallId: string) => void;
+        onPartialTranscript?: (providerCallId: string, transcript: string) => void;
         onTranscript?: (providerCallId: string, transcript: string) => void;
       };
     };
@@ -730,9 +824,9 @@ describe("VoiceCallWebhookServer barge-in suppression during initial message", (
 
     try {
       const media = getMediaCallbacks(server);
-      media.config.onSpeechStart?.("CA-barge");
+      media.config.onPartialTranscript?.("CA-barge", "hel");
       media.config.onTranscript?.("CA-barge", "hello");
-      media.config.onSpeechStart?.("CA-barge");
+      media.config.onPartialTranscript?.("CA-barge", "hello ag");
       media.config.onTranscript?.("CA-barge", "hello again");
       expect(clearTtsQueue).not.toHaveBeenCalled();
       expect(handleInboundResponse).not.toHaveBeenCalled();
@@ -743,7 +837,7 @@ describe("VoiceCallWebhookServer barge-in suppression during initial message", (
       }
       call.state = "listening";
 
-      media.config.onSpeechStart?.("CA-barge");
+      media.config.onPartialTranscript?.("CA-barge", "hello aft");
       media.config.onTranscript?.("CA-barge", "hello after greeting");
       expect(clearTtsQueue).toHaveBeenCalledTimes(2);
       expect(handleInboundResponse).toHaveBeenCalledTimes(1);
@@ -793,7 +887,7 @@ describe("VoiceCallWebhookServer barge-in suppression during initial message", (
 
     try {
       const media = getMediaCallbacks(server);
-      media.config.onSpeechStart?.("CA-inbound");
+      media.config.onPartialTranscript?.("CA-inbound", "hel");
       media.config.onTranscript?.("CA-inbound", "hello");
       expect(clearTtsQueue).toHaveBeenCalledTimes(2);
     } finally {
