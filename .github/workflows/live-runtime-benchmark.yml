@@ -59,7 +59,7 @@ jobs:
       OPENCLAW_LIVE_BENCHMARK_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
     steps:
       - name: Checkout canonical repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
           submodules: false
@@ -151,8 +151,15 @@ jobs:
           import os
           import pathlib
 
-          report_dir = pathlib.Path(os.environ["REPORT_DIR"])
-          persist_dir = pathlib.Path(os.environ["PERSIST_DIR"])
+          report_dir = pathlib.Path(
+              os.environ.get("REPORT_DIR", os.path.join(os.environ["RUNNER_TEMP"], "live-runtime-benchmark"))
+          )
+          persist_dir = pathlib.Path(
+              os.environ.get(
+                  "PERSIST_DIR",
+                  os.path.join(os.environ["RUNNER_TEMP"], "live-runtime-benchmark-persisted"),
+              )
+          )
           report_path = report_dir / "gate-report.json"
           history_summary_path = persist_dir / "history-summary.json"
           summary_path = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
@@ -199,7 +206,8 @@ jobs:
               ]
             )
 
-          summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          with summary_path.open("a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
           PY
 
       - name: Upload benchmark artifacts
