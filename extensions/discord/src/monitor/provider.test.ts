@@ -744,4 +744,42 @@ describe("monitorDiscordProvider", () => {
     const messages = vi.mocked(runtime.log).mock.calls.map((call) => String(call[0]));
     expect(messages.some((msg) => msg.includes("discord startup ["))).toBe(false);
   });
+
+  it("falls back to applicationId when fetchUser('@me') fails (#42219)", async () => {
+    const { monitorDiscordProvider } = await import("./provider.js");
+    const runtime = baseRuntime();
+
+    clientFetchUserMock.mockRejectedValueOnce(new Error("network timeout"));
+
+    // Make the gateway lifecycle hang so the provider doesn't resolve immediately.
+    monitorLifecycleMock.mockImplementationOnce(() => new Promise<void>(() => {}));
+
+    // Should NOT throw — the code now falls back to applicationId as botUserId
+    // instead of aborting. We race with a short timeout to confirm no immediate rejection.
+    const result = await Promise.race([
+      monitorDiscordProvider({
+        config: baseConfig(),
+        runtime,
+      }).then(
+        () => "resolved",
+        (err: Error) => `rejected: ${err.message}`,
+      ),
+      new Promise<string>((r) => setTimeout(() => r("still-running"), 200)),
+    ]);
+    expect(result).toBe("still-running");
+  });
+
+  it("throws when fetchUser('@me') returns no user id", async () => {
+    const { monitorDiscordProvider } = await import("./provider.js");
+    const runtime = baseRuntime();
+
+    clientFetchUserMock.mockResolvedValueOnce({ id: undefined as unknown as string });
+
+    await expect(
+      monitorDiscordProvider({
+        config: baseConfig(),
+        runtime,
+      }),
+    ).rejects.toThrow("discord: fetchUser('@me') returned no user id");
+  });
 });

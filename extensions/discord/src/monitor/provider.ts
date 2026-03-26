@@ -1058,6 +1058,20 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
         gateway: lifecycleGateway,
         details: String(err),
       });
+      // Transient REST/proxy failures should not take down the whole channel.
+      // applicationId is the same snowflake as the bot user id and was already
+      // resolved above (with a token-decoding fallback), so we can use it for
+      // mention gating and self-message filtering. botUserName is only used for
+      // logging and is non-critical.
+      botUserId = applicationId;
+      runtime.log?.(
+        `discord: using applicationId as botUserId fallback (fetchUser failed: ${String(err)})`,
+      );
+    }
+    if (!botUserId) {
+      // fetchUser succeeded but returned no id and applicationId is also missing —
+      // this should not happen in practice.
+      throw new Error("discord: fetchUser('@me') returned no user id");
     }
 
     if (voiceEnabled) {
