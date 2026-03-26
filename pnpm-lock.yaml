@@ -390,6 +390,12 @@ importers:
 
   extensions/huggingface: {}
 
+  extensions/identity-memory:
+    dependencies:
+      '@sinclair/typebox':
+        specifier: 0.34.48
+        version: 0.34.48
+
   extensions/imessage: {}
 
   extensions/irc:
