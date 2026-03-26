@@ -585,10 +585,13 @@ export function buildAssistantMessageFromResponse(
     model: modelInfo,
     content,
     stopReason,
-    usage: buildUsageWithNoCost({
-      ...normalizeUsage(response.usage),
-      totalTokens: response.usage?.total_tokens ?? 0,
-    }),
+    usage: (() => {
+      const normalized = normalizeUsage(response.usage);
+      return buildUsageWithNoCost({
+        ...normalized,
+        totalTokens: normalized?.total ?? response.usage?.total_tokens,
+      });
+    })(),
   });
 
   return assistantPhase
