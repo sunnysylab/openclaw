@@ -73,7 +73,7 @@ export function sanitizeCardKitMarkdown(text: string): string {
     return `\x00CODESPAN${codeSpans.length - 1}\x00`;
   });
   result = result.replace(
-    /<(?!\/?(?:a|b|i|em|strong|br|p|div|span|img|at|code|pre)\b)[^>\n]{0,80}(?!>)$/gm,
+    /<(?!\/?(?:a|b|i|em|strong|br|p|div|span|img|at|code|pre)\b)[^>\n]*$/gm,
     (m) => {
       return m.replace(/</g, "\\<");
     },
