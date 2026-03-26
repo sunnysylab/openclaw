@@ -3,6 +3,7 @@ import {
   resolveTextChunksWithFallback,
   sendMediaWithLeadingCaption,
 } from "openclaw/plugin-sdk/reply-payload";
+import { stripReasoningTagsFromText } from "openclaw/plugin-sdk/text-runtime";
 import {
   createChannelReplyPipeline,
   createReplyPrefixContext,
@@ -22,15 +23,6 @@ import { sendMessageFeishu, sendStructuredCardFeishu, type CardHeaderConfig } fr
 import { FeishuStreamingSession, mergeStreamingText } from "./streaming-card.js";
 import { resolveReceiveIdType } from "./targets.js";
 import { addTypingIndicator, removeTypingIndicator, type TypingIndicatorState } from "./typing.js";
-
-/**
- * Strip leaked thinking/thought content that should never reach the user.
- */
-function stripLeakedThinkingContent(text: string): string {
-  let cleaned = text.replace(/<(thinking|thought|antthinking)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
-  cleaned = cleaned.replace(/<(thinking|thought|antthinking)\b[^>]*>[\s\S]*$/gi, "");
-  return cleaned;
-}
 
 /** Detect if text contains markdown elements that benefit from card rendering */
 function shouldUseCard(text: string): boolean {
@@ -494,7 +486,10 @@ export function createFeishuReplyDispatcher(params: CreateFeishuReplyDispatcherP
             if (!payload.text) {
               return;
             }
-            const cleaned = stripLeakedThinkingContent(payload.text);
+            const cleaned = stripReasoningTagsFromText(payload.text, {
+              mode: "strict",
+              trim: "both",
+            });
             if (!cleaned) {
               return;
             }
