@@ -521,7 +521,7 @@ export function registerSubagentRun(params: {
   const cfg = loadConfig();
   const archiveAfterMs = resolveArchiveAfterMs(cfg);
   const archiveAtMs = archiveAfterMs ? now + archiveAfterMs : undefined;
-  const runTimeoutSeconds = params.runTimeoutSeconds ?? undefined;
+  const runTimeoutSeconds = params.runTimeoutSeconds;
   const waitTimeoutMs = resolveSubagentWaitTimeoutMs(cfg, runTimeoutSeconds);
   const requesterOrigin = normalizeDeliveryContext(params.requesterOrigin);
   subagentRuns.set(params.runId, {
