@@ -412,7 +412,42 @@ export const TtsConfigSchema = z
       })
       .strict()
       .optional(),
-    providers: z.record(z.string(), TtsProviderConfigSchema).optional(),
+    elevenlabs: z
+      .object({
+        apiKey: SecretInputSchema.optional().register(sensitive),
+        baseUrl: z.string().optional(),
+        voiceId: z.string().optional(),
+        modelId: z.string().optional(),
+        seed: z.number().int().min(0).max(4294967295).optional(),
+        applyTextNormalization: z.enum(["auto", "on", "off"]).optional(),
+        languageCode: z.string().optional(),
+        voiceSettings: z
+          .object({
+            stability: z.number().min(0).max(1).optional(),
+            similarityBoost: z.number().min(0).max(1).optional(),
+            style: z.number().min(0).max(1).optional(),
+            useSpeakerBoost: z.boolean().optional(),
+            speed: z.number().min(0.5).max(2).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    openai: z
+      .object({
+        apiKey: SecretInputSchema.optional().register(sensitive),
+        baseUrl: z.string().optional(),
+        model: z.string().optional(),
+        voice: z.string().optional(),
+        speed: z.number().min(0.25).max(4).optional(),
+        response_format: z.enum(["mp3", "opus", "aac", "flac", "wav", "pcm"]).optional(),
+        instructions: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    edge: TtsMicrosoftConfigSchema,
+    microsoft: TtsMicrosoftConfigSchema,
     prefsPath: z.string().optional(),
     maxTextLength: z.number().int().min(1).optional(),
     timeoutMs: z.number().int().min(1000).max(120000).optional(),

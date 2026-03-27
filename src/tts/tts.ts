@@ -219,7 +219,60 @@ export function resolveTtsConfig(cfg: OpenClawConfig): ResolvedTtsConfig {
     providerSource,
     summaryModel: raw.summaryModel?.trim() || undefined,
     modelOverrides: resolveModelOverridePolicy(raw.modelOverrides),
-    providerConfigs: resolveSpeechProviderConfigs(raw, cfg, timeoutMs),
+    elevenlabs: {
+      apiKey: normalizeResolvedSecretInputString({
+        value: raw.elevenlabs?.apiKey,
+        path: "messages.tts.elevenlabs.apiKey",
+      }),
+      baseUrl: raw.elevenlabs?.baseUrl?.trim() || DEFAULT_ELEVENLABS_BASE_URL,
+      voiceId: raw.elevenlabs?.voiceId ?? DEFAULT_ELEVENLABS_VOICE_ID,
+      modelId: raw.elevenlabs?.modelId ?? DEFAULT_ELEVENLABS_MODEL_ID,
+      seed: raw.elevenlabs?.seed,
+      applyTextNormalization: raw.elevenlabs?.applyTextNormalization,
+      languageCode: raw.elevenlabs?.languageCode,
+      voiceSettings: {
+        stability:
+          raw.elevenlabs?.voiceSettings?.stability ?? DEFAULT_ELEVENLABS_VOICE_SETTINGS.stability,
+        similarityBoost:
+          raw.elevenlabs?.voiceSettings?.similarityBoost ??
+          DEFAULT_ELEVENLABS_VOICE_SETTINGS.similarityBoost,
+        style: raw.elevenlabs?.voiceSettings?.style ?? DEFAULT_ELEVENLABS_VOICE_SETTINGS.style,
+        useSpeakerBoost:
+          raw.elevenlabs?.voiceSettings?.useSpeakerBoost ??
+          DEFAULT_ELEVENLABS_VOICE_SETTINGS.useSpeakerBoost,
+        speed: raw.elevenlabs?.voiceSettings?.speed ?? DEFAULT_ELEVENLABS_VOICE_SETTINGS.speed,
+      },
+    },
+    openai: {
+      apiKey: normalizeResolvedSecretInputString({
+        value: raw.openai?.apiKey,
+        path: "messages.tts.openai.apiKey",
+      }),
+      // Config > env var > default; strip trailing slashes for consistency.
+      baseUrl: (
+        raw.openai?.baseUrl?.trim() ||
+        process.env.OPENAI_TTS_BASE_URL?.trim() ||
+        DEFAULT_OPENAI_BASE_URL
+      ).replace(/\/+$/, ""),
+      model: raw.openai?.model ?? DEFAULT_OPENAI_MODEL,
+      voice: raw.openai?.voice ?? DEFAULT_OPENAI_VOICE,
+      speed: raw.openai?.speed,
+      responseFormat: raw.openai?.response_format,
+      instructions: raw.openai?.instructions?.trim() || undefined,
+    },
+    edge: {
+      enabled: rawMicrosoft.enabled ?? true,
+      voice: rawMicrosoft.voice?.trim() || DEFAULT_EDGE_VOICE,
+      lang: rawMicrosoft.lang?.trim() || DEFAULT_EDGE_LANG,
+      outputFormat: edgeOutputFormat || DEFAULT_EDGE_OUTPUT_FORMAT,
+      outputFormatConfigured: Boolean(edgeOutputFormat),
+      pitch: rawMicrosoft.pitch?.trim() || undefined,
+      rate: rawMicrosoft.rate?.trim() || undefined,
+      volume: rawMicrosoft.volume?.trim() || undefined,
+      saveSubtitles: rawMicrosoft.saveSubtitles ?? false,
+      proxy: rawMicrosoft.proxy?.trim() || undefined,
+      timeoutMs: rawMicrosoft.timeoutMs,
+    },
     prefsPath: raw.prefsPath,
     maxTextLength: raw.maxTextLength ?? DEFAULT_MAX_TEXT_LENGTH,
     timeoutMs,
