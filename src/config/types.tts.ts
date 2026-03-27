@@ -70,6 +70,15 @@ export type LegacyTtsConfigCompat = {
     proxy?: string;
     timeoutMs?: number;
   };
+  /** Legacy Inworld TTS configuration. Prefer providers.inworld. */
+  inworld?: {
+    apiKey?: SecretInput;
+    baseUrl?: string;
+    voiceId?: string;
+    modelId?: string;
+    /** Sampling temperature (0–2, default 1.0). */
+    temperature?: number;
+  };
   /** Legacy Microsoft speech configuration. Prefer providers.microsoft. */
   microsoft?: {
     enabled?: boolean;

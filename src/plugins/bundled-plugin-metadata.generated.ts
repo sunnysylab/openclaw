@@ -7058,6 +7058,28 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
     },
   },
   {
+    dirName: "inworld",
+    idHint: "inworld-speech",
+    source: {
+      source: "./index.ts",
+      built: "index.js",
+    },
+    packageName: "@openclaw/inworld-speech",
+    packageVersion: "2026.3.22",
+    packageDescription: "OpenClaw Inworld speech plugin",
+    packageManifest: {
+      extensions: ["./index.ts"],
+    },
+    manifest: {
+      id: "inworld",
+      configSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {},
+      },
+    },
+  },
+  {
     dirName: "irc",
     idHint: "irc",
     source: {
