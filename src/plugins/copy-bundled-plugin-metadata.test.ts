@@ -8,6 +8,7 @@ import {
 import { cleanupTempDirs, makeTempRepoRoot, writeJsonFile } from "../../test/helpers/temp-repo.js";
 
 const tempDirs: string[] = [];
+const includeOptionalEnv = { OPENCLAW_INCLUDE_OPTIONAL_BUNDLED: "1" } as const;
 const excludeOptionalEnv = { OPENCLAW_INCLUDE_OPTIONAL_BUNDLED: "0" } as const;
 const copyBundledPluginMetadataWithEnv = copyBundledPluginMetadata as (params?: {
   repoRoot?: string;
@@ -20,6 +21,16 @@ function makeRepoRoot(prefix: string): string {
 
 function writeJson(filePath: string, value: unknown): void {
   writeJsonFile(filePath, value);
+}
+
+function writeBuiltPluginEntry(
+  repoRoot: string,
+  pluginId: string,
+  relativePath = "index.js",
+): void {
+  const filePath = path.join(repoRoot, "dist", "extensions", pluginId, relativePath);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, "export default {};\n", "utf8");
 }
 
 afterEach(() => {
@@ -54,6 +65,7 @@ describe("copyBundledPluginMetadata", () => {
       name: "@openclaw/acpx",
       openclaw: { extensions: ["./index.ts"] },
     });
+    writeBuiltPluginEntry(repoRoot, "acpx");
 
     copyBundledPluginMetadata({ repoRoot });
 
@@ -114,6 +126,7 @@ describe("copyBundledPluginMetadata", () => {
       name: "@openclaw/tlon",
       openclaw: { extensions: ["./index.ts"] },
     });
+    writeBuiltPluginEntry(repoRoot, "tlon");
     const staleNodeModulesSkillDir = path.join(
       repoRoot,
       "dist",
@@ -168,6 +181,7 @@ describe("copyBundledPluginMetadata", () => {
       name: "@openclaw/tlon",
       openclaw: { extensions: ["./index.ts"] },
     });
+    writeBuiltPluginEntry(repoRoot, "tlon");
 
     copyBundledPluginMetadata({ repoRoot });
 
@@ -208,6 +222,7 @@ describe("copyBundledPluginMetadata", () => {
       name: "@openclaw/tlon",
       openclaw: { extensions: ["./index.ts"] },
     });
+    writeBuiltPluginEntry(repoRoot, "tlon");
     const staleBundledSkillDir = path.join(
       repoRoot,
       "dist",
@@ -251,6 +266,7 @@ describe("copyBundledPluginMetadata", () => {
       name: "@openclaw/diffs",
       openclaw: { extensions: ["./index.ts"] },
     });
+    writeBuiltPluginEntry(repoRoot, "diffs");
 
     const realCpSync = fs.cpSync.bind(fs);
     let attempts = 0;
@@ -357,6 +373,56 @@ describe("copyBundledPluginMetadata", () => {
     expect(fs.existsSync(path.join(repoRoot, "dist", "extensions", "acpx"))).toBe(false);
   });
 
+  it("skips metadata for plugins whose build outputs were not emitted", () => {
+    const repoRoot = makeRepoRoot("openclaw-bundled-plugin-skipped-build-");
+    const pluginDir = path.join(repoRoot, "extensions", "googlechat");
+    fs.mkdirSync(pluginDir, { recursive: true });
+    writeJson(path.join(pluginDir, "openclaw.plugin.json"), {
+      id: "googlechat",
+      configSchema: { type: "object" },
+    });
+    writeJson(path.join(pluginDir, "package.json"), {
+      name: "@openclaw/googlechat",
+      openclaw: {
+        extensions: ["./index.ts"],
+        setupEntry: "./setup-entry.ts",
+      },
+    });
+
+    copyBundledPluginMetadataWithEnv({ repoRoot, env: includeOptionalEnv });
+
+    expect(fs.existsSync(path.join(repoRoot, "dist", "extensions", "googlechat"))).toBe(false);
+  });
+
+  it("removes stale plugin outputs when a declared built entry is missing", () => {
+    const repoRoot = makeRepoRoot("openclaw-bundled-plugin-missing-entry-");
+    const pluginDir = path.join(repoRoot, "extensions", "matrix");
+    fs.mkdirSync(pluginDir, { recursive: true });
+    writeJson(path.join(pluginDir, "openclaw.plugin.json"), {
+      id: "matrix",
+      configSchema: { type: "object" },
+    });
+    writeJson(path.join(pluginDir, "package.json"), {
+      name: "@openclaw/matrix",
+      openclaw: {
+        extensions: ["./index.ts"],
+        setupEntry: "./setup-entry.ts",
+      },
+    });
+    writeBuiltPluginEntry(repoRoot, "matrix", "index.js");
+    writeJson(path.join(repoRoot, "dist", "extensions", "matrix", "package.json"), {
+      name: "@openclaw/matrix",
+      openclaw: {
+        extensions: ["./index.js"],
+        setupEntry: "./setup-entry.js",
+      },
+    });
+
+    copyBundledPluginMetadataWithEnv({ repoRoot, env: includeOptionalEnv });
+
+    expect(fs.existsSync(path.join(repoRoot, "dist", "extensions", "matrix"))).toBe(false);
+  });
+
   it("still bundles previously released optional plugins without the opt-in env", () => {
     const repoRoot = makeRepoRoot("openclaw-bundled-plugin-released-optional-");
     const pluginDir = path.join(repoRoot, "extensions", "whatsapp");
@@ -372,6 +438,7 @@ describe("copyBundledPluginMetadata", () => {
         install: { npmSpec: "@openclaw/whatsapp" },
       },
     });
+    writeBuiltPluginEntry(repoRoot, "whatsapp");
 
     copyBundledPluginMetadataWithEnv({ repoRoot, env: {} });
 

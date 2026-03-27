@@ -35,6 +35,26 @@ function rewritePackageEntry(entry) {
   return `./${rewritten}`;
 }
 
+function collectRewrittenPackageEntries(openclawConfig) {
+  const rewrittenExtensions = rewritePackageExtensions(openclawConfig?.extensions) ?? [];
+  const rewrittenSetupEntry = rewritePackageEntry(openclawConfig?.setupEntry);
+  return rewrittenSetupEntry ? [...rewrittenExtensions, rewrittenSetupEntry] : rewrittenExtensions;
+}
+
+function hasBuiltPluginEntries(params) {
+  if (!fs.existsSync(params.distPluginDir)) {
+    return false;
+  }
+
+  if (params.rewrittenEntries.length === 0) {
+    return true;
+  }
+
+  return params.rewrittenEntries.every((entry) =>
+    fs.existsSync(path.join(params.distPluginDir, entry.replace(/^\.\//, ""))),
+  );
+}
+
 function ensurePathInsideRoot(rootDir, rawPath) {
   const resolved = path.resolve(rootDir, rawPath);
   const relative = path.relative(rootDir, resolved);
@@ -225,6 +245,11 @@ export function copyBundledPluginMetadata(params = {}) {
 
     if (!fs.existsSync(packageJsonPath)) {
       removeFileIfExists(distPackageJsonPath);
+      continue;
+    }
+    const rewrittenEntries = collectRewrittenPackageEntries(packageJson.openclaw);
+    if (!hasBuiltPluginEntries({ distPluginDir, rewrittenEntries })) {
+      removePathIfExists(distPluginDir);
       continue;
     }
     if (packageJson.openclaw && "extensions" in packageJson.openclaw) {
