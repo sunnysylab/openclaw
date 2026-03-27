@@ -6,6 +6,7 @@ import type { GatewayAuthMode, GatewayTailscaleMode } from "../../config/config.
 import {
   CONFIG_PATH,
   loadConfig,
+  normalizeStateDirEnv,
   readConfigFileSnapshot,
   resolveStateDir,
   resolveGatewayPort,
@@ -163,6 +164,7 @@ function resolveGatewayRunOptions(opts: GatewayRunOpts, command?: Command): Gate
 }
 
 async function runGatewayCommand(opts: GatewayRunOpts) {
+  normalizeStateDirEnv(process.env);
   const isDevProfile = process.env.OPENCLAW_PROFILE?.trim().toLowerCase() === "dev";
   const devMode = Boolean(opts.dev) || isDevProfile;
   if (opts.reset && !devMode) {
