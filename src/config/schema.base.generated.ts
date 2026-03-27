@@ -3000,7 +3000,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                       },
                       workspaceMountPropagation: {
                         type: "string",
-                        enum: ["private", "rslave", "rshared"],
+                        enum: ["rprivate", "rslave", "rshared"],
                       },
                     },
                     additionalProperties: false,
@@ -4142,7 +4142,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                         },
                         workspaceMountPropagation: {
                           type: "string",
-                          enum: ["private", "rslave", "rshared"],
+                          enum: ["rprivate", "rslave", "rshared"],
                         },
                       },
                       additionalProperties: false,
