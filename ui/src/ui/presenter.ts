@@ -23,12 +23,19 @@ export function formatNextRun(ms?: number | null) {
 }
 
 export function formatSessionTokens(row: GatewaySessionRow) {
-  if (row.totalTokens == null) {
+  if (row.totalTokens == null && row.inputTokens == null && row.outputTokens == null) {
     return "n/a";
   }
   const total = row.totalTokens ?? 0;
   const ctx = row.contextTokens ?? 0;
-  return ctx ? `${total} / ${ctx}` : String(total);
+  const base = ctx ? `${total} / ${ctx}` : String(total);
+  if (row.inputTokens != null || row.outputTokens != null) {
+    const inp = row.inputTokens != null ? `in:${row.inputTokens}` : null;
+    const out = row.outputTokens != null ? `out:${row.outputTokens}` : null;
+    const breakdown = [inp, out].filter(Boolean).join(" ");
+    return `${base} (${breakdown})`;
+  }
+  return base;
 }
 
 export function formatEventPayload(payload: unknown): string {
