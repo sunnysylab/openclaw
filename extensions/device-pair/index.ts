@@ -552,7 +552,8 @@ export default definePluginEntry({
         const action = tokens[0]?.toLowerCase() ?? "";
         const gatewayClientScopes = Array.isArray(ctx.gatewayClientScopes)
           ? ctx.gatewayClientScopes
-          : null;
+          : undefined;
+        const isInternalGatewayCaller = ctx.channel === "webchat";
         api.logger.info?.(
           `device-pair: /pair invoked channel=${ctx.channel} sender=${ctx.senderId ?? "unknown"} action=${
             action || "new"
@@ -611,9 +612,11 @@ export default definePluginEntry({
           if (!pending) {
             return { text: "Pairing request not found." };
           }
-          const approved = await approveDevicePairing(pending.requestId, {
-            callerScopes: gatewayClientScopes ?? [],
-          });
+          const approved = isInternalGatewayCaller
+            ? await approveDevicePairing(pending.requestId, {
+                callerScopes: gatewayClientScopes ?? [],
+              })
+            : await approveDevicePairing(pending.requestId);
           if (!approved) {
             return { text: "Pairing request not found." };
           }
