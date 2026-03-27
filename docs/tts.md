@@ -9,12 +9,13 @@ title: "Text-to-Speech (legacy path)"
 
 # Text-to-speech (TTS)
 
-OpenClaw can convert outbound replies into audio using ElevenLabs, Microsoft, or OpenAI.
+OpenClaw can convert outbound replies into audio using ElevenLabs, Inworld, Microsoft, or OpenAI.
 It works anywhere OpenClaw can send audio.
 
 ## Supported services
 
 - **ElevenLabs** (primary or fallback provider)
+- **Inworld** (primary or fallback provider; streaming synthesis with telephony support)
 - **Microsoft** (primary or fallback provider; current bundled implementation uses `node-edge-tts`)
 - **OpenAI** (primary or fallback provider; also used for summaries)
 
@@ -33,9 +34,10 @@ or ElevenLabs.
 
 ## Optional keys
 
-If you want OpenAI or ElevenLabs:
+If you want OpenAI, ElevenLabs, or Inworld:
 
 - `ELEVENLABS_API_KEY` (or `XI_API_KEY`)
+- `INWORLD_API_KEY` (Base64-encoded Basic auth credentials)
 - `OPENAI_API_KEY`
 
 Microsoft speech does **not** require an API key.
@@ -46,12 +48,13 @@ so that provider must also be authenticated if you enable summaries.
 
 ## Service links
 
-- [OpenAI Text-to-Speech guide](https://platform.openai.com/docs/guides/text-to-speech)
-- [OpenAI Audio API reference](https://platform.openai.com/docs/api-reference/audio)
 - [ElevenLabs Text to Speech](https://elevenlabs.io/docs/api-reference/text-to-speech)
 - [ElevenLabs Authentication](https://elevenlabs.io/docs/api-reference/authentication)
+- [Inworld AI TTS](https://docs.inworld.ai/docs/tutorial-integrations/tts/)
 - [node-edge-tts](https://github.com/SchneeHertz/node-edge-tts)
 - [Microsoft Speech output formats](https://learn.microsoft.com/azure/ai-services/speech-service/rest-text-to-speech#audio-outputs)
+- [OpenAI Text-to-Speech guide](https://platform.openai.com/docs/guides/text-to-speech)
+- [OpenAI Audio API reference](https://platform.openai.com/docs/api-reference/audio)
 
 ## Is it enabled by default?
 
@@ -119,6 +122,29 @@ Full schema is in [Gateway configuration](/gateway/configuration).
   },
 }
 ```
+
+### Inworld primary
+
+```json5
+{
+  messages: {
+    tts: {
+      auto: "always",
+      provider: "inworld",
+      providers: {
+        inworld: {
+          voiceId: "Sarah",
+          modelId: "inworld-tts-1.5-max",
+        },
+      },
+    },
+  },
+}
+```
+
+Available models: `inworld-tts-1.5-max` (default, highest quality) and `inworld-tts-1.5-mini` (faster, lower latency).
+Default voice: `Sarah`. Use `/tts voices` or the Voices API to list all available voices.
+Supports `temperature` (0-2) for controlling speech variation.
 
 ### Microsoft primary (no API key)
 
@@ -211,7 +237,7 @@ Then run:
   - `tagged` only sends audio when the reply includes `[[tts]]` tags.
 - `enabled`: legacy toggle (doctor migrates this to `auto`).
 - `mode`: `"final"` (default) or `"all"` (includes tool/block replies).
-- `provider`: speech provider id such as `"elevenlabs"`, `"microsoft"`, or `"openai"` (fallback is automatic).
+- `provider`: speech provider id such as `"elevenlabs"`, `"inworld"`, `"microsoft"`, or `"openai"` (fallback is automatic).
 - If `provider` is **unset**, OpenClaw uses the first configured speech provider in registry auto-select order.
 - Legacy `provider: "edge"` still works and is normalized to `microsoft`.
 - `summaryModel`: optional cheap model for auto-summary; defaults to `agents.defaults.model.primary`.
@@ -222,8 +248,12 @@ Then run:
 - `maxTextLength`: hard cap for TTS input (chars). `/tts audio` fails if exceeded.
 - `timeoutMs`: request timeout (ms).
 - `prefsPath`: override the local prefs JSON path (provider/limit/summary).
-- `apiKey` values fall back to env vars (`ELEVENLABS_API_KEY`/`XI_API_KEY`, `OPENAI_API_KEY`).
+- `apiKey` values fall back to env vars (`ELEVENLABS_API_KEY`/`XI_API_KEY`, `INWORLD_API_KEY`, `OPENAI_API_KEY`).
 - `providers.elevenlabs.baseUrl`: override ElevenLabs API base URL.
+- `providers.inworld.voiceId`: Inworld voice name (e.g. `Sarah`).
+- `providers.inworld.modelId`: Inworld TTS model (`inworld-tts-1.5-max` or `inworld-tts-1.5-mini`).
+- `providers.inworld.temperature`: speech variation control (`0`-`2`, default `1`).
+- `providers.inworld.baseUrl`: override Inworld API base URL (default `https://api.inworld.ai`).
 - `providers.openai.baseUrl`: override the OpenAI TTS endpoint.
   - Resolution order: `messages.tts.providers.openai.baseUrl` -> `OPENAI_TTS_BASE_URL` -> `https://api.openai.com/v1`
   - Non-default values are treated as OpenAI-compatible TTS endpoints, so custom model and voice names are accepted.
