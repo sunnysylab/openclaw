@@ -621,17 +621,6 @@ const SECRET_TARGET_REGISTRY: SecretTargetRegistryEntry[] = [
     providerIdPathSegmentIndex: 3,
   },
   {
-    id: "messages.tts.inworld.apiKey",
-    targetType: "messages.tts.inworld.apiKey",
-    configFile: "openclaw.json",
-    pathPattern: "messages.tts.inworld.apiKey",
-    secretShape: SECRET_INPUT_SHAPE,
-    expectedResolvedValue: "string",
-    includeInPlan: true,
-    includeInConfigure: true,
-    includeInAudit: true,
-  },
-  {
     id: "models.providers.*.apiKey",
     targetType: "models.providers.apiKey",
     targetTypeAliases: ["models.providers.*.apiKey"],
