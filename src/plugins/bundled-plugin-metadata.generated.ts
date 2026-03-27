@@ -9478,6 +9478,7 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
         },
       ],
       contracts: {
+        speechProviders: ["minimax"],
         mediaUnderstandingProviders: ["minimax", "minimax-portal"],
         imageGenerationProviders: ["minimax", "minimax-portal"],
       },
