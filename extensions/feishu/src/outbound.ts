@@ -1,11 +1,19 @@
 import fs from "fs";
 import path from "path";
-import { createAttachedChannelResultAdapter } from "openclaw/plugin-sdk/channel-send-result";
+import {
+  attachChannelToResult,
+  createAttachedChannelResultAdapter,
+} from "openclaw/plugin-sdk/channel-send-result";
 import type { ChannelOutboundAdapter } from "../runtime-api.js";
 import { resolveFeishuAccount } from "./accounts.js";
 import { sendMediaFeishu } from "./media.js";
 import { getFeishuRuntime } from "./runtime.js";
-import { sendMarkdownCardFeishu, sendMessageFeishu, sendStructuredCardFeishu } from "./send.js";
+import {
+  sendCardFeishu,
+  sendMarkdownCardFeishu,
+  sendMessageFeishu,
+  sendStructuredCardFeishu,
+} from "./send.js";
 
 function normalizePossibleLocalImagePath(text: string | undefined): string | null {
   const raw = text?.trim();
@@ -64,17 +72,58 @@ async function sendOutboundText(params: {
   to: string;
   text: string;
   replyToMessageId?: string;
+  replyInThread?: boolean;
   accountId?: string;
+  identity?: { name?: string | null; emoji?: string | null };
 }) {
-  const { cfg, to, text, accountId, replyToMessageId } = params;
+  const { cfg, to, text, accountId, replyToMessageId, replyInThread, identity } = params;
   const account = resolveFeishuAccount({ cfg, accountId });
   const renderMode = account.config?.renderMode ?? "auto";
 
   if (renderMode === "card" || (renderMode === "auto" && shouldUseCard(text))) {
-    return sendMarkdownCardFeishu({ cfg, to, text, accountId, replyToMessageId });
+    const header = identity
+      ? {
+          title: identity.emoji
+            ? `${identity.emoji} ${identity.name ?? ""}`.trim()
+            : (identity.name ?? ""),
+          template: "blue" as const,
+        }
+      : undefined;
+    return sendStructuredCardFeishu({
+      cfg,
+      to,
+      text,
+      accountId,
+      replyToMessageId,
+      replyInThread,
+      header: header?.title ? header : undefined,
+    });
   }
 
   return sendMessageFeishu({ cfg, to, text, accountId, replyToMessageId });
+}
+
+/**
+ * Chunk `text` and dispatch each piece through `sendOutboundText`, matching the
+ * core delivery loop's sendTextChunks behaviour for the feishu channel.
+ * Returns the result of the last chunk (the one callers use as the delivery result).
+ */
+async function sendOutboundTextChunked(
+  params: Parameters<typeof sendOutboundText>[0],
+): Promise<ReturnType<typeof sendOutboundText>> {
+  const { cfg, accountId } = params;
+  const runtime = getFeishuRuntime();
+  const textLimit = runtime.channel.text.resolveTextChunkLimit(cfg, "feishu", accountId, {
+    fallbackLimit: 4000,
+  });
+  const chunks = runtime.channel.text.chunkMarkdownText(params.text, textLimit);
+  // If chunker returned nothing (e.g. empty string), fall through to a single send.
+  const parts = chunks.length > 0 ? chunks : [params.text];
+  let lastResult!: Awaited<ReturnType<typeof sendOutboundText>>;
+  for (const chunk of parts) {
+    lastResult = await sendOutboundText({ ...params, text: chunk });
+  }
+  return lastResult;
 }
 
 export const feishuOutbound: ChannelOutboundAdapter = {
@@ -82,6 +131,133 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   chunker: (text, limit) => getFeishuRuntime().channel.text.chunkMarkdownText(text, limit),
   chunkerMode: "markdown",
   textChunkLimit: 4000,
+  sendPayload: async ({
+    cfg,
+    to,
+    text,
+    payload,
+    accountId,
+    replyToId,
+    threadId,
+    mediaLocalRoots,
+    identity,
+  }) => {
+    const replyToMessageId = resolveReplyToMessageId({ replyToId, threadId });
+    const replyInThread = threadId != null && !replyToId;
+    const feishuData = payload.channelData?.feishu as
+      | { card?: Record<string, unknown> }
+      | undefined;
+
+    // When channelData.feishu.card is provided, send as an interactive card directly.
+    if (feishuData?.card && typeof feishuData.card === "object") {
+      return attachChannelToResult(
+        "feishu",
+        await sendCardFeishu({
+          cfg,
+          to,
+          card: feishuData.card,
+          accountId: accountId ?? undefined,
+          replyToMessageId,
+          replyInThread,
+        }),
+      );
+    }
+
+    // Fallback: send text + media via standard outbound paths.
+    // Collect all media URLs to handle multi-attachment payloads.
+    // mediaUrls is authoritative; mediaUrl is a legacy fallback only used when mediaUrls is absent.
+    const mediaUrls: string[] = [];
+    if (payload.mediaUrls && payload.mediaUrls.length > 0) {
+      for (const url of payload.mediaUrls) {
+        if (url) mediaUrls.push(url);
+      }
+    } else if (payload.mediaUrl) {
+      mediaUrls.push(payload.mediaUrl);
+    }
+
+    if (mediaUrls.length > 0) {
+      // Send text first (if any), then media.
+      // Use the chunked variant so long text respects the configured Feishu message limit,
+      // matching what the core delivery loop does when it routes through sendTextChunks.
+      if (text?.trim()) {
+        await sendOutboundTextChunked({
+          cfg,
+          to,
+          text,
+          accountId: accountId ?? undefined,
+          replyToMessageId,
+        });
+      }
+
+      // Send each media attachment; keep the last successful result for the return value.
+      let lastResult: { messageId: string; [k: string]: unknown } | undefined;
+      for (const mediaUrl of mediaUrls) {
+        try {
+          lastResult = await sendMediaFeishu({
+            cfg,
+            to,
+            mediaUrl,
+            accountId: accountId ?? undefined,
+            mediaLocalRoots,
+            replyToMessageId,
+          });
+        } catch (err) {
+          console.error(`[feishu] sendPayload media failed:`, err);
+          // On failure, send URL-only fallback (no text duplication — text was already sent above)
+          lastResult = await sendOutboundText({
+            cfg,
+            to,
+            text: `📎 ${mediaUrl}`,
+            accountId: accountId ?? undefined,
+            replyToMessageId,
+          });
+        }
+      }
+      return attachChannelToResult("feishu", lastResult!);
+    }
+
+    // Text-only payload — short-circuit if there is nothing to send.
+    if (!text?.trim()) {
+      return attachChannelToResult("feishu", { messageId: "" });
+    }
+
+    // Apply the same local-image auto-upload shim as sendText, so that channelData
+    // payloads whose text is a local image path upload correctly rather than leaking the path.
+    const localImagePath = normalizePossibleLocalImagePath(text);
+    if (localImagePath) {
+      try {
+        return attachChannelToResult(
+          "feishu",
+          await sendMediaFeishu({
+            cfg,
+            to,
+            mediaUrl: localImagePath,
+            accountId: accountId ?? undefined,
+            replyToMessageId,
+            mediaLocalRoots,
+          }),
+        );
+      } catch (err) {
+        console.error(`[feishu] sendPayload local image path auto-send failed:`, err);
+        // fall through to plain text as last resort
+      }
+    }
+
+    // Chunk the text to respect the configured Feishu message limit, matching the
+    // core delivery loop's sendTextChunks behaviour for non-payload text sends.
+    return attachChannelToResult(
+      "feishu",
+      await sendOutboundTextChunked({
+        cfg,
+        to,
+        text,
+        accountId: accountId ?? undefined,
+        replyToMessageId,
+        replyInThread,
+        identity: identity ?? undefined,
+      }),
+    );
+  },
   ...createAttachedChannelResultAdapter({
     channel: "feishu",
     sendText: async ({
