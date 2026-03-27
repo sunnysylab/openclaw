@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_PLUGIN_ENTRY_CANDIDATES,
   getPackageManifestMetadata,
+  loadPluginManifest,
   type PluginManifest,
   resolvePackageExtensionEntries,
   type OpenClawPackageManifest,
@@ -400,8 +401,15 @@ function addCandidate(params: {
   }
   params.seen.add(resolved);
   const manifest = params.manifest ?? null;
+
+  let idHint = params.idHint;
+  const pluginManifestResult = loadPluginManifest(resolvedRoot, params.origin !== "bundled");
+  if (pluginManifestResult.ok && pluginManifestResult.manifest.id) {
+    idHint = pluginManifestResult.manifest.id;
+  }
+
   params.candidates.push({
-    idHint: params.idHint,
+    idHint,
     source: resolved,
     setupSource: params.setupSource,
     rootDir: resolvedRoot,
