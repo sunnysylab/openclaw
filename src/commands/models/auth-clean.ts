@@ -199,7 +199,7 @@ export async function modelsAuthCleanCommand(
           JSON.stringify(
             {
               warning:
-                "No profiles configured in openclaw.json auth.profiles or auth.order. All store profiles would be removed. Run without --dry-run to proceed.",
+                "No profiles configured in openclaw.json auth.profiles or auth.order. All store profiles would be removed. Add profiles to openclaw.json before running without --dry-run.",
               storeProfiles: storeProfileIds,
               dryRun: true,
             },
