@@ -578,23 +578,25 @@ export const msteamsPlugin: ChannelPlugin<ResolvedMSTeamsAccount, ProbeMSTeamsRe
                 : typeof ctx.params.target === "string"
                   ? ctx.params.target.trim()
                   : (ctx.toolContext?.currentChannelId?.trim() ?? "");
-            // Accept pinnedMessageId (preferred) or messageId as fallback
+            // pinnedMessageId is the pinned-message resource ID (from pin or list-pins),
+            // NOT the underlying chat message ID. Passing a messageId would 404.
             const pinnedMessageId =
               typeof ctx.params.pinnedMessageId === "string"
                 ? ctx.params.pinnedMessageId.trim()
-                : typeof ctx.params.messageId === "string"
-                  ? ctx.params.messageId.trim()
-                  : "";
+                : "";
             if (!to || !pinnedMessageId) {
               return {
                 isError: true,
                 content: [
                   {
                     type: "text" as const,
-                    text: "Unpin requires a target (to) and pinnedMessageId.",
+                    text: "Unpin requires a target (to) and pinnedMessageId (the pinned-message resource ID from pin or list-pins, not the chat message ID).",
                   },
                 ],
-                details: { error: "Unpin requires a target (to) and pinnedMessageId." },
+                details: {
+                  error:
+                    "Unpin requires a target (to) and pinnedMessageId (the pinned-message resource ID from pin or list-pins, not the chat message ID).",
+                },
               };
             }
             const { unpinMessageMSTeams } = await loadMSTeamsChannelRuntime();
