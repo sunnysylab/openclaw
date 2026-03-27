@@ -7059,11 +7059,12 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
   },
   {
     dirName: "inworld",
-    idHint: "inworld-speech",
+    idHint: "inworld",
     source: {
       source: "./index.ts",
       built: "index.js",
     },
+    publicSurfaceArtifacts: ["speech-provider.js"],
     packageName: "@openclaw/inworld-speech",
     packageVersion: "2026.3.22",
     packageDescription: "OpenClaw Inworld speech plugin",
@@ -7072,6 +7073,9 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
     },
     manifest: {
       id: "inworld",
+      contracts: {
+        speechProviders: ["inworld"],
+      },
       configSchema: {
         type: "object",
         additionalProperties: false,
