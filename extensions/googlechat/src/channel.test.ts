@@ -190,6 +190,7 @@ describe("googlechatPlugin outbound sendMedia", () => {
     await googlechatPlugin.outbound?.sendMedia?.({
       cfg,
       to: "spaces/AAA",
+      text: "",
       mediaUrl: "/tmp/workspace/image.png",
       mediaLocalRoots: [],
       accountId: "default",
