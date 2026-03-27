@@ -3,6 +3,7 @@ export {
   AllowFromListSchema,
   buildChannelConfigSchema,
   buildCatchallMultiAccountChannelSchema,
+  buildChannelConfigSchema,
   buildNestedDmConfigSchema,
 } from "../channels/plugins/config-schema.js";
 export {
