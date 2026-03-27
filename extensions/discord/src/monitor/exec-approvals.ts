@@ -535,6 +535,7 @@ export type DiscordExecApprovalHandlerOpts = {
         delete: (...args: unknown[]) => Promise<unknown>;
       };
       request: (fn: () => Promise<unknown>, label: string) => Promise<unknown>;
+      sendRequest: (fn: () => Promise<unknown>, label: string) => Promise<unknown>;
     };
   };
 };
@@ -711,7 +712,7 @@ export class DiscordExecApprovalHandler {
       });
     }
 
-    const { rest, request: discordRequest } = (
+    const { rest, sendRequest: discordRequest } = (
       this.opts.__testing?.createDiscordClient ?? sendShared.createDiscordClient
     )({ token: this.opts.token, accountId: this.opts.accountId }, this.opts.cfg);
     const payload = buildExecApprovalPayload(container);

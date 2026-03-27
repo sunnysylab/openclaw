@@ -7,7 +7,7 @@ import {
   resolveDiscordAccount,
   type ResolvedDiscordAccount,
 } from "./accounts.js";
-import { createDiscordRetryRunner } from "./retry.js";
+import { createDiscordRetryRunner, createDiscordSendRetryRunner } from "./retry.js";
 import { normalizeDiscordToken } from "./token.js";
 
 export type DiscordClientOpts = {
@@ -73,14 +73,18 @@ export function createDiscordRestClient(
 export function createDiscordClient(
   opts: DiscordClientOpts,
   cfg?: ReturnType<typeof loadConfig>,
-): { token: string; rest: RequestClient; request: RetryRunner } {
+): { token: string; rest: RequestClient; request: RetryRunner; sendRequest: RetryRunner } {
   const { token, rest, account } = createDiscordRestClient(opts, opts.cfg ?? cfg);
-  const request = createDiscordRetryRunner({
+  const retryParams = {
     retry: opts.retry,
     configRetry: account.config.retry,
     verbose: opts.verbose,
-  });
-  return { token, rest, request };
+  };
+  const request = createDiscordRetryRunner(retryParams);
+  // Send-safe runner: only retries rate limits, not transient errors,
+  // to avoid duplicate messages on non-idempotent POST operations.
+  const sendRequest = createDiscordSendRetryRunner(retryParams);
+  return { token, rest, request, sendRequest };
 }
 
 export function resolveDiscordRest(opts: DiscordClientOpts) {

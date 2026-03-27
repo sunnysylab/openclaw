@@ -65,6 +65,7 @@ vi.mock("../send.shared.js", async (importOriginal) => {
         delete: mockRestDelete,
       },
       request: (_fn: () => Promise<unknown>, _label: string) => _fn(),
+      sendRequest: (_fn: () => Promise<unknown>, _label: string) => _fn(),
     }),
   };
 });
@@ -297,6 +298,7 @@ function createTestingDeps() {
         delete: mockRestDelete,
       },
       request: (_fn: () => Promise<unknown>, _label: string) => _fn(),
+      sendRequest: (_fn: () => Promise<unknown>, _label: string) => _fn(),
       token: "test-token",
     }),
   };

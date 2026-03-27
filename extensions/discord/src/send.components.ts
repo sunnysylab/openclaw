@@ -136,7 +136,7 @@ export async function sendDiscordComponentMessage(
 ): Promise<DiscordSendResult> {
   const cfg = opts.cfg ?? loadConfig();
   const accountInfo = resolveDiscordAccount({ cfg, accountId: opts.accountId });
-  const { token, rest, request } = createDiscordClient(opts, cfg);
+  const { token, rest, request, sendRequest } = createDiscordClient(opts, cfg);
   const recipient = await parseAndResolveRecipient(to, opts.accountId, cfg);
   const { channelId } = await resolveChannelId(rest, recipient, request);
 
@@ -154,7 +154,7 @@ export async function sendDiscordComponentMessage(
 
   let result: { id: string; channel_id: string };
   try {
-    result = (await request(
+    result = (await sendRequest(
       () =>
         rest.post(Routes.channelMessages(channelId), {
           body,
