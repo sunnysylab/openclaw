@@ -14,6 +14,7 @@ vi.mock("./loader.js", () => ({
 }));
 
 let resolvePluginTools: typeof import("./tools.js").resolvePluginTools;
+let setActivePluginRegistry: typeof import("./runtime.js").setActivePluginRegistry;
 let resetPluginRuntimeStateForTest: typeof import("./runtime.js").resetPluginRuntimeStateForTest;
 
 function makeTool(name: string) {
@@ -95,7 +96,7 @@ describe("resolvePluginTools optional tools", () => {
   beforeEach(async () => {
     vi.resetModules();
     loadOpenClawPluginsMock.mockClear();
-    ({ resetPluginRuntimeStateForTest } = await import("./runtime.js"));
+    ({ setActivePluginRegistry, resetPluginRuntimeStateForTest } = await import("./runtime.js"));
     resetPluginRuntimeStateForTest();
     ({ resolvePluginTools } = await import("./tools.js"));
   });
@@ -193,5 +194,33 @@ describe("resolvePluginTools optional tools", () => {
         },
       }),
     );
+  });
+
+  it("reuses the active plugin registry when one is already loaded", () => {
+    const activeRegistry = {
+      tools: [
+        {
+          pluginId: "optional-demo",
+          optional: true,
+          source: "/tmp/optional-demo.js",
+          factory: () => makeTool("optional_tool"),
+        },
+      ],
+      diagnostics: [] as Array<{
+        level: string;
+        pluginId: string;
+        source: string;
+        message: string;
+      }>,
+    };
+    setActivePluginRegistry(activeRegistry as never, "active-registry");
+
+    const tools = resolvePluginTools({
+      context: createContext() as never,
+      toolAllowlist: ["optional_tool"],
+    });
+
+    expect(tools.map((tool) => tool.name)).toEqual(["optional_tool"]);
+    expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
   });
 });

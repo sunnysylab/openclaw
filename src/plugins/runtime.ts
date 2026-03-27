@@ -12,6 +12,7 @@ type RegistrySurfaceState = {
 type RegistryState = {
   activeRegistry: PluginRegistry | null;
   activeVersion: number;
+  loaded: boolean;
   httpRoute: RegistrySurfaceState;
   channel: RegistrySurfaceState;
   key: string | null;
@@ -25,6 +26,7 @@ const state: RegistryState = (() => {
     globalState[REGISTRY_STATE] = {
       activeRegistry: null,
       activeVersion: 0,
+      loaded: false,
       httpRoute: {
         registry: null,
         pinned: false,
@@ -74,9 +76,14 @@ function syncTrackedSurface(
 export function setActivePluginRegistry(registry: PluginRegistry, cacheKey?: string) {
   state.activeRegistry = registry;
   state.activeVersion += 1;
+  state.loaded = true;
   syncTrackedSurface(state.httpRoute, registry, true);
   syncTrackedSurface(state.channel, registry, true);
   state.key = cacheKey ?? null;
+}
+
+export function hasLoadedPluginRegistry(): boolean {
+  return state.loaded;
 }
 
 export function getActivePluginRegistry(): PluginRegistry | null {
@@ -182,6 +189,7 @@ export function getActivePluginRegistryVersion(): number {
 export function resetPluginRuntimeStateForTest(): void {
   state.activeRegistry = null;
   state.activeVersion += 1;
+  state.loaded = false;
   installSurfaceRegistry(state.httpRoute, null, false);
   installSurfaceRegistry(state.channel, null, false);
   state.key = null;

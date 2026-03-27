@@ -57,6 +57,14 @@ describe("image-generation provider registry", () => {
     expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
   });
 
+  it("reuses the active plugin registry when one is already loaded", () => {
+    setActivePluginRegistry(createEmptyPluginRegistry(), "active-registry");
+
+    listImageGenerationProviders({ plugins: { enabled: true } } as never);
+
+    expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
+  });
+
   it("ignores prototype-like provider ids and aliases", () => {
     const registry = createEmptyPluginRegistry();
     registry.imageGenerationProviders.push(

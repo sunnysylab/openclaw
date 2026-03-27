@@ -18,8 +18,8 @@ let createOpenClawCodingTools: typeof import("./pi-tools.js").createOpenClawCodi
 
 describe("createOpenClawTools plugin context", () => {
   beforeEach(async () => {
-    resolvePluginToolsMock.mockClear();
     vi.resetModules();
+    resolvePluginToolsMock.mockClear();
     ({ createOpenClawTools } = await import("./openclaw-tools.js"));
     ({ createOpenClawCodingTools } = await import("./pi-tools.js"));
   });

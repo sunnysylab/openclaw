@@ -67,6 +67,14 @@ describe("speech provider registry", () => {
     expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
   });
 
+  it("reuses the active plugin registry when one is already loaded", () => {
+    setActivePluginRegistry(createEmptyPluginRegistry(), "active-registry");
+
+    listSpeechProviders({ plugins: { enabled: true } } as never);
+
+    expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
+  });
+
   it("loads speech providers from plugins when config is provided", () => {
     loadOpenClawPluginsMock.mockReturnValue({
       ...createEmptyPluginRegistry(),

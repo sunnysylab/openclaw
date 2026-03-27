@@ -2,9 +2,8 @@ import { normalizeToolName } from "../agents/tool-policy.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { applyTestPluginDefaults, normalizePluginsConfig } from "./config-state.js";
-import { loadOpenClawPlugins } from "./loader.js";
+import { resolveEffectivePluginRegistry } from "./effective-registry.js";
 import { createPluginLoaderLogger } from "./logger.js";
-import { getActivePluginRegistry, getActivePluginRegistryKey } from "./runtime.js";
 import type { OpenClawPluginToolContext } from "./types.js";
 
 const log = createSubsystemLogger("plugins");
@@ -67,21 +66,17 @@ export function resolvePluginTools(params: {
     return [];
   }
 
-  const activeRegistry = getActivePluginRegistry();
-  const registry =
-    getActivePluginRegistryKey() && activeRegistry
-      ? activeRegistry
-      : loadOpenClawPlugins({
-          config: effectiveConfig,
-          workspaceDir: params.context.workspaceDir,
-          runtimeOptions: params.allowGatewaySubagentBinding
-            ? {
-                allowGatewaySubagentBinding: true,
-              }
-            : undefined,
-          env,
-          logger: createPluginLoaderLogger(log),
-        });
+  const registry = resolveEffectivePluginRegistry({
+    config: effectiveConfig,
+    workspaceDir: params.context.workspaceDir,
+    runtimeOptions: params.allowGatewaySubagentBinding
+      ? {
+          allowGatewaySubagentBinding: true,
+        }
+      : undefined,
+    env,
+    logger: createPluginLoaderLogger(log),
+  });
 
   const tools: AnyAgentTool[] = [];
   const existing = params.existingToolNames ?? new Set<string>();
