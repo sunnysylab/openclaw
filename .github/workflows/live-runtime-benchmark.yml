@@ -61,6 +61,8 @@ jobs:
       - name: Checkout canonical repository
         uses: actions/checkout@v4
         with:
+          repository: openclaw/openclaw
+          ref: refs/heads/${{ env.OPENCLAW_LIVE_BENCHMARK_DEFAULT_BRANCH }}
           persist-credentials: false
           submodules: false
 
