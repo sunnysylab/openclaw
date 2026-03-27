@@ -71,6 +71,9 @@ describe("media server", () => {
     const res = await realFetch(mediaUrl("file1"));
     expect(res.status).toBe(200);
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("cache-control")).toBe("no-store, private, max-age=0, must-revalidate");
+    expect(res.headers.get("pragma")).toBe("no-cache");
+    expect(res.headers.get("expires")).toBe("0");
     expect(await res.text()).toBe("hello");
     await waitForFileRemoval(file);
   });
@@ -124,6 +127,7 @@ describe("media server", () => {
     const res = await realFetch(mediaUrl("missing-file"));
     expect(res.status).toBe(404);
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("cache-control")).toBe("no-store, private, max-age=0, must-revalidate");
     expect(await res.text()).toBe("not found");
   });
 
