@@ -3,22 +3,23 @@ import {
   createDelegatedSetupWizardProxy,
   createDelegatedTextInputShouldPrompt,
   createPatchedAccountSetupAdapter,
+  createZodSetupInputValidator,
+  createTopLevelChannelDmPolicy,
   normalizeE164,
   parseSetupEntriesAllowingWildcard,
   promptParsedAllowFromForAccount,
   setAccountAllowFromForChannel,
-  setChannelDmPolicyWithAllowFrom,
   setSetupChannelEnabled,
   type OpenClawConfig,
   type WizardPrompter,
 } from "openclaw/plugin-sdk/setup";
 import type {
   ChannelSetupAdapter,
-  ChannelSetupDmPolicy,
   ChannelSetupWizard,
   ChannelSetupWizardTextInput,
 } from "openclaw/plugin-sdk/setup";
 import { formatCliCommand, formatDocsLink } from "openclaw/plugin-sdk/setup-tools";
+import { z } from "zod";
 import {
   listSignalAccountIds,
   resolveDefaultSignalAccountId,
@@ -31,6 +32,16 @@ const MAX_E164_DIGITS = 15;
 const DIGITS_ONLY = /^\d+$/;
 const INVALID_SIGNAL_ACCOUNT_ERROR =
   "Invalid E.164 phone number (must start with + and country code, e.g. +15555550123)";
+
+const SignalSetupInputSchema = z
+  .object({
+    signalNumber: z.string().optional(),
+    cliPath: z.string().optional(),
+    httpUrl: z.string().optional(),
+    httpHost: z.string().optional(),
+    httpPort: z.string().optional(),
+  })
+  .passthrough();
 
 export function normalizeSignalAccountInput(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
@@ -122,20 +133,14 @@ export async function promptSignalAllowFrom(params: {
   });
 }
 
-export const signalDmPolicy: ChannelSetupDmPolicy = {
+export const signalDmPolicy = createTopLevelChannelDmPolicy({
   label: "Signal",
   channel,
   policyKey: "channels.signal.dmPolicy",
   allowFromKey: "channels.signal.allowFrom",
   getCurrent: (cfg: OpenClawConfig) => cfg.channels?.signal?.dmPolicy ?? "pairing",
-  setPolicy: (cfg: OpenClawConfig, policy) =>
-    setChannelDmPolicyWithAllowFrom({
-      cfg,
-      channel,
-      dmPolicy: policy,
-    }),
   promptAllowFrom: promptSignalAllowFrom,
-};
+});
 
 function resolveSignalCliPath(params: {
   cfg: OpenClawConfig;
@@ -191,18 +196,21 @@ export const signalCompletionNote = {
 
 export const signalSetupAdapter: ChannelSetupAdapter = createPatchedAccountSetupAdapter({
   channelKey: channel,
-  validateInput: ({ input }) => {
-    if (
-      !input.signalNumber &&
-      !input.httpUrl &&
-      !input.httpHost &&
-      !input.httpPort &&
-      !input.cliPath
-    ) {
-      return "Signal requires --signal-number or --http-url/--http-host/--http-port/--cli-path.";
-    }
-    return null;
-  },
+  validateInput: createZodSetupInputValidator({
+    schema: SignalSetupInputSchema,
+    validate: ({ input }) => {
+      if (
+        !input.signalNumber &&
+        !input.httpUrl &&
+        !input.httpHost &&
+        !input.httpPort &&
+        !input.cliPath
+      ) {
+        return "Signal requires --signal-number or --http-url/--http-host/--http-port/--cli-path.";
+      }
+      return null;
+    },
+  }),
   buildPatch: (input) => buildSignalSetupPatch(input),
 });
 

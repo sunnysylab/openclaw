@@ -5,9 +5,7 @@ const fetchClawHubPackageDetailMock = vi.fn();
 const fetchClawHubPackageVersionMock = vi.fn();
 const downloadClawHubPackageArchiveMock = vi.fn();
 const resolveLatestVersionFromPackageMock = vi.fn();
-const satisfiesPluginApiRangeMock = vi.fn();
-const satisfiesGatewayMinimumMock = vi.fn();
-const resolveRuntimeServiceVersionMock = vi.fn();
+const resolveCompatibilityHostVersionMock = vi.fn();
 const installPluginFromArchiveMock = vi.fn();
 
 vi.mock("../infra/clawhub.js", async () => {
@@ -21,13 +19,12 @@ vi.mock("../infra/clawhub.js", async () => {
       downloadClawHubPackageArchiveMock(...args),
     resolveLatestVersionFromPackage: (...args: unknown[]) =>
       resolveLatestVersionFromPackageMock(...args),
-    satisfiesPluginApiRange: (...args: unknown[]) => satisfiesPluginApiRangeMock(...args),
-    satisfiesGatewayMinimum: (...args: unknown[]) => satisfiesGatewayMinimumMock(...args),
   };
 });
 
 vi.mock("../version.js", () => ({
-  resolveRuntimeServiceVersion: (...args: unknown[]) => resolveRuntimeServiceVersionMock(...args),
+  resolveCompatibilityHostVersion: (...args: unknown[]) =>
+    resolveCompatibilityHostVersionMock(...args),
 }));
 
 vi.mock("./install.js", () => ({
@@ -45,9 +42,7 @@ describe("installPluginFromClawHub", () => {
     fetchClawHubPackageVersionMock.mockReset();
     downloadClawHubPackageArchiveMock.mockReset();
     resolveLatestVersionFromPackageMock.mockReset();
-    satisfiesPluginApiRangeMock.mockReset();
-    satisfiesGatewayMinimumMock.mockReset();
-    resolveRuntimeServiceVersionMock.mockReset();
+    resolveCompatibilityHostVersionMock.mockReset();
     installPluginFromArchiveMock.mockReset();
 
     parseClawHubPluginSpecMock.mockReturnValue({ name: "demo" });
@@ -61,19 +56,19 @@ describe("installPluginFromClawHub", () => {
         createdAt: 0,
         updatedAt: 0,
         compatibility: {
-          pluginApiRange: "^1.2.0",
+          pluginApiRange: ">=2026.3.22",
           minGatewayVersion: "2026.3.0",
         },
       },
     });
-    resolveLatestVersionFromPackageMock.mockReturnValue("1.2.3");
+    resolveLatestVersionFromPackageMock.mockReturnValue("2026.3.22");
     fetchClawHubPackageVersionMock.mockResolvedValue({
       version: {
-        version: "1.2.3",
+        version: "2026.3.22",
         createdAt: 0,
         changelog: "",
         compatibility: {
-          pluginApiRange: "^1.2.0",
+          pluginApiRange: ">=2026.3.22",
           minGatewayVersion: "2026.3.0",
         },
       },
@@ -82,14 +77,12 @@ describe("installPluginFromClawHub", () => {
       archivePath: "/tmp/clawhub-demo/archive.zip",
       integrity: "sha256-demo",
     });
-    satisfiesPluginApiRangeMock.mockReturnValue(true);
-    resolveRuntimeServiceVersionMock.mockReturnValue("2026.3.22");
-    satisfiesGatewayMinimumMock.mockReturnValue(true);
+    resolveCompatibilityHostVersionMock.mockReturnValue("2026.3.22");
     installPluginFromArchiveMock.mockResolvedValue({
       ok: true,
       pluginId: "demo",
       targetDir: "/tmp/openclaw/plugins/demo",
-      version: "1.2.3",
+      version: "2026.3.22",
     });
   });
 
@@ -116,7 +109,7 @@ describe("installPluginFromClawHub", () => {
     expect(fetchClawHubPackageVersionMock).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "demo",
-        version: "1.2.3",
+        version: "2026.3.22",
       }),
     );
     expect(installPluginFromArchiveMock).toHaveBeenCalledWith(
@@ -127,7 +120,7 @@ describe("installPluginFromClawHub", () => {
     expect(result).toMatchObject({
       ok: true,
       pluginId: "demo",
-      version: "1.2.3",
+      version: "2026.3.22",
       clawhub: {
         source: "clawhub",
         clawhubPackage: "demo",
@@ -136,9 +129,20 @@ describe("installPluginFromClawHub", () => {
         integrity: "sha256-demo",
       },
     });
-    expect(info).toHaveBeenCalledWith("ClawHub code-plugin demo@1.2.3 channel=official");
-    expect(info).toHaveBeenCalledWith("Compatibility: pluginApi=^1.2.0 minGateway=2026.3.0");
+    expect(info).toHaveBeenCalledWith("ClawHub code-plugin demo@2026.3.22 channel=official");
+    expect(info).toHaveBeenCalledWith("Compatibility: pluginApi=>=2026.3.22 minGateway=2026.3.0");
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("rejects packages whose plugin API range exceeds the runtime version", async () => {
+    resolveCompatibilityHostVersionMock.mockReturnValueOnce("2026.3.21");
+
+    await expect(installPluginFromClawHub({ spec: "clawhub:demo" })).resolves.toMatchObject({
+      ok: false,
+      code: CLAWHUB_INSTALL_ERROR_CODE.INCOMPATIBLE_PLUGIN_API,
+      error:
+        'Plugin "demo" requires plugin API >=2026.3.22, but this OpenClaw runtime exposes 2026.3.21.',
+    });
   });
 
   it("rejects skill families and redirects to skills install", async () => {
