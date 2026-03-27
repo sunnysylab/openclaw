@@ -49,6 +49,58 @@ describe("ensureMediaHosted", () => {
     rmSpy.mockRestore();
   });
 
+  it("cleans up when hostname lookup fails after save", async () => {
+    saveMediaSource.mockResolvedValue({
+      id: "id-hostname",
+      path: "/tmp/file-hostname",
+      size: 5,
+    });
+    const err = new Error("hostname lookup failed");
+    getTailnetHostname.mockRejectedValue(err);
+    const rmSpy = vi.spyOn(fs, "rm").mockResolvedValue(undefined);
+
+    await expect(ensureMediaHosted("/tmp/file-hostname", { startServer: false })).rejects.toThrow(
+      err,
+    );
+    expect(rmSpy).toHaveBeenCalledWith("/tmp/file-hostname");
+    rmSpy.mockRestore();
+  });
+
+  it("cleans up when port check fails unexpectedly", async () => {
+    saveMediaSource.mockResolvedValue({
+      id: "id-port",
+      path: "/tmp/file-port",
+      size: 5,
+    });
+    getTailnetHostname.mockResolvedValue("tail.net");
+    const err = new Error("port check failed");
+    ensurePortAvailable.mockRejectedValue(err);
+    const rmSpy = vi.spyOn(fs, "rm").mockResolvedValue(undefined);
+
+    await expect(ensureMediaHosted("/tmp/file-port", { startServer: false })).rejects.toThrow(err);
+    expect(rmSpy).toHaveBeenCalledWith("/tmp/file-port");
+    rmSpy.mockRestore();
+  });
+
+  it("cleans up when media server startup fails", async () => {
+    saveMediaSource.mockResolvedValue({
+      id: "id-start",
+      path: "/tmp/file-start",
+      size: 9,
+    });
+    getTailnetHostname.mockResolvedValue("tail.net");
+    ensurePortAvailable.mockResolvedValue(undefined);
+    const err = new Error("startup failed");
+    startMediaServer.mockRejectedValue(err);
+    const rmSpy = vi.spyOn(fs, "rm").mockResolvedValue(undefined);
+
+    await expect(
+      ensureMediaHosted("/tmp/file-start", { startServer: true, port: 1234 }),
+    ).rejects.toThrow(err);
+    expect(rmSpy).toHaveBeenCalledWith("/tmp/file-start");
+    rmSpy.mockRestore();
+  });
+
   it("starts media server when allowed", async () => {
     saveMediaSource.mockResolvedValue({
       id: "id2",
