@@ -36,16 +36,11 @@ export type SkillScanOptions = {
 // Scannable extensions
 // ---------------------------------------------------------------------------
 
-const SCANNABLE_EXTENSIONS = new Set([
-  ".js",
-  ".ts",
-  ".mjs",
-  ".cjs",
-  ".mts",
-  ".cts",
-  ".jsx",
-  ".tsx",
-]);
+const CODE_EXTENSIONS = new Set([".js", ".ts", ".mjs", ".cjs", ".mts", ".cts", ".jsx", ".tsx"]);
+
+const MARKDOWN_EXTENSIONS = new Set([".md"]);
+
+const SCANNABLE_EXTENSIONS = new Set([...CODE_EXTENSIONS, ...MARKDOWN_EXTENSIONS]);
 
 const DEFAULT_MAX_SCAN_FILES = 500;
 const DEFAULT_MAX_FILE_BYTES = 1024 * 1024;
@@ -73,6 +68,10 @@ const DIR_ENTRY_CACHE = new Map<string, DirEntryCacheEntry>();
 
 export function isScannable(filePath: string): boolean {
   return SCANNABLE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+function isMarkdown(filePath: string): boolean {
+  return MARKDOWN_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
 
 function getCachedFileScanResult(params: {
@@ -205,6 +204,55 @@ const SOURCE_RULES: SourceRule[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Markdown-specific rules (applied only to .md files)
+// ---------------------------------------------------------------------------
+
+/**
+ * Unicode codepoints that are invisible or alter text rendering.
+ * Used to hide malicious content from visual code review.
+ */
+const HIDDEN_UNICODE_RE =
+  /\u{200B}|\u{200C}|\u{200D}|\u{200E}|\u{200F}|\u{202A}|\u{202B}|\u{202C}|\u{202D}|\u{202E}|\u{2028}|\u{2029}|\u{2060}|\u{2061}|\u{2062}|\u{2063}|\u{2064}|\u{2066}|\u{2067}|\u{2068}|\u{2069}|\u{206A}|\u{206B}|\u{206C}|\u{206D}|\u{206E}|\u{206F}|\u{FEFF}|\u{FFF9}|\u{FFFA}|\u{FFFB}/u;
+
+const MARKDOWN_LINE_RULES: LineRule[] = [
+  {
+    ruleId: "hidden-unicode",
+    severity: "warn",
+    message: "Hidden Unicode characters detected (zero-width or text-direction override)",
+    pattern: HIDDEN_UNICODE_RE,
+  },
+  {
+    ruleId: "markdown-data-uri",
+    severity: "warn",
+    message: "Data URI with executable MIME type detected",
+    pattern:
+      /data:(?:text\/(?:html|javascript)|application\/(?:javascript|x-javascript|ecmascript))[;,]/i,
+  },
+];
+
+const MARKDOWN_SOURCE_RULES: SourceRule[] = [
+  {
+    ruleId: "markdown-download-exec",
+    severity: "critical",
+    message: "Download-and-execute pattern detected in markdown content",
+    pattern:
+      /\b(?:curl|wget)\b(?:[^\n"'|\\]|\\.|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')*\|\s*(?:sh|bash|zsh|node|python|perl|ruby)\b/,
+  },
+  {
+    ruleId: "markdown-encoded-payload",
+    severity: "warn",
+    message: "Large base64 block detected in markdown (possible obfuscated payload)",
+    pattern: /```[^\n]*\n[A-Za-z0-9+/=\s]{400,}\n```/,
+  },
+  {
+    ruleId: "markdown-hex-payload",
+    severity: "warn",
+    message: "Hex-encoded payload detected in markdown content",
+    pattern: /(\\x[0-9a-fA-F]{2}){8,}/,
+  },
+];
+
+// ---------------------------------------------------------------------------
 // Core scanner
 // ---------------------------------------------------------------------------
 
@@ -220,8 +268,11 @@ export function scanSource(source: string, filePath: string): SkillScanFinding[]
   const lines = source.split("\n");
   const matchedLineRules = new Set<string>();
 
+  const lineRules = isMarkdown(filePath) ? MARKDOWN_LINE_RULES : LINE_RULES;
+  const sourceRules = isMarkdown(filePath) ? MARKDOWN_SOURCE_RULES : SOURCE_RULES;
+
   // --- Line rules ---
-  for (const rule of LINE_RULES) {
+  for (const rule of lineRules) {
     if (matchedLineRules.has(rule.ruleId)) {
       continue;
     }
@@ -261,7 +312,7 @@ export function scanSource(source: string, filePath: string): SkillScanFinding[]
 
   // --- Source rules ---
   const matchedSourceRules = new Set<string>();
-  for (const rule of SOURCE_RULES) {
+  for (const rule of sourceRules) {
     // Allow multiple findings for different messages with the same ruleId
     // but deduplicate exact (ruleId+message) combos
     const ruleKey = `${rule.ruleId}::${rule.message}`;
