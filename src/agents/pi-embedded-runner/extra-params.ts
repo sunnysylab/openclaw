@@ -21,7 +21,10 @@ import {
 } from "./anthropic-stream-wrappers.js";
 import { createGoogleThinkingPayloadWrapper } from "./google-stream-wrappers.js";
 import { log } from "./logger.js";
-import { createMinimaxFastModeWrapper } from "./minimax-stream-wrappers.js";
+import {
+  createMinimaxFastModeWrapper,
+  createMinimaxThinkingDisabledWrapper,
+} from "./minimax-stream-wrappers.js";
 import {
   createMoonshotThinkingWrapper,
   resolveMoonshotThinkingType,
@@ -404,6 +407,12 @@ export function applyExtraParamsToAgent(
     log.debug(`applying Anthropic fast mode=${anthropicFastMode} for ${provider}/${modelId}`);
     agent.streamFn = createAnthropicFastModeWrapper(agent.streamFn, anthropicFastMode);
   }
+
+  // MiniMax's Anthropic-compatible streaming endpoint returns reasoning_content
+  // in OpenAI-style delta chunks rather than native Anthropic thinking blocks.
+  // Disable thinking in the outgoing payload to prevent reasoning leaking into
+  // visible output until the provider supports the Anthropic thinking SSE format.
+  agent.streamFn = createMinimaxThinkingDisabledWrapper(agent.streamFn);
 
   if (typeof effectiveExtraParams?.fastMode === "boolean") {
     log.debug(
