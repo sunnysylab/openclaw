@@ -330,14 +330,17 @@ describe("getApiKeyForModel", () => {
     });
   });
 
-  it("still throws for ollama when no env/profile/config provider is available", async () => {
+  it("resolves synthetic local auth key for ollama even without explicit provider config", async () => {
     await withEnvAsync({ OLLAMA_API_KEY: undefined }, async () => {
-      await expect(
-        resolveApiKeyForProvider({
-          provider: "ollama",
-          store: { version: 1, profiles: {} },
-        }),
-      ).rejects.toThrow('No API key found for provider "ollama".');
+      // Regression test for #50759: ollama must not require an API key even
+      // when models.providers.ollama is absent from openclaw.json.
+      const resolved = await resolveApiKeyForProvider({
+        provider: "ollama",
+        store: { version: 1, profiles: {} },
+      });
+      expect(resolved.apiKey).toBe("ollama-local");
+      expect(resolved.mode).toBe("api-key");
+      expect(resolved.source).toContain("synthetic local key");
     });
   });
 

@@ -160,6 +160,17 @@ function resolveSyntheticLocalProviderAuth(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;
 }): ResolvedProviderAuth | null {
+  // Ollama is always a local provider; synthesize a local key even when
+  // models.providers.ollama is not explicitly configured in openclaw.json.
+  const normalizedProvider = normalizeProviderId(params.provider);
+  if (normalizedProvider === "ollama") {
+    return {
+      apiKey: OLLAMA_LOCAL_AUTH_MARKER,
+      source: "models.providers.ollama (synthetic local key)",
+      mode: "api-key",
+    };
+  }
+
   const providerConfig = resolveProviderConfig(params.cfg, params.provider);
   if (!providerConfig) {
     return null;
@@ -171,15 +182,6 @@ function resolveSyntheticLocalProviderAuth(params: {
     (Array.isArray(providerConfig.models) && providerConfig.models.length > 0);
   if (!hasApiConfig) {
     return null;
-  }
-
-  const normalizedProvider = normalizeProviderId(params.provider);
-  if (normalizedProvider === "ollama") {
-    return {
-      apiKey: OLLAMA_LOCAL_AUTH_MARKER,
-      source: "models.providers.ollama (synthetic local key)",
-      mode: "api-key",
-    };
   }
 
   const authOverride = resolveProviderAuthOverride(params.cfg, params.provider);
