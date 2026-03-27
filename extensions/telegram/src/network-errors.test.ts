@@ -5,6 +5,7 @@ import {
   isSafeToRetrySendError,
   isTelegramClientRejection,
   isTelegramPollingNetworkError,
+  isTelegramRateLimitError,
   isTelegramServerError,
   tagTelegramNetworkError,
 } from "./network-errors.js";
@@ -197,6 +198,21 @@ describe("isTelegramServerError", () => {
 
   it("returns false for plain Error", () => {
     expect(isTelegramServerError(new Error("500: Internal Server Error"))).toBe(false);
+  });
+});
+
+describe("isTelegramRateLimitError", () => {
+  it.each([
+    ["Too Many Requests", 429, true],
+    ["Forbidden", 403, false],
+  ])("returns %s for error_code %s", (message, errorCode, expected) => {
+    expect(isTelegramRateLimitError(errorWithTelegramCode(message, errorCode))).toBe(expected);
+  });
+
+  it("detects error_code in nested cause", () => {
+    const inner = Object.assign(new Error("Too Many Requests"), { error_code: 429 });
+    const outer = Object.assign(new Error("wrapped"), { cause: inner });
+    expect(isTelegramRateLimitError(outer)).toBe(true);
   });
 });
 
