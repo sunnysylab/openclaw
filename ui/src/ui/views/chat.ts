@@ -1297,6 +1297,37 @@ export function renderChat(props: ChatProps) {
 
         <div class="agent-chat__toolbar">
           <div class="agent-chat__toolbar-left">
+            ${
+              Array.isArray(props.agentsList?.agents) && props.agentsList.agents.length > 0
+                ? html`
+                    <label class="field" title="Switch agent">
+                      <select
+                        ?disabled=${!props.connected}
+                        @change=${(e: Event) => {
+                          const next = (e.target as HTMLSelectElement).value.trim();
+                          if (!next || next === props.currentAgentId) {
+                            return;
+                          }
+                          props.onAgentChange(next);
+                        }}
+                      >
+                        ${repeat(
+                          props.agentsList.agents,
+                          (agent) => agent.id,
+                          (agent) => html`
+                            <option
+                              value=${agent.id}
+                              ?selected=${agent.id === (props.currentAgentId || "main")}
+                            >
+                              ${agent.identity?.name || agent.name || agent.id}
+                            </option>
+                          `,
+                        )}
+                      </select>
+                    </label>
+                  `
+                : nothing
+            }
             <button
               class="agent-chat__input-btn"
               @click=${() => {
