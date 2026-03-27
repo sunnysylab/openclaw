@@ -1,4 +1,6 @@
 import { type RunOptions, run } from "@grammyjs/runner";
+import type { ChannelAccountSnapshot } from "openclaw/plugin-sdk/channel-runtime";
+import { createConnectedChannelStatusPatch } from "openclaw/plugin-sdk/gateway-runtime";
 import { computeBackoff, sleepWithAbort } from "openclaw/plugin-sdk/infra-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/infra-runtime";
 import { formatDurationPrecise } from "openclaw/plugin-sdk/infra-runtime";
@@ -49,6 +51,7 @@ type TelegramPollingSessionOpts = {
   getLastUpdateId: () => number | null;
   persistUpdateId: (updateId: number) => Promise<void>;
   log: (line: string) => void;
+  setStatus?: (patch: Omit<ChannelAccountSnapshot, "accountId">) => void;
   /** Pre-resolved Telegram transport to reuse across bot instances */
   telegramTransport?: TelegramTransport;
   /** Rebuild Telegram transport after stall/network recovery when marked dirty. */
@@ -59,6 +62,7 @@ export class TelegramPollingSession {
   #restartAttempts = 0;
   #webhookCleared = false;
   #forceRestarted = false;
+  #hasSeenSuccessfulPoll = false;
   #activeRunner: ReturnType<typeof run> | undefined;
   #activeFetchAbort: AbortController | undefined;
   #transportState: TelegramPollingTransportState;
@@ -89,6 +93,12 @@ export class TelegramPollingSession {
 
   async runUntilAbort(): Promise<void> {
     while (!this.opts.abortSignal?.aborted) {
+      this.opts.setStatus?.({
+        mode: "polling",
+        connected: false,
+        lastEventAt: null,
+        ...(this.#hasSeenSuccessfulPoll ? {} : { lastConnectedAt: null }),
+      });
       const bot = await this.#createPollingBot();
       if (!bot) {
         continue;
@@ -233,6 +243,11 @@ export class TelegramPollingSession {
         lastGetUpdatesFinishedAt = finishedAt;
         lastGetUpdatesDurationMs = finishedAt - startedAt;
         lastGetUpdatesOutcome = Array.isArray(result) ? `ok:${result.length}` : "ok";
+        this.#hasSeenSuccessfulPoll = true;
+        this.opts.setStatus?.({
+          ...createConnectedChannelStatusPatch(finishedAt),
+          mode: "polling",
+        });
         return result;
       } catch (err) {
         const finishedAt = Date.now();
@@ -258,6 +273,7 @@ export class TelegramPollingSession {
     }
     let stopPromise: Promise<void> | undefined;
     let stalledRestart = false;
+    let shouldClearConnected = true;
     let forceCycleTimer: ReturnType<typeof setTimeout> | undefined;
     let forceCycleResolve: (() => void) | undefined;
     const forceCyclePromise = new Promise<void>((resolve) => {
@@ -347,6 +363,7 @@ export class TelegramPollingSession {
       const shouldRestart = await this.#waitBeforeRestart(
         (delay) => `Telegram polling runner stopped (${reason}); restarting in ${delay}.`,
       );
+      shouldClearConnected = !shouldRestart;
       return shouldRestart ? "continue" : "exit";
     } catch (err) {
       this.#forceRestarted = false;
@@ -372,8 +389,12 @@ export class TelegramPollingSession {
       const shouldRestart = await this.#waitBeforeRestart(
         (delay) => `Telegram ${reason}: ${errMsg}; retrying in ${delay}.`,
       );
+      shouldClearConnected = !shouldRestart;
       return shouldRestart ? "continue" : "exit";
     } finally {
+      if (shouldClearConnected) {
+        this.opts.setStatus?.({ connected: false });
+      }
       clearInterval(watchdog);
       if (forceCycleTimer) {
         clearTimeout(forceCycleTimer);
