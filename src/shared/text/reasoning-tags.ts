@@ -30,7 +30,7 @@ export function stripReasoningTagsFromText(
     return text;
   }
 
-  const mode = options?.mode ?? "strict";
+  const _mode = options?.mode ?? "strict";
   const trimMode = options?.trim ?? "both";
 
   let cleaned = text;
@@ -84,9 +84,28 @@ export function stripReasoningTagsFromText(
     lastIndex = idx + match[0].length;
   }
 
-  if (!inThinking || mode === "preserve") {
-    result += cleaned.slice(lastIndex);
+  // Always include text after the last matched tag. Previously, strict mode
+  // discarded trailing text when an unclosed opening tag was active
+  // (inThinking=true), silently dropping entire responses when models wrap
+  // output in unclosed <think> tags (observed with Gemini Flash, Qwen 3.5).
+  // Closed <think>…</think> blocks are unaffected — their content is already
+  // excluded by the main loop above.
+  result += cleaned.slice(lastIndex);
+
+  const trimmed = applyTrim(result, trimMode);
+
+  // Safety net: if the result is still empty after the above fix (e.g. the
+  // model wrapped the entire response in properly closed <think> tags), fall
+  // back to tag-only removal. An empty delivery is always a worse outcome
+  // than showing the content — the model made an error by tagging its entire
+  // response as reasoning, but the user should still see something.
+  if (!trimmed && text.trim()) {
+    THINKING_TAG_RE.lastIndex = 0;
+    const fallback = applyTrim(cleaned.replace(THINKING_TAG_RE, ""), trimMode);
+    if (fallback) {
+      return fallback;
+    }
   }
 
-  return applyTrim(result, trimMode);
+  return trimmed;
 }
