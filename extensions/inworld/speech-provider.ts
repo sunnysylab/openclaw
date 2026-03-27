@@ -6,7 +6,7 @@ import type {
 } from "openclaw/plugin-sdk/speech-core";
 
 const DEFAULT_INWORLD_BASE_URL = "https://api.inworld.ai";
-const DEFAULT_INWORLD_VOICE_ID = "Dennis";
+const DEFAULT_INWORLD_VOICE_ID = "Sarah";
 const DEFAULT_INWORLD_MODEL_ID = "inworld-tts-1.5-max";
 
 const INWORLD_TTS_MODELS = [
@@ -16,7 +16,15 @@ const INWORLD_TTS_MODELS = [
   "inworld-tts-1",
 ] as const;
 
-type InworldAudioEncoding = "MP3" | "OGG_OPUS" | "LINEAR16" | "PCM" | "WAV" | "ALAW" | "MULAW" | "FLAC";
+type InworldAudioEncoding =
+  | "MP3"
+  | "OGG_OPUS"
+  | "LINEAR16"
+  | "PCM"
+  | "WAV"
+  | "ALAW"
+  | "MULAW"
+  | "FLAC";
 
 type InworldProviderConfig = {
   apiKey?: string;
@@ -128,7 +136,10 @@ export async function inworldTTS(params: {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      let parsed: { result?: { audioContent?: string }; error?: { code?: number; message?: string } };
+      let parsed: {
+        result?: { audioContent?: string };
+        error?: { code?: number; message?: string };
+      };
       try {
         parsed = JSON.parse(trimmed) as typeof parsed;
       } catch {
@@ -212,9 +223,7 @@ export function buildInworldSpeechProvider(): SpeechProviderPlugin {
     isConfigured: ({ providerConfig }) =>
       Boolean(readInworldProviderConfig(providerConfig).apiKey || process.env.INWORLD_API_KEY),
     listVoices: async (req) => {
-      const config = req.providerConfig
-        ? readInworldProviderConfig(req.providerConfig)
-        : undefined;
+      const config = req.providerConfig ? readInworldProviderConfig(req.providerConfig) : undefined;
       const apiKey = req.apiKey || config?.apiKey || process.env.INWORLD_API_KEY;
       if (!apiKey) {
         throw new Error("Inworld API key missing");

@@ -221,7 +221,7 @@ describe("inworldTTS", () => {
         }),
         body: JSON.stringify({
           text: "Hello",
-          voiceId: "Dennis",
+          voiceId: "Sarah",
           modelId: "inworld-tts-1.5-max",
           audioConfig: { audioEncoding: "MP3" },
         }),

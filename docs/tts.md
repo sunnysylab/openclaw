@@ -133,7 +133,7 @@ Full schema is in [Gateway configuration](/gateway/configuration).
       provider: "inworld",
       providers: {
         inworld: {
-          voiceId: "Dennis",
+          voiceId: "Sarah",
           modelId: "inworld-tts-1.5-max",
         },
       },
@@ -143,7 +143,7 @@ Full schema is in [Gateway configuration](/gateway/configuration).
 ```
 
 Available models: `inworld-tts-1.5-max` (default, highest quality) and `inworld-tts-1.5-mini` (faster, lower latency).
-Default voice: `Dennis`. Use `/tts voices` or the Voices API to list all available voices.
+Default voice: `Sarah`. Use `/tts voices` or the Voices API to list all available voices.
 Supports `temperature` (0-2) for controlling speech variation.
 
 ### Microsoft primary (no API key)
@@ -250,7 +250,7 @@ Then run:
 - `prefsPath`: override the local prefs JSON path (provider/limit/summary).
 - `apiKey` values fall back to env vars (`ELEVENLABS_API_KEY`/`XI_API_KEY`, `INWORLD_API_KEY`, `OPENAI_API_KEY`).
 - `providers.elevenlabs.baseUrl`: override ElevenLabs API base URL.
-- `providers.inworld.voiceId`: Inworld voice name (e.g. `Dennis`).
+- `providers.inworld.voiceId`: Inworld voice name (e.g. `Sarah`).
 - `providers.inworld.modelId`: Inworld TTS model (`inworld-tts-1.5-max` or `inworld-tts-1.5-mini`).
 - `providers.inworld.temperature`: speech variation control (`0`-`2`, default `1`).
 - `providers.inworld.baseUrl`: override Inworld API base URL (default `https://api.inworld.ai`).
