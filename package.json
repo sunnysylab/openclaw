@@ -44,10 +44,6 @@
       "types": "./dist/plugin-sdk/core.d.ts",
       "default": "./dist/plugin-sdk/core.js"
     },
-    "./plugin-sdk/ollama-setup": {
-      "types": "./dist/plugin-sdk/ollama-setup.d.ts",
-      "default": "./dist/plugin-sdk/ollama-setup.js"
-    },
     "./plugin-sdk/provider-setup": {
       "types": "./dist/plugin-sdk/provider-setup.d.ts",
       "default": "./dist/plugin-sdk/provider-setup.js"
@@ -232,6 +228,10 @@
       "types": "./dist/plugin-sdk/account-resolution.d.ts",
       "default": "./dist/plugin-sdk/account-resolution.js"
     },
+    "./plugin-sdk/agent-config-primitives": {
+      "types": "./dist/plugin-sdk/agent-config-primitives.d.ts",
+      "default": "./dist/plugin-sdk/agent-config-primitives.js"
+    },
     "./plugin-sdk/allow-from": {
       "types": "./dist/plugin-sdk/allow-from.d.ts",
       "default": "./dist/plugin-sdk/allow-from.js"
@@ -295,6 +295,10 @@
     "./plugin-sdk/channel-config-schema": {
       "types": "./dist/plugin-sdk/channel-config-schema.d.ts",
       "default": "./dist/plugin-sdk/channel-config-schema.js"
+    },
+    "./plugin-sdk/channel-config-primitives": {
+      "types": "./dist/plugin-sdk/channel-config-primitives.d.ts",
+      "default": "./dist/plugin-sdk/channel-config-primitives.js"
     },
     "./plugin-sdk/channel-actions": {
       "types": "./dist/plugin-sdk/channel-actions.d.ts",
@@ -424,14 +428,6 @@
       "types": "./dist/plugin-sdk/memory-core-engine-runtime.d.ts",
       "default": "./dist/plugin-sdk/memory-core-engine-runtime.js"
     },
-    "./plugin-sdk/memory-core-host": {
-      "types": "./dist/plugin-sdk/memory-core-host.d.ts",
-      "default": "./dist/plugin-sdk/memory-core-host.js"
-    },
-    "./plugin-sdk/memory-core-host-engine": {
-      "types": "./dist/plugin-sdk/memory-core-host-engine.d.ts",
-      "default": "./dist/plugin-sdk/memory-core-host-engine.js"
-    },
     "./plugin-sdk/memory-core-host-engine-embeddings": {
       "types": "./dist/plugin-sdk/memory-core-host-engine-embeddings.d.ts",
       "default": "./dist/plugin-sdk/memory-core-host-engine-embeddings.js"
@@ -448,9 +444,21 @@
       "types": "./dist/plugin-sdk/memory-core-host-engine-storage.d.ts",
       "default": "./dist/plugin-sdk/memory-core-host-engine-storage.js"
     },
-    "./plugin-sdk/memory-core-host-runtime": {
-      "types": "./dist/plugin-sdk/memory-core-host-runtime.d.ts",
-      "default": "./dist/plugin-sdk/memory-core-host-runtime.js"
+    "./plugin-sdk/memory-core-host-multimodal": {
+      "types": "./dist/plugin-sdk/memory-core-host-multimodal.d.ts",
+      "default": "./dist/plugin-sdk/memory-core-host-multimodal.js"
+    },
+    "./plugin-sdk/memory-core-host-query": {
+      "types": "./dist/plugin-sdk/memory-core-host-query.d.ts",
+      "default": "./dist/plugin-sdk/memory-core-host-query.js"
+    },
+    "./plugin-sdk/memory-core-host-secret": {
+      "types": "./dist/plugin-sdk/memory-core-host-secret.d.ts",
+      "default": "./dist/plugin-sdk/memory-core-host-secret.js"
+    },
+    "./plugin-sdk/memory-core-host-status": {
+      "types": "./dist/plugin-sdk/memory-core-host-status.d.ts",
+      "default": "./dist/plugin-sdk/memory-core-host-status.js"
     },
     "./plugin-sdk/memory-core-host-runtime-cli": {
       "types": "./dist/plugin-sdk/memory-core-host-runtime-cli.d.ts",
@@ -479,6 +487,10 @@
     "./plugin-sdk/nostr": {
       "types": "./dist/plugin-sdk/nostr.d.ts",
       "default": "./dist/plugin-sdk/nostr.js"
+    },
+    "./plugin-sdk/ollama": {
+      "types": "./dist/plugin-sdk/ollama.d.ts",
+      "default": "./dist/plugin-sdk/ollama.js"
     },
     "./plugin-sdk/provider-auth": {
       "types": "./dist/plugin-sdk/provider-auth.d.ts",
@@ -648,6 +660,10 @@
       "types": "./dist/plugin-sdk/zalouser.d.ts",
       "default": "./dist/plugin-sdk/zalouser.js"
     },
+    "./plugin-sdk/zod": {
+      "types": "./dist/plugin-sdk/zod.d.ts",
+      "default": "./dist/plugin-sdk/zod.js"
+    },
     "./extension-api": "./dist/extensionAPI.js",
     "./cli-entry": "./openclaw.mjs"
   },
@@ -674,18 +690,17 @@
     "canon:check:json": "node scripts/canon.mjs check --json",
     "canon:enforce": "node scripts/canon.mjs enforce --json",
     "canvas:a2ui:bundle": "bash scripts/bundle-a2ui.sh",
-    "check": "pnpm check:no-conflict-markers && pnpm check:host-env-policy:swift && pnpm check:base-config-schema && pnpm check:bundled-plugin-metadata && pnpm check:bundled-provider-auth-env-vars && pnpm format:check && pnpm tsgo && pnpm plugin-sdk:check-exports && pnpm lint && pnpm lint:tmp:no-random-messaging && pnpm lint:tmp:channel-agnostic-boundaries && pnpm lint:tmp:no-raw-channel-fetch && pnpm lint:agent:ingress-owner && pnpm lint:plugins:no-register-http-handler && pnpm lint:plugins:no-monolithic-plugin-sdk-entry-imports && pnpm lint:plugins:no-extension-src-imports && pnpm lint:plugins:no-extension-test-core-imports && pnpm lint:plugins:no-extension-imports && pnpm lint:plugins:plugin-sdk-subpaths-exported && pnpm lint:extensions:no-src-outside-plugin-sdk && pnpm lint:extensions:no-plugin-sdk-internal && pnpm lint:extensions:no-relative-outside-package && pnpm lint:web-search-provider-boundaries && pnpm lint:webhook:no-low-level-body-read && pnpm lint:auth:no-pairing-store-group && pnpm lint:auth:pairing-account-scope",
+    "check": "pnpm check:no-conflict-markers && pnpm check:host-env-policy:swift && pnpm tsgo && pnpm lint && pnpm lint:webhook:no-low-level-body-read && pnpm lint:auth:no-pairing-store-group && pnpm lint:auth:pairing-account-scope",
     "check:base-config-schema": "node --import tsx scripts/generate-base-config-schema.ts --check",
-    "check:bundled-channel-config-metadata": "node scripts/generate-bundled-plugin-metadata.mjs --check",
+    "check:bundled-channel-config-metadata": "node --import tsx scripts/generate-bundled-channel-config-metadata.ts --check",
     "check:bundled-plugin-metadata": "node scripts/generate-bundled-plugin-metadata.mjs --check",
     "check:bundled-provider-auth-env-vars": "node scripts/generate-bundled-provider-auth-env-vars.mjs --check",
     "check:docs": "pnpm format:docs:check && pnpm lint:docs && pnpm docs:check-i18n-glossary && pnpm docs:check-links",
     "check:host-env-policy:swift": "node scripts/generate-host-env-security-policy-swift.mjs --check",
     "check:loc": "node --import tsx scripts/check-ts-max-loc.ts --max 500",
     "check:no-conflict-markers": "node scripts/check-no-conflict-markers.mjs",
-    "clean:dist": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
-    "config:channels:check": "node scripts/generate-bundled-plugin-metadata.mjs --check",
-    "config:channels:gen": "node scripts/generate-bundled-plugin-metadata.mjs",
+    "config:channels:check": "node --import tsx scripts/generate-bundled-channel-config-metadata.ts --check",
+    "config:channels:gen": "node --import tsx scripts/generate-bundled-channel-config-metadata.ts --write",
     "config:docs:check": "node --import tsx scripts/generate-config-doc-baseline.ts --check",
     "config:docs:gen": "node --import tsx scripts/generate-config-doc-baseline.ts --write",
     "config:schema:check": "node --import tsx scripts/generate-base-config-schema.ts --check",
@@ -702,6 +717,7 @@
     "docs:bin": "node scripts/build-docs-list.mjs",
     "docs:check-i18n-glossary": "node scripts/check-docs-i18n-glossary.mjs",
     "docs:check-links": "node scripts/docs-link-audit.mjs",
+    "docs:check-links:anchors": "node scripts/docs-link-audit.mjs --anchors",
     "docs:dev": "cd docs && mint dev",
     "docs:list": "node scripts/docs-list.js",
     "docs:spellcheck": "bash scripts/docs-spellcheck.sh",
@@ -768,7 +784,7 @@
     "protocol:check": "pnpm protocol:gen && pnpm protocol:gen:swift && git diff --exit-code -- dist/protocol.schema.json apps/macos/Sources/OpenClawProtocol/GatewayModels.swift apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift",
     "protocol:gen": "node --import tsx scripts/protocol-gen.ts",
     "protocol:gen:swift": "node --import tsx scripts/protocol-gen-swift.ts",
-    "release:check": "pnpm config:docs:check && pnpm plugin-sdk:check-exports && pnpm plugin-sdk:api:check && node scripts/stage-bundled-plugin-runtime-deps.mjs && pnpm ui:build && node --import tsx scripts/release-check.ts",
+    "release:check": "pnpm check:base-config-schema && pnpm check:bundled-channel-config-metadata && pnpm check:bundled-plugin-metadata && pnpm check:bundled-provider-auth-env-vars && pnpm config:docs:check && pnpm plugin-sdk:check-exports && pnpm plugin-sdk:api:check && node scripts/stage-bundled-plugin-runtime-deps.mjs && pnpm ui:build && node --import tsx scripts/release-check.ts",
     "release:openclaw:npm:check": "node --import tsx scripts/openclaw-npm-release-check.ts",
     "release:openclaw:npm:verify-published": "node --import tsx scripts/openclaw-npm-postpublish-verify.ts",
     "release:plugins:npm:check": "node --import tsx scripts/plugin-npm-release-check.ts",
@@ -783,8 +799,8 @@
     "test:changed:max": "node scripts/test-parallel.mjs --profile max --changed origin/main",
     "test:channels": "node scripts/test-parallel.mjs --surface channels",
     "test:contracts": "pnpm test:contracts:channels && pnpm test:contracts:plugins",
-    "test:contracts:channels": "OPENCLAW_TEST_PROFILE=serial pnpm test -- src/channels/plugins/contracts",
-    "test:contracts:plugins": "OPENCLAW_TEST_PROFILE=serial pnpm test -- src/plugins/contracts",
+    "test:contracts:channels": "OPENCLAW_TEST_PROFILE=serial pnpm exec vitest run --config vitest.contracts.config.ts src/channels/plugins/contracts",
+    "test:contracts:plugins": "OPENCLAW_TEST_PROFILE=serial pnpm exec vitest run --config vitest.contracts.config.ts src/plugins/contracts",
     "test:coverage": "vitest run --config vitest.unit.config.ts --coverage",
     "test:coverage:changed": "vitest run --config vitest.unit.config.ts --coverage --changed origin/main",
     "test:docker:all": "pnpm test:docker:live-models && pnpm test:docker:live-gateway && pnpm test:docker:openwebui && pnpm test:docker:onboard && pnpm test:docker:gateway-network && pnpm test:docker:qr && pnpm test:docker:doctor-switch && pnpm test:docker:plugins && pnpm test:docker:cleanup",

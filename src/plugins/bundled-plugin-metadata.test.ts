@@ -16,25 +16,46 @@ import {
   writeJson,
 } from "./generated-plugin-test-helpers.js";
 
+const BUNDLED_PLUGIN_METADATA_TEST_TIMEOUT_MS = 300_000;
+
 installGeneratedPluginTempRootCleanup();
 
 describe("bundled plugin metadata", () => {
-  it("matches the generated metadata snapshot", async () => {
-    await expect(collectBundledPluginMetadata({ repoRoot })).resolves.toEqual(
-      BUNDLED_PLUGIN_METADATA,
-    );
-  });
+  it(
+    "matches the generated metadata snapshot",
+    { timeout: BUNDLED_PLUGIN_METADATA_TEST_TIMEOUT_MS },
+    async () => {
+      await expect(collectBundledPluginMetadata({ repoRoot })).resolves.toEqual(
+        BUNDLED_PLUGIN_METADATA,
+      );
+    },
+  );
 
   it("captures setup-entry metadata for bundled channel plugins", () => {
     const discord = BUNDLED_PLUGIN_METADATA.find((entry) => entry.dirName === "discord");
     expect(discord?.source).toEqual({ source: "./index.ts", built: "index.js" });
     expect(discord?.setupSource).toEqual({ source: "./setup-entry.ts", built: "setup-entry.js" });
+    expect(discord?.publicSurfaceArtifacts).toContain("api.js");
+    expect(discord?.publicSurfaceArtifacts).toContain("runtime-api.js");
+    expect(discord?.publicSurfaceArtifacts).toContain("session-key-api.js");
+    expect(discord?.publicSurfaceArtifacts).not.toContain("test-api.js");
+    expect(discord?.runtimeSidecarArtifacts).toContain("runtime-api.js");
     expect(discord?.manifest.id).toBe("discord");
     expect(discord?.manifest.channelConfigs?.discord).toEqual(
       expect.objectContaining({
         schema: expect.objectContaining({ type: "object" }),
       }),
     );
+  });
+
+  it("excludes test-only public surface artifacts", () => {
+    for (const entry of BUNDLED_PLUGIN_METADATA) {
+      for (const artifact of entry.publicSurfaceArtifacts ?? []) {
+        expect(artifact).not.toMatch(/^test-/);
+        expect(artifact).not.toContain(".test-");
+        expect(artifact).not.toMatch(/\.test\.js$/);
+      }
+    }
   });
 
   it("prefers built generated paths when present and falls back to source paths", () => {
@@ -176,5 +197,48 @@ describe("bundled plugin metadata", () => {
         "channels.alpha.explicitOnly": { help: "manifest hint" },
       },
     });
+  });
+
+  it("captures top-level public surface artifacts without duplicating the primary entrypoints", async () => {
+    const tempRoot = createGeneratedPluginTempRoot("openclaw-bundled-plugin-public-artifacts-");
+
+    writeJson(path.join(tempRoot, "extensions", "alpha", "package.json"), {
+      name: "@openclaw/alpha",
+      version: "0.0.1",
+      openclaw: {
+        extensions: ["./index.ts"],
+        setupEntry: "./setup-entry.ts",
+      },
+    });
+    writeJson(path.join(tempRoot, "extensions", "alpha", "openclaw.plugin.json"), {
+      id: "alpha",
+      configSchema: { type: "object" },
+    });
+    fs.writeFileSync(
+      path.join(tempRoot, "extensions", "alpha", "index.ts"),
+      "export {};\n",
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(tempRoot, "extensions", "alpha", "setup-entry.ts"),
+      "export {};\n",
+      "utf8",
+    );
+    fs.writeFileSync(path.join(tempRoot, "extensions", "alpha", "api.ts"), "export {};\n", "utf8");
+    fs.writeFileSync(
+      path.join(tempRoot, "extensions", "alpha", "runtime-api.ts"),
+      "export {};\n",
+      "utf8",
+    );
+
+    const entries = await collectBundledPluginMetadata({ repoRoot: tempRoot });
+    const firstEntry = entries[0] as
+      | {
+          publicSurfaceArtifacts?: string[];
+          runtimeSidecarArtifacts?: string[];
+        }
+      | undefined;
+    expect(firstEntry?.publicSurfaceArtifacts).toEqual(["api.js", "runtime-api.js"]);
+    expect(firstEntry?.runtimeSidecarArtifacts).toEqual(["runtime-api.js"]);
   });
 });
