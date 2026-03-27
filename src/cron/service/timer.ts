@@ -1098,6 +1098,7 @@ export async function executeJobCore(
           // e2362d35) and cron main-session responses are silently swallowed.
           // See: https://github.com/openclaw/openclaw/issues/28508
           heartbeat: { target: "last" },
+          abortSignal,
         });
         if (
           heartbeatResult.status !== "skipped" ||
