@@ -194,6 +194,7 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
     let lastFrameType: string | undefined;
     let lastFrameMethod: string | undefined;
     let lastFrameId: string | undefined;
+    let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
 
     const setCloseCause = (cause: string, meta?: Record<string, unknown>) => {
       if (!closeCause) {
@@ -233,7 +234,10 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
         return;
       }
       closed = true;
-      clearTimeout(handshakeTimer);
+      if (handshakeTimer) {
+        clearTimeout(handshakeTimer);
+        handshakeTimer = null;
+      }
       releasePreauthBudget();
       if (client) {
         clients.delete(client);
@@ -342,7 +346,7 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
     });
 
     const handshakeTimeoutMs = getPreauthHandshakeTimeoutMsFromEnv();
-    const handshakeTimer = setTimeout(() => {
+    handshakeTimer = setTimeout(() => {
       if (!client) {
         handshakeState = "failed";
         setCloseCause("handshake-timeout", {
@@ -375,7 +379,12 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
       send,
       close,
       isClosed: () => closed,
-      clearHandshakeTimer: () => clearTimeout(handshakeTimer),
+      clearHandshakeTimer: () => {
+        if (handshakeTimer) {
+          clearTimeout(handshakeTimer);
+          handshakeTimer = null;
+        }
+      },
       getClient: () => client,
       setClient: (next) => {
         releasePreauthBudget();
