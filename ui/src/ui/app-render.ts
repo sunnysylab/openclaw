@@ -1325,7 +1325,39 @@ export function renderApp(state: AppViewState) {
                     if (!configValue) {
                       return;
                     }
-                    updateConfigFormValue(state, ["agents", "defaultId"], agentId);
+                    const currentList = (
+                      getCurrentConfigValue() as {
+                        agents?: { list?: Record<string, unknown>[] };
+                      } | null
+                    )?.agents?.list;
+                    if (!Array.isArray(currentList)) {
+                      return;
+                    }
+                    const list = currentList
+                      .filter(
+                        (item): item is Record<string, unknown> =>
+                          item !== null && typeof item === "object",
+                      )
+                      .map((item) => ({
+                        ...item,
+                      }));
+                    list.forEach((item) => {
+                      if ("default" in item) {
+                        delete item.default;
+                      }
+                    });
+                    let index = list.findIndex(
+                      (item) =>
+                        typeof item.id === "string" &&
+                        item.id.toLowerCase() === agentId.toLowerCase(),
+                    );
+                    if (index < 0) {
+                      list.push({ id: agentId, default: true });
+                    } else {
+                      list[index].id = agentId;
+                      list[index].default = true;
+                    }
+                    updateConfigFormValue(state, ["agents", "list"], list);
                   },
                 }),
               )
