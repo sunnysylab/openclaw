@@ -258,8 +258,10 @@ describe("stageBundledPluginRuntime", () => {
     expect(fs.readFileSync(runtimePackagePath, "utf8")).toContain('"extensions": [');
     expect(fs.lstatSync(runtimeManifestPath).isSymbolicLink()).toBe(false);
     expect(fs.readFileSync(runtimeManifestPath, "utf8")).toBe("{}\n");
-    expect(fs.lstatSync(runtimeAssetPath).isSymbolicLink()).toBe(true);
     expect(fs.readFileSync(runtimeAssetPath, "utf8")).toBe("ok\n");
+    if (process.platform !== "win32") {
+      expect(fs.lstatSync(runtimeAssetPath).isSymbolicLink()).toBe(true);
+    }
   });
 
   it("preserves package metadata needed for bundled plugin discovery from dist-runtime", () => {
@@ -389,8 +391,10 @@ describe("stageBundledPluginRuntime", () => {
       "feishu-doc",
       "SKILL.md",
     );
-    expect(fs.lstatSync(runtimeSkillPath).isSymbolicLink()).toBe(true);
     expect(fs.readFileSync(runtimeSkillPath, "utf8")).toBe("# Feishu Doc\n");
+    if (process.platform !== "win32") {
+      expect(fs.lstatSync(runtimeSkillPath).isSymbolicLink()).toBe(true);
+    }
 
     symlinkSpy.mockRestore();
   });

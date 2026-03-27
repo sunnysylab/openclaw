@@ -7,6 +7,9 @@ function symlinkType() {
   return process.platform === "win32" ? "junction" : "dir";
 }
 
+/** Windows file symlinks often throw EPERM without Developer Mode or elevation. */
+const WIN32_FILE_SYMLINK_FALLBACK_CODES = new Set(["EPERM", "EACCES"]);
+
 function relativeSymlinkTarget(sourcePath, targetPath) {
   const relativeTarget = path.relative(path.dirname(targetPath), sourcePath);
   return relativeTarget || ".";
@@ -34,8 +37,20 @@ function ensureSymlink(targetValue, targetPath, type) {
   fs.symlinkSync(targetValue, targetPath, type);
 }
 
-function symlinkPath(sourcePath, targetPath, type) {
-  ensureSymlink(relativeSymlinkTarget(sourcePath, targetPath), targetPath, type);
+/**
+ * Prefer a relative symlink (smaller tree); on Windows, copy when symlink creation is denied.
+ */
+function symlinkPathOrCopyFile(sourcePath, targetPath) {
+  const linkTarget = relativeSymlinkTarget(sourcePath, targetPath);
+  try {
+    ensureSymlink(linkTarget, targetPath, "file");
+  } catch (error) {
+    if (process.platform === "win32" && WIN32_FILE_SYMLINK_FALLBACK_CODES.has(error?.code)) {
+      fs.copyFileSync(sourcePath, targetPath);
+      return;
+    }
+    throw error;
+  }
 }
 
 function shouldWrapRuntimeJsFile(sourcePath) {
@@ -85,7 +100,16 @@ function stagePluginRuntimeOverlay(sourceDir, targetDir) {
     }
 
     if (dirent.isSymbolicLink()) {
-      ensureSymlink(fs.readlinkSync(sourcePath), targetPath);
+      const linkTarget = fs.readlinkSync(sourcePath);
+      try {
+        ensureSymlink(linkTarget, targetPath);
+      } catch (error) {
+        if (process.platform === "win32" && WIN32_FILE_SYMLINK_FALLBACK_CODES.has(error?.code)) {
+          fs.copyFileSync(sourcePath, targetPath);
+          continue;
+        }
+        throw error;
+      }
       continue;
     }
 
@@ -103,7 +127,7 @@ function stagePluginRuntimeOverlay(sourceDir, targetDir) {
       continue;
     }
 
-    symlinkPath(sourcePath, targetPath);
+    symlinkPathOrCopyFile(sourcePath, targetPath);
   }
 }
 
