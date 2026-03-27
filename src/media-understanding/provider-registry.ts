@@ -8,11 +8,6 @@ import { getActivePluginRegistry } from "../plugins/runtime.js";
 import { normalizeMediaProviderId } from "./provider-id.js";
 import type { MediaUnderstandingProvider } from "./types.js";
 
-const PROVIDERS: MediaUnderstandingProvider[] = [
-  groqMediaUnderstandingProvider,
-  deepgramMediaUnderstandingProvider,
-];
-
 function mergeProviderIntoRegistry(
   registry: Map<string, MediaUnderstandingProvider>,
   provider: MediaUnderstandingProvider,

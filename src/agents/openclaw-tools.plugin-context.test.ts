@@ -9,8 +9,8 @@ const { resolvePluginToolsMock } = vi.hoisted(() => ({
 
 vi.mock("../plugins/tools.js", () => ({
   resolvePluginTools: resolvePluginToolsMock,
-  getPluginToolMeta: vi.fn(() => undefined),
   copyPluginToolMeta: vi.fn(),
+  getPluginToolMeta: vi.fn(() => undefined),
 }));
 
 let createOpenClawTools: typeof import("./openclaw-tools.js").createOpenClawTools;
@@ -53,6 +53,25 @@ describe("createOpenClawTools plugin context", () => {
         context: expect.objectContaining({
           sessionKey: "agent:main:telegram:direct:12345",
           sessionId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        }),
+      }),
+    );
+  });
+
+  it("forwards browser session wiring to plugin tool context", () => {
+    createOpenClawTools({
+      config: {} as never,
+      sandboxBrowserBridgeUrl: "http://127.0.0.1:9999",
+      allowHostBrowserControl: true,
+    });
+
+    expect(resolvePluginToolsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({
+          browser: {
+            sandboxBridgeUrl: "http://127.0.0.1:9999",
+            allowHostControl: true,
+          },
         }),
       }),
     );
