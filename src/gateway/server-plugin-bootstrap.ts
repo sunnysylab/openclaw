@@ -1,5 +1,6 @@
 import { primeConfiguredBindingRegistry } from "../channels/plugins/binding-registry.js";
 import type { loadConfig } from "../config/config.js";
+import { initGuardrailsFromConfig } from "../guardrails/init.js";
 import type { PluginRegistry } from "../plugins/registry.js";
 import { pinActivePluginChannelRegistry } from "../plugins/runtime.js";
 import { setGatewaySubagentRuntime } from "../plugins/runtime/index.js";
@@ -57,6 +58,7 @@ function logGatewayPluginDiagnostics(params: {
 
 export function prepareGatewayPluginLoad(params: GatewayPluginBootstrapParams) {
   installGatewayPluginRuntimeEnvironment(params.cfg);
+  initGuardrailsFromConfig(params.cfg.guardrails, params.log);
   const loaded = loadGatewayPlugins({
     cfg: params.cfg,
     workspaceDir: params.workspaceDir,
