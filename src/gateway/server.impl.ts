@@ -2,6 +2,7 @@ import path from "node:path";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
+import { stableStringify } from "../agents/stable-stringify.js";
 import { initSubagentRegistry } from "../agents/subagent-registry.js";
 import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
 import type { CanvasHostServer } from "../canvas-host/server.js";
@@ -13,6 +14,7 @@ import {
   type ConfigFileSnapshot,
   type OpenClawConfig,
   applyConfigOverrides,
+  getRuntimeConfigSourceSnapshot,
   isNixMode,
   loadConfig,
   migrateLegacyConfig,
@@ -75,7 +77,7 @@ import { onSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { runSetupWizard } from "../wizard/setup.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
 import { startChannelHealthMonitor } from "./channel-health-monitor.js";
-import { startGatewayConfigReloader } from "./config-reload.js";
+import { resolveGatewayReloadSettings, startGatewayConfigReloader } from "./config-reload.js";
 import type { ControlUiRootState } from "./control-ui.js";
 import {
   GATEWAY_EVENT_UPDATE_AVAILABLE,
@@ -437,6 +439,7 @@ export async function startGatewayServer(
     });
   };
   let secretsActivationTail: Promise<void> = Promise.resolve();
+  let runtimeSecretsActivationSerial = 0;
   const runWithSecretsActivationLock = async <T>(operation: () => Promise<T>): Promise<T> => {
     const run = secretsActivationTail.then(operation, operation);
     secretsActivationTail = run.then(
@@ -454,6 +457,7 @@ export async function startGatewayServer(
         const prepared = await prepareSecretsRuntimeSnapshot({ config });
         if (params.activate) {
           activateSecretsRuntimeSnapshot(prepared);
+          runtimeSecretsActivationSerial += 1;
           logGatewayAuthSurfaceDiagnostics(prepared);
         }
         for (const warning of prepared.warnings) {
@@ -490,7 +494,6 @@ export async function startGatewayServer(
         throw err;
       }
     });
-
   let cfgAtStart: OpenClawConfig;
   const startupRuntimeConfig = applyConfigOverrides(configSnapshot.config);
   const authBootstrap = await prepareGatewayStartupConfig({
@@ -1080,58 +1083,68 @@ export async function startGatewayServer(
           );
         });
 
-    if (!minimalTestGateway) {
-      heartbeatRunner = startHeartbeatRunner({ cfg: cfgAtStart });
-    }
+  const refreshRuntimeConfigFromDisk: import("./server-methods/types.js").GatewayRequestContext["refreshRuntimeConfigFromDisk"] =
+    async (configOverride) => {
+      if (!getActiveSecretsRuntimeSnapshot()) {
+        return;
+      }
+      if (configOverride) {
+        // activateRuntimeSecrets already acquires the secrets activation lock
+        // internally — wrapping it again would self-deadlock on the promise chain.
+        await activateRuntimeSecrets(configOverride, { reason: "reload", activate: true });
+        return;
+      }
+      const reloadMode = resolveGatewayReloadSettings(loadConfig()).mode;
+      if (reloadMode === "off" || reloadMode === "restart") {
+        return;
+      }
+      // Always read the file first to catch concurrent updates, even if source
+      // snapshot is in memory. This ensures agents.create polling sees newly
+      // written configs rather than stale in-memory state.
+      const snapshot = await readConfigFileSnapshot();
+      if (snapshot.exists && snapshot.valid) {
+        // Use the source snapshot from memory, not the disk read, to avoid
+        // leaking env-expanded values back to disk in later mutation writes.
+        // The disk read is only used to detect that we should refresh.
+        const runtimeSourceConfig = getRuntimeConfigSourceSnapshot();
+        if (runtimeSourceConfig) {
+          await activateRuntimeSecrets(runtimeSourceConfig, { reason: "reload", activate: true });
+          return;
+        }
+      }
+      const runtimeSourceConfig = getRuntimeConfigSourceSnapshot();
+      if (runtimeSourceConfig) {
+        await activateRuntimeSecrets(runtimeSourceConfig, { reason: "reload", activate: true });
+      }
+    };
 
-    const healthCheckMinutes = cfgAtStart.gateway?.channelHealthCheckMinutes;
-    const healthCheckDisabled = healthCheckMinutes === 0;
-    const staleEventThresholdMinutes = cfgAtStart.gateway?.channelStaleEventThresholdMinutes;
-    const maxRestartsPerHour = cfgAtStart.gateway?.channelMaxRestartsPerHour;
-    channelHealthMonitor = healthCheckDisabled
-      ? null
-      : startChannelHealthMonitor({
-          channelManager,
-          checkIntervalMs: (healthCheckMinutes ?? 5) * 60_000,
-          ...(staleEventThresholdMinutes != null && {
-            staleEventThresholdMs: staleEventThresholdMinutes * 60_000,
-          }),
-          ...(maxRestartsPerHour != null && { maxRestartsPerHour }),
-        });
-
-    if (!minimalTestGateway) {
-      void cron.start().catch((err) => logCron.error(`failed to start: ${String(err)}`));
-    }
-
-    stopModelPricingRefresh =
-      !minimalTestGateway && process.env.VITEST !== "1"
-        ? startGatewayModelPricingRefresh({ config: cfgAtStart })
-        : () => {};
-
-    // Recover pending outbound deliveries from previous crash/restart.
-    if (!minimalTestGateway) {
-      void (async () => {
-        const { recoverPendingDeliveries } = await import("../infra/outbound/delivery-queue.js");
-        const { deliverOutboundPayloads } = await import("../infra/outbound/deliver.js");
-        const logRecovery = log.child("delivery-recovery");
-        await recoverPendingDeliveries({
-          deliver: deliverOutboundPayloads,
-          log: logRecovery,
-          cfg: cfgAtStart,
-        });
-      })().catch((err) => log.error(`Delivery recovery failed: ${String(err)}`));
-    }
-
-    const execApprovalManager = new ExecApprovalManager();
-    const execApprovalForwarder = createExecApprovalForwarder();
-    const execApprovalHandlers = createExecApprovalHandlers(execApprovalManager, {
-      forwarder: execApprovalForwarder,
-    });
-    const secretsHandlers = createSecretsHandlers({
-      reloadSecrets: async () => {
-        const active = getActiveSecretsRuntimeSnapshot();
-        if (!active) {
-          throw new Error("Secrets runtime snapshot is not active.");
+  const gatewayRequestContext: import("./server-methods/types.js").GatewayRequestContext = {
+    deps,
+    cron,
+    cronStorePath,
+    execApprovalManager,
+    loadGatewayModelCatalog,
+    getHealthCache,
+    refreshHealthSnapshot: refreshGatewayHealthSnapshot,
+    logHealth,
+    logGateway: log,
+    incrementPresenceVersion,
+    getHealthVersion,
+    broadcast,
+    broadcastToConnIds,
+    nodeSendToSession,
+    nodeSendToAllSubscribed,
+    nodeSubscribe,
+    nodeUnsubscribe,
+    nodeUnsubscribeAll,
+    hasConnectedMobileNode: hasMobileNodeConnected,
+    hasExecApprovalClients: () => {
+      for (const gatewayClient of clients) {
+        const scopes = Array.isArray(gatewayClient.connect.scopes)
+          ? gatewayClient.connect.scopes
+          : [];
+        if (scopes.includes("operator.admin") || scopes.includes("operator.approvals")) {
+          return true;
         }
         const prepared = await activateRuntimeSecrets(active.sourceConfig, {
           reason: "reload",
@@ -1286,7 +1299,80 @@ export async function startGatewayServer(
           logDiagnostics: false,
         }));
       }
-      ({ pluginServices } = await startGatewaySidecars({
+      return false;
+    },
+    nodeRegistry,
+    agentRunSeq,
+    chatAbortControllers,
+    chatAbortedRuns: chatRunState.abortedRuns,
+    chatRunBuffers: chatRunState.buffers,
+    chatDeltaSentAt: chatRunState.deltaSentAt,
+    chatDeltaLastBroadcastLen: chatRunState.deltaLastBroadcastLen,
+    addChatRun,
+    removeChatRun,
+    subscribeSessionEvents: sessionEventSubscribers.subscribe,
+    unsubscribeSessionEvents: sessionEventSubscribers.unsubscribe,
+    subscribeSessionMessageEvents: sessionMessageSubscribers.subscribe,
+    unsubscribeSessionMessageEvents: sessionMessageSubscribers.unsubscribe,
+    unsubscribeAllSessionEvents: (connId: string) => {
+      sessionEventSubscribers.unsubscribe(connId);
+      sessionMessageSubscribers.unsubscribeAll(connId);
+    },
+    getSessionEventSubscriberConnIds: sessionEventSubscribers.getAll,
+    registerToolEventRecipient: toolEventRecipients.add,
+    dedupe,
+    wizardSessions,
+    findRunningWizard,
+    purgeWizardSession,
+    getRuntimeSnapshot,
+    startChannel,
+    stopChannel,
+    markChannelLoggedOut,
+    wizardRunner,
+    broadcastVoiceWakeChanged,
+    refreshRuntimeConfigFromDisk,
+  };
+
+  // Register a lazy fallback for plugin subagent dispatch in non-WS paths
+  // (Telegram polling, WhatsApp, etc.) so later runtime swaps can expose the
+  // current gateway context without relying on a startup snapshot.
+  setFallbackGatewayContextResolver(() => gatewayRequestContext);
+
+  attachGatewayWsHandlers({
+    wss,
+    clients,
+    port,
+    gatewayHost: bindHost ?? undefined,
+    canvasHostEnabled: Boolean(canvasHost),
+    canvasHostServerPort,
+    resolvedAuth,
+    rateLimiter: authRateLimiter,
+    browserRateLimiter: browserAuthRateLimiter,
+    gatewayMethods,
+    events: GATEWAY_EVENTS,
+    logGateway: log,
+    logHealth,
+    logWsControl,
+    extraHandlers: {
+      ...pluginRegistry.gatewayHandlers,
+      ...execApprovalHandlers,
+      ...secretsHandlers,
+    },
+    broadcast,
+    context: gatewayRequestContext,
+  });
+  logGatewayStartup({
+    cfg: cfgAtStart,
+    bindHost,
+    bindHosts: httpBindHosts,
+    port,
+    tlsEnabled: gatewayTls.enabled,
+    log,
+    isNixMode,
+  });
+  const stopGatewayUpdateCheck = minimalTestGateway
+    ? () => {}
+    : scheduleGatewayUpdateCheck({
         cfg: cfgAtStart,
         pluginRegistry,
         defaultWorkspaceDir,
@@ -1353,45 +1439,60 @@ export async function startGatewayServer(
               }),
           });
 
-          return startGatewayConfigReloader({
-            initialConfig: cfgAtStart,
-            readSnapshot: readConfigFileSnapshot,
-            onHotReload: async (plan, nextConfig) => {
-              const previousSnapshot = getActiveSecretsRuntimeSnapshot();
-              const prepared = await activateRuntimeSecrets(nextConfig, {
-                reason: "reload",
-                activate: true,
-              });
-              try {
-                await applyHotReload(plan, prepared.config);
-              } catch (err) {
+        return startGatewayConfigReloader({
+          initialConfig: cfgAtStart,
+          readSnapshot: readConfigFileSnapshot,
+          onHotReload: async (plan, nextConfig) => {
+            const previousSnapshot = getActiveSecretsRuntimeSnapshot();
+            const prepared = await activateRuntimeSecrets(nextConfig, {
+              reason: "reload",
+              activate: true,
+            });
+            const preparedActivationSerial = runtimeSecretsActivationSerial;
+            const preparedConfigKey = stableStringify(prepared.config);
+            try {
+              await applyHotReload(plan, prepared.config);
+            } catch (err) {
+              await runWithSecretsActivationLock(async () => {
+                const activeSnapshot = getActiveSecretsRuntimeSnapshot();
+                const activeConfigKey = activeSnapshot
+                  ? stableStringify(activeSnapshot.config)
+                  : null;
+                // Skip rollback only if the serial advanced AND the active config
+                // is genuinely different (not just re-activated). If the active config
+                // is the same as what we prepared, we must rollback even if the serial
+                // changed, since the higher serial just indicates a re-activation of the
+                // same config, not progress to a newer state.
+                if (
+                  runtimeSecretsActivationSerial !== preparedActivationSerial &&
+                  activeConfigKey !== preparedConfigKey
+                ) {
+                  logReload.warn(
+                    "gateway: skipping hot-reload snapshot rollback because runtime snapshot advanced to a different config",
+                  );
+                  return;
+                }
                 if (previousSnapshot) {
                   activateSecretsRuntimeSnapshot(previousSnapshot);
                 } else {
                   clearSecretsRuntimeSnapshot();
                 }
-                throw err;
-              }
-            },
-            onRestart: async (plan, nextConfig) => {
-              await activateRuntimeSecrets(nextConfig, {
-                reason: "restart-check",
-                activate: false,
               });
-              requestGatewayRestart(plan, nextConfig);
-            },
-            log: {
-              info: (msg) => logReload.info(msg),
-              warn: (msg) => logReload.warn(msg),
-              error: (msg) => logReload.error(msg),
-            },
-            watchPath: configSnapshot.path,
-          });
-        })();
-  } catch (err) {
-    await closeOnStartupFailure();
-    throw err;
-  }
+              throw err;
+            }
+          },
+          onRestart: async (plan, nextConfig) => {
+            await activateRuntimeSecrets(nextConfig, { reason: "restart-check", activate: false });
+            requestGatewayRestart(plan, nextConfig);
+          },
+          log: {
+            info: (msg) => logReload.info(msg),
+            warn: (msg) => logReload.warn(msg),
+            error: (msg) => logReload.error(msg),
+          },
+          watchPath: configSnapshot.path,
+        });
+      })();
 
   const close = createGatewayCloseHandler({
     bonjourStop,
