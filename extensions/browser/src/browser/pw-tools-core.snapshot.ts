@@ -257,64 +257,72 @@ export async function navigateViaPlaywright(opts: {
   ssrfPolicy?: SsrFPolicy;
   signal?: AbortSignal;
 }): Promise<{ url: string }> {
-  const isRetryableNavigateError = (err: unknown): boolean => {
-    const msg =
-      typeof err === "string"
-        ? err.toLowerCase()
-        : err instanceof Error
-          ? err.message.toLowerCase()
-          : "";
-    return (
-      msg.includes("frame has been detached") ||
-      msg.includes("target page, context or browser has been closed")
-    );
-  };
+  return await runAbortableSnapshotWork(
+    {
+      ...opts,
+      disconnectReason: "abort browser navigate",
+    },
+    async () => {
+      const isRetryableNavigateError = (err: unknown): boolean => {
+        const msg =
+          typeof err === "string"
+            ? err.toLowerCase()
+            : err instanceof Error
+              ? err.message.toLowerCase()
+              : "";
+        return (
+          msg.includes("frame has been detached") ||
+          msg.includes("target page, context or browser has been closed")
+        );
+      };
 
-  const url = String(opts.url ?? "").trim();
-  if (!url) {
-    throw new Error("url is required");
-  }
-  await assertBrowserNavigationAllowed({
-    url,
-    ...withBrowserNavigationPolicy(opts.ssrfPolicy),
-  });
-  const timeout = Math.max(1000, Math.min(120_000, opts.timeoutMs ?? 20_000));
-  let page = await getPageForTargetId(opts);
-  ensurePageState(page);
-  throwIfAborted(opts.signal);
-  const navigate = async () => await page.goto(url, { timeout });
-  let response;
-  try {
-    response = await navigate();
-  } catch (err) {
-    if (opts.signal?.aborted) {
-      throw opts.signal.reason ?? new Error("aborted");
-    }
-    if (!isRetryableNavigateError(err)) {
-      throw err;
-    }
-    // Extension relays can briefly drop CDP during renderer swaps/navigation.
-    // Force a clean reconnect, then retry once on the refreshed page handle.
-    await forceDisconnectPlaywrightForTarget({
-      cdpUrl: opts.cdpUrl,
-      targetId: opts.targetId,
-      reason: "retry navigate after detached frame",
-    }).catch(() => {});
-    page = await getPageForTargetId(opts);
-    ensurePageState(page);
-    throwIfAborted(opts.signal);
-    response = await navigate();
-  }
-  await assertBrowserNavigationRedirectChainAllowed({
-    request: response?.request(),
-    ...withBrowserNavigationPolicy(opts.ssrfPolicy),
-  });
-  const finalUrl = page.url();
-  await assertBrowserNavigationResultAllowed({
-    url: finalUrl,
-    ...withBrowserNavigationPolicy(opts.ssrfPolicy),
-  });
-  return { url: finalUrl };
+      const url = String(opts.url ?? "").trim();
+      if (!url) {
+        throw new Error("url is required");
+      }
+      await assertBrowserNavigationAllowed({
+        url,
+        ...withBrowserNavigationPolicy(opts.ssrfPolicy),
+      });
+      const timeout = Math.max(1000, Math.min(120_000, opts.timeoutMs ?? 20_000));
+      let page = await getPageForTargetId(opts);
+      ensurePageState(page);
+      throwIfAborted(opts.signal);
+      const navigate = async () => await page.goto(url, { timeout });
+      let response;
+      try {
+        response = await navigate();
+      } catch (err) {
+        if (opts.signal?.aborted) {
+          throw opts.signal.reason ?? new Error("aborted");
+        }
+        if (!isRetryableNavigateError(err)) {
+          throw err;
+        }
+        // Extension relays can briefly drop CDP during renderer swaps/navigation.
+        // Force a clean reconnect, then retry once on the refreshed page handle.
+        await forceDisconnectPlaywrightForTarget({
+          cdpUrl: opts.cdpUrl,
+          targetId: opts.targetId,
+          reason: "retry navigate after detached frame",
+        }).catch(() => {});
+        page = await getPageForTargetId(opts);
+        ensurePageState(page);
+        throwIfAborted(opts.signal);
+        response = await navigate();
+      }
+      await assertBrowserNavigationRedirectChainAllowed({
+        request: response?.request(),
+        ...withBrowserNavigationPolicy(opts.ssrfPolicy),
+      });
+      const finalUrl = page.url();
+      await assertBrowserNavigationResultAllowed({
+        url: finalUrl,
+        ...withBrowserNavigationPolicy(opts.ssrfPolicy),
+      });
+      return { url: finalUrl };
+    },
+  );
 }
 
 export async function resizeViewportViaPlaywright(opts: {
