@@ -35,7 +35,11 @@ import {
 } from "./bot-updates.js";
 import { apiThrottler, Bot, sequentialize, type ApiClientOptions } from "./bot.runtime.js";
 import { buildTelegramGroupPeerId, resolveTelegramStreamMode } from "./bot/helpers.js";
-import { resolveTelegramTransport, type TelegramTransport } from "./fetch.js";
+import {
+  resolveTelegramApiBase,
+  resolveTelegramTransport,
+  type TelegramTransport,
+} from "./fetch.js";
 import { tagTelegramNetworkError } from "./network-errors.js";
 import { createTelegramSendChatActionHandler } from "./sendchataction-401-backoff.js";
 import { getTelegramSequentialKey } from "./sequential-key.js";
@@ -244,13 +248,15 @@ export function createTelegramBot(opts: TelegramBotOptions) {
     typeof telegramCfg?.timeoutSeconds === "number" && Number.isFinite(telegramCfg.timeoutSeconds)
       ? Math.max(1, Math.floor(telegramCfg.timeoutSeconds))
       : undefined;
-  const apiRoot = telegramCfg.apiRoot?.trim() || undefined;
+  // Prefer config-level apiRoot; fall back to TELEGRAM_BOT_API_HOST env var.
+  const apiRoot = resolveTelegramApiBase(telegramCfg.apiRoot?.trim() || undefined);
+  const useCustomApiRoot = apiRoot !== "https://api.telegram.org";
   const client: ApiClientOptions | undefined =
-    finalFetch || timeoutSeconds || apiRoot
+    finalFetch || timeoutSeconds || useCustomApiRoot
       ? {
           ...(finalFetch ? { fetch: finalFetch } : {}),
           ...(timeoutSeconds ? { timeoutSeconds } : {}),
-          ...(apiRoot ? { apiRoot } : {}),
+          ...(useCustomApiRoot ? { apiRoot } : {}),
         }
       : undefined;
 

@@ -20,15 +20,15 @@ const GrammyErrorCtor: typeof GrammyError | undefined =
 
 function buildTelegramMediaSsrfPolicy(apiRoot?: string) {
   const hostnames = ["api.telegram.org"];
-  if (apiRoot) {
-    try {
-      const customHost = new URL(apiRoot).hostname;
-      if (customHost && !hostnames.includes(customHost)) {
-        hostnames.push(customHost);
-      }
-    } catch {
-      // invalid URL; fall through to default
+  // Include the effective API hostname (config or TELEGRAM_BOT_API_HOST env var).
+  const effectiveBase = resolveTelegramApiBase(apiRoot);
+  try {
+    const customHost = new URL(effectiveBase).hostname;
+    if (customHost && !hostnames.includes(customHost)) {
+      hostnames.push(customHost);
     }
+  } catch {
+    // invalid URL; fall through to default
   }
   return {
     // Telegram file downloads should trust the API hostname even when DNS/proxy

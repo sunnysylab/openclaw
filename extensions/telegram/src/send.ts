@@ -248,16 +248,18 @@ function resolveTelegramClientOptions(
 
   const proxyUrl = account.config.proxy?.trim();
   const proxyFetch = proxyUrl ? makeProxyFetch(proxyUrl) : undefined;
-  const apiRoot = account.config.apiRoot?.trim() || undefined;
   const fetchImpl = resolveTelegramFetch(proxyFetch, {
     network: account.config.network,
   });
+  // Prefer config-level apiRoot; fall back to TELEGRAM_BOT_API_HOST env var.
+  const apiRoot = resolveTelegramApiBase(account.config.apiRoot?.trim() || undefined);
+  const useCustomApiRoot = apiRoot !== "https://api.telegram.org";
   const clientOptions =
-    fetchImpl || timeoutSeconds || apiRoot
+    fetchImpl || timeoutSeconds || useCustomApiRoot
       ? {
           ...(fetchImpl ? { fetch: fetchImpl as unknown as ApiClientOptions["fetch"] } : {}),
           ...(timeoutSeconds ? { timeoutSeconds } : {}),
-          ...(apiRoot ? { apiRoot } : {}),
+          ...(useCustomApiRoot ? { apiRoot } : {}),
         }
       : undefined;
   if (cacheKey) {

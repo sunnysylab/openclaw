@@ -9,6 +9,10 @@ import {
 import { createSubsystemLogger } from "openclaw/plugin-sdk/runtime-env";
 import { Agent, EnvHttpProxyAgent, ProxyAgent, fetch as undiciFetch } from "undici";
 import {
+  resolveTelegramApiBase as resolveEnvTelegramApiBase,
+  resolveTelegramApiHostname,
+} from "./api-base.js";
+import {
   resolveTelegramAutoSelectFamilyDecision,
   resolveTelegramDnsResultOrderDecision,
 } from "./network-config.js";
@@ -17,7 +21,6 @@ import { getProxyUrlFromFetch } from "./proxy.js";
 const log = createSubsystemLogger("telegram/network");
 
 const TELEGRAM_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS = 300;
-const TELEGRAM_API_HOSTNAME = "api.telegram.org";
 const TELEGRAM_FALLBACK_IPS: readonly string[] = ["149.154.167.220"];
 
 type RequestInitWithDispatcher = RequestInit & {
@@ -159,7 +162,7 @@ function shouldBypassEnvProxyForTelegramApi(env: NodeJS.ProcessEnv = process.env
   if (noProxyValue === "*") {
     return true;
   }
-  const targetHostname = TELEGRAM_API_HOSTNAME.toLowerCase();
+  const targetHostname = resolveTelegramApiHostname(env).toLowerCase();
   const targetPort = 443;
   const noProxyEntries = noProxyValue.split(/[,\s]/);
   for (let i = 0; i < noProxyEntries.length; i++) {
@@ -423,6 +426,7 @@ function createTelegramTransportAttempts(params: {
   defaultDispatcher: ReturnType<typeof createTelegramDispatcher>;
   allowFallback: boolean;
   fallbackPolicy?: PinnedDispatcherPolicy;
+  apiHostname: string;
 }): TelegramTransportAttempt[] {
   const attempts: TelegramTransportAttempt[] = [
     {
@@ -455,7 +459,7 @@ function createTelegramTransportAttempts(params: {
   const fallbackIpPolicy: PinnedDispatcherPolicy = {
     ...fallbackPolicy,
     pinnedHostname: {
-      hostname: TELEGRAM_API_HOSTNAME,
+      hostname: params.apiHostname,
       addresses: [...TELEGRAM_FALLBACK_IPS],
     },
   };
@@ -527,6 +531,7 @@ export function resolveTelegramTransport(
     defaultDispatcher,
     allowFallback: allowStickyFallback,
     fallbackPolicy: fallbackDispatcherPolicy,
+    apiHostname: resolveTelegramApiHostname(),
   });
 
   let stickyAttemptIndex = 0;
@@ -591,10 +596,16 @@ export function resolveTelegramFetch(
 }
 
 /**
- * Resolve the Telegram Bot API base URL from an optional `apiRoot` config value.
- * Returns a trimmed URL without trailing slash, or the standard default.
+ * Resolve the Telegram Bot API base URL.
+ *
+ * Priority:
+ * 1. Explicit `apiRoot` config value (e.g. `channels.telegram.accounts.default.apiRoot`)
+ * 2. `TELEGRAM_BOT_API_HOST` environment variable
+ * 3. Default `https://api.telegram.org`
  */
 export function resolveTelegramApiBase(apiRoot?: string): string {
   const trimmed = apiRoot?.trim();
-  return trimmed ? trimmed.replace(/\/+$/, "") : `https://${TELEGRAM_API_HOSTNAME}`;
+  if (trimmed) return trimmed.replace(/\/+$/, "");
+  // Fall back to TELEGRAM_BOT_API_HOST env var
+  return resolveEnvTelegramApiBase();
 }
