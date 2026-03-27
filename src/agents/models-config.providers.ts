@@ -160,10 +160,11 @@ export function applyNativeStreamingUsageCompat(
 
   for (const [providerKey, provider] of Object.entries(providers)) {
     const normalizedBaseUrl = normalizeProviderBaseUrl(provider.baseUrl);
-    const isNativeMoonshot =
-      providerKey === "moonshot" && MOONSHOT_NATIVE_BASE_URLS.has(normalizedBaseUrl);
-    const isNativeModelStudio =
-      providerKey === "modelstudio" && MODELSTUDIO_NATIVE_BASE_URLS.has(normalizedBaseUrl);
+    // Match by baseUrl alone so that providers configured via the "generic"
+    // key still get streaming usage when pointing at a known native endpoint
+    // (fixes DashScope/Moonshot usage tracking via generic provider — #52346).
+    const isNativeMoonshot = MOONSHOT_NATIVE_BASE_URLS.has(normalizedBaseUrl);
+    const isNativeModelStudio = MODELSTUDIO_NATIVE_BASE_URLS.has(normalizedBaseUrl);
     const nextProvider =
       isNativeMoonshot || isNativeModelStudio ? withStreamingUsageCompat(provider) : provider;
     nextProviders[providerKey] = nextProvider;
