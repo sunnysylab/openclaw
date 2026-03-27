@@ -397,6 +397,11 @@ export class DiscordExecApprovalHandler {
       return false;
     }
 
+    const turnSourceChannel = request.request.turnSourceChannel?.trim().toLowerCase();
+    if (turnSourceChannel && turnSourceChannel !== "discord") {
+      return false;
+    }
+
     const requestAccountId = resolveExecApprovalAccountId({
       cfg: this.opts.cfg,
       request,
