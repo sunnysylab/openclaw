@@ -271,8 +271,15 @@ function evaluateSegments(
     const shellScriptArgv = shellScriptCandidatePath
       ? (() => {
           const scriptBase = path.basename(shellScriptCandidatePath).toLowerCase();
-          // Prefer exact path match to avoid shadowing by earlier args with same basename.
-          let idx = effectiveArgv.findIndex((a) => a === shellScriptCandidatePath);
+          const cwdBase =
+            params.cwd && params.cwd.trim() ? params.cwd.trim() : process.cwd();
+          const resolveArgPath = (a: string): string =>
+            path.isAbsolute(a) ? a : path.resolve(cwdBase, a);
+          // Prefer exact path match (normalizing relative tokens) to avoid
+          // shadowing by earlier args with the same basename.
+          let idx = effectiveArgv.findIndex(
+            (a) => resolveArgPath(a) === shellScriptCandidatePath,
+          );
           if (idx === -1) {
             idx = effectiveArgv.findIndex(
               (a) => path.basename(a).toLowerCase() === scriptBase,
@@ -557,15 +564,24 @@ function escapeRegExpLiteral(input: string): string {
  * is independent of wrapper spelling (e.g. `pwsh -File script.ps1 foo` and
  * `C:\full\script.ps1 foo` both produce the same argPattern `^foo$`).
  */
-function buildScriptArgPatternFromArgv(argv: string[], scriptPath: string): string | undefined {
+function buildScriptArgPatternFromArgv(
+  argv: string[],
+  scriptPath: string,
+  cwd?: string,
+): string | undefined {
   if (process.platform !== "win32") {
     return undefined;
   }
   const scriptBase = path.basename(scriptPath).toLowerCase();
+  const base = cwd && cwd.trim() ? cwd.trim() : process.cwd();
   // Prefer exact path match so that an earlier arg sharing the same basename
   // (e.g. -SettingsFile C:\tmp\deploy.ps1 before -File C:\scripts\deploy.ps1)
-  // does not shadow the actual script token.
-  let scriptIdx = argv.findIndex((arg) => arg === scriptPath);
+  // does not shadow the actual script token.  Normalize relative argv tokens to
+  // absolute paths (using cwd) before comparing so that -File .\scripts\deploy.ps1
+  // is correctly identified when scriptPath is already absolute.
+  const resolveArgPath = (arg: string): string =>
+    path.isAbsolute(arg) ? arg : path.resolve(base, arg);
+  let scriptIdx = argv.findIndex((arg) => resolveArgPath(arg) === scriptPath);
   if (scriptIdx === -1) {
     scriptIdx = argv.findIndex((arg) => path.basename(arg).toLowerCase() === scriptBase);
   }
@@ -664,7 +680,7 @@ function collectAllowAlwaysPatterns(params: {
     if (scriptPath) {
       // Use script-specific helper so the argPattern encodes only the arguments
       // passed to the script itself, not the wrapper tokens (e.g. -File, pwsh).
-      const argPattern = buildScriptArgPatternFromArgv(params.segment.argv, scriptPath);
+      const argPattern = buildScriptArgPatternFromArgv(params.segment.argv, scriptPath, params.cwd);
       addAllowAlwaysPattern(params.out, scriptPath, argPattern);
     }
     return;
