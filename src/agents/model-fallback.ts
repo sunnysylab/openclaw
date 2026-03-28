@@ -932,7 +932,7 @@ export async function runWithImageModelFallback<T>(params: {
         attempt: i + 1,
         total: candidates.length,
         isPrimary,
-        requestedModelMatched: requestedModel,
+        requestedModelMatched: requestedModel === candidate.model,
         fallbackConfigured: candidates.length > 1,
       });
       return attemptRun.success;
@@ -968,7 +968,7 @@ export async function runWithImageModelFallback<T>(params: {
         error: described.message,
         nextCandidate: candidates[i + 1],
         isPrimary,
-        requestedModelMatched: requestedModel,
+        requestedModelMatched: requestedModel === candidate.model,
         fallbackConfigured: candidates.length > 1,
       });
       await params.onError?.({
