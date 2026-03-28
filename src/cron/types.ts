@@ -69,20 +69,7 @@ export type CronPreCheck = {
 
 export type CronPayload =
   | { kind: "systemEvent"; text: string }
-  | {
-      kind: "agentTurn";
-      message: string;
-      /** Optional model override (provider/model or alias). */
-      model?: string;
-      thinking?: string;
-      timeoutSeconds?: number;
-      lightContext?: boolean;
-      allowUnsafeExternalContent?: boolean;
-      deliver?: boolean;
-      channel?: CronMessageChannel;
-      to?: string;
-      bestEffortDeliver?: boolean;
-    };
+  | ({ kind: "agentTurn" } & CronAgentTurnPayloadFields);
 
 export type CronUsageSummary = {
   input_tokens?: number;
