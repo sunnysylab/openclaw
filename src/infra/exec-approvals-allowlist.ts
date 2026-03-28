@@ -271,9 +271,13 @@ function evaluateSegments(
     const shellScriptArgv = shellScriptCandidatePath
       ? (() => {
           const scriptBase = path.basename(shellScriptCandidatePath).toLowerCase();
-          const idx = effectiveArgv.findIndex(
-            (a) => path.basename(a).toLowerCase() === scriptBase || a === shellScriptCandidatePath,
-          );
+          // Prefer exact path match to avoid shadowing by earlier args with same basename.
+          let idx = effectiveArgv.findIndex((a) => a === shellScriptCandidatePath);
+          if (idx === -1) {
+            idx = effectiveArgv.findIndex(
+              (a) => path.basename(a).toLowerCase() === scriptBase,
+            );
+          }
           const scriptArgs = idx !== -1 ? effectiveArgv.slice(idx + 1) : [];
           return [shellScriptCandidatePath, ...scriptArgs];
         })()
@@ -558,9 +562,13 @@ function buildScriptArgPatternFromArgv(argv: string[], scriptPath: string): stri
     return undefined;
   }
   const scriptBase = path.basename(scriptPath).toLowerCase();
-  const scriptIdx = argv.findIndex(
-    (arg) => path.basename(arg).toLowerCase() === scriptBase || arg === scriptPath,
-  );
+  // Prefer exact path match so that an earlier arg sharing the same basename
+  // (e.g. -SettingsFile C:\tmp\deploy.ps1 before -File C:\scripts\deploy.ps1)
+  // does not shadow the actual script token.
+  let scriptIdx = argv.findIndex((arg) => arg === scriptPath);
+  if (scriptIdx === -1) {
+    scriptIdx = argv.findIndex((arg) => path.basename(arg).toLowerCase() === scriptBase);
+  }
   const scriptArgs = scriptIdx !== -1 ? argv.slice(scriptIdx + 1) : [];
   // Always append a trailing \x00 sentinel so that matchArgPattern can detect
   // auto-generated patterns by .includes("\x00") even when there is only one arg
