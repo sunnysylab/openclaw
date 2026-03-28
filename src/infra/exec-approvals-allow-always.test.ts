@@ -778,4 +778,5 @@ $0 \\"$1\\"" touch {marker}`,
     // \x00 separator preserves argument boundaries between "test.py" and "--flag=val"
     expect(patterns[0].argPattern).toBe("^test\\.py\x00--flag=val$");
   });
+
 });

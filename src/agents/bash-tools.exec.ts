@@ -180,9 +180,39 @@ async function validateScriptFileForShellBleed(params: {
  * Paths containing spaces MUST NOT be shown unquoted — the short name avoids
  * the quoting issue entirely.
  */
+/**
+ * Derive the executable token to show in the pre-approved command hint.
+ * Absolute paths to scripts (.ps1, .js, .py, .bat, .cmd) are kept as-is
+ * because they are not on PATH and must be invoked with their full path.
+ * Other absolute paths use the basename-without-.exe short name so the LLM
+ * invokes them via PATH lookup (consistent with the Windows guidance above).
+ */
 function deriveExecShortName(fullPath: string): string {
+  if (path.isAbsolute(fullPath)) {
+    const ext = path.extname(fullPath).toLowerCase();
+    const scriptExts = new Set([".ps1", ".js", ".py", ".bat", ".cmd", ".sh"]);
+    if (scriptExts.has(ext)) {
+      return fullPath; // keep full path for scripts not on PATH
+    }
+  }
   const base = path.basename(fullPath);
   return base.replace(/\.exe$/i, "") || base;
+}
+
+/**
+ * Convert an internal argPattern regex back to a human-readable argument
+ * string suitable for display in the pre-approved commands hint.
+ * Strips regex anchors, unescapes literals, and replaces \x00 separators
+ * (argument boundaries) with spaces.
+ */
+function argPatternToReadable(argPattern: string): string {
+  return argPattern
+    .replace(/^\^/, "")
+    .replace(/\$$/, "")
+    .replace(/\x00/g, " ") // \x00 arg-boundary separator → space
+    .replace(/\\\\/g, "\\") // \\\\ → backslash
+    .replace(/\\\./g, ".") // \\. → literal dot
+    .replace(/\\([^\\])/g, "$1"); // remaining regex escapes → literal
 }
 
 function buildExecToolDescription(agentId?: string): string {
@@ -205,11 +235,7 @@ function buildExecToolDescription(agentId?: string): string {
       for (const entry of allowlist.slice(0, 10)) {
         const shortName = deriveExecShortName(entry.pattern);
         if (entry.argPattern) {
-          const readable = entry.argPattern
-            .replace(/^\^/, "")
-            .replace(/\$$/, "")
-            .replace(/\\\\/g, "\\")
-            .replace(/\\\./g, ".");
+          const readable = argPatternToReadable(entry.argPattern);
           lines.push(`  ${shortName} ${readable}`);
         } else {
           lines.push(`  ${shortName} (any arguments)`);

@@ -253,7 +253,21 @@ function evaluateSegments(
             cwd: params.cwd,
           })
         : undefined;
-    const shellScriptMatch = shellScriptCandidatePath
+    // For script-wrapper cases the saved argPattern encodes only the arguments
+    // after the script path token (see buildScriptArgPatternFromArgv).  Build a
+    // synthetic argv whose [0] is the script and whose [1..] are the script args
+    // so that matchArgPattern compares against the right portion of argv.
+    const shellScriptArgv = shellScriptCandidatePath
+      ? (() => {
+          const scriptBase = path.basename(shellScriptCandidatePath).toLowerCase();
+          const idx = effectiveArgv.findIndex(
+            (a) => path.basename(a).toLowerCase() === scriptBase || a === shellScriptCandidatePath,
+          );
+          const scriptArgs = idx !== -1 ? effectiveArgv.slice(idx + 1) : [];
+          return [shellScriptCandidatePath, ...scriptArgs];
+        })()
+      : null;
+    const shellScriptMatch = shellScriptCandidatePath && shellScriptArgv
       ? matchAllowlist(
           params.allowlist,
           {
@@ -261,7 +275,7 @@ function evaluateSegments(
             resolvedPath: shellScriptCandidatePath,
             executableName: path.basename(shellScriptCandidatePath),
           },
-          effectiveArgv,
+          shellScriptArgv,
         )
       : null;
     const match = executableMatch ?? shellPositionalArgvMatch ?? shellScriptMatch;
@@ -592,7 +606,9 @@ function collectAllowAlwaysPatterns(params: {
     return;
   }
   if (!trustPlan.shellWrapperExecutable) {
-    const argPattern = buildArgPatternFromArgv(params.segment.argv);
+    // Use the unwrapped argv (segment.argv) so that dispatch-wrapper tokens
+    // (e.g. "env FOO=1") are not baked into the argPattern.
+    const argPattern = buildArgPatternFromArgv(segment.argv);
     addAllowAlwaysPattern(params.out, candidatePath, argPattern);
     return;
   }

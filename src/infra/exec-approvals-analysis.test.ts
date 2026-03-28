@@ -325,6 +325,9 @@ describe("exec approvals shell analysis", () => {
         'powershell -NoProfile -ExecutionPolicy Bypass -Command "node a.js"',
         'powershell -NonInteractive -ExecutionPolicy RemoteSigned -Command "node a.js"',
         'pwsh -NoLogo -WindowStyle Hidden -Command "node a.js"',
+        // single-quoted payload
+        "powershell -NoProfile -Command 'node a.js'",
+        "pwsh -ExecutionPolicy Bypass -Command 'node a.js'",
       ];
       for (const command of cases) {
         const res = analyzeShellCommand({ command, platform: "win32" });
@@ -456,9 +459,26 @@ describe("windowsEscapeArg", () => {
   it("allows ! in double-quoted args (PowerShell does not treat ! as special)", () => {
     expect(windowsEscapeArg("hello!")).toEqual({ ok: true, escaped: '"hello!"' });
   });
+
+  it("rejects $ followed by identifier (PowerShell variable expansion)", () => {
+    expect(windowsEscapeArg("$env:SECRET")).toEqual({ ok: false });
+    expect(windowsEscapeArg("$var")).toEqual({ ok: false });
+    expect(windowsEscapeArg("${var}")).toEqual({ ok: false });
+  });
+
+  it("allows $ not followed by identifier (e.g. UNC admin share C$)", () => {
+    expect(windowsEscapeArg("\\\\host\\C$")).toEqual({ ok: true, escaped: '"\\\\host\\C$"' });
+    expect(windowsEscapeArg("trailing$")).toEqual({ ok: true, escaped: '"trailing$"' });
+  });
 });
 
 describe("matchAllowlist with argPattern", () => {
+  // argPattern matching is Windows-only; skip this suite on other platforms.
+  if (process.platform !== "win32") {
+    it.skip("argPattern tests are Windows-only", () => {});
+    return;
+  }
+
   const resolution = {
     rawExecutable: "python3",
     resolvedPath: "/usr/bin/python3",

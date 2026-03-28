@@ -491,7 +491,14 @@ function stripWindowsShellWrapperOnce(command: string): string {
   if (psInvokeMatch) {
     return psInvokeMatch[1];
   }
-  // PowerShell -Command without quotes
+  // PowerShell -Command with single-quoted payload: powershell -Command 'node a.js'
+  const psInvokeSingleQuote = command.match(
+    new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+'(.+)'$`, "is"),
+  );
+  if (psInvokeSingleQuote) {
+    return psInvokeSingleQuote[1];
+  }
+  // PowerShell -Command without quotes (bare unquoted payload)
   const psInvokeNoQuote = command.match(
     new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+(.+)$`, "is"),
   );
@@ -693,12 +700,13 @@ function shellEscapeSingleArg(value: string): string {
 }
 
 // Characters that cannot be safely double-quoted in PowerShell enforced commands.
-// %  — cmd.exe immediate/delayed expansion; also blocked in analysis phase.
-// $  — PowerShell variable expansion inside double-quoted strings (e.g. "$env:SECRET").
-// `  — PowerShell escape character; can form escape sequences like `n, `0 inside double quotes.
+// %   — cmd.exe immediate/delayed expansion; also blocked in analysis phase.
+// $id — PowerShell variable expansion: "$env:SECRET", "${var}", "$x" ($ followed by identifier
+//       start or {). A bare $ not followed by [A-Za-z_{] is treated literally (e.g. "C$").
+// `   — PowerShell escape character; can form escape sequences like `n, `0 inside double quotes.
 // Note: ! is intentionally omitted — PowerShell does not treat ! as special in double-quoted
 // strings (unlike cmd.exe delayed expansion), so "Hello!" is safe to pass through.
-const WINDOWS_UNSAFE_CMD_META = /[%$`]/;
+const WINDOWS_UNSAFE_CMD_META = /[%`]|\$(?=[A-Za-z_{])/;
 
 export function windowsEscapeArg(value: string): { ok: true; escaped: string } | { ok: false } {
   if (value === "") {
