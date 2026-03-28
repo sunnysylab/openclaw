@@ -370,9 +370,21 @@ function findWindowsUnsupportedToken(command: string): string | null {
   // (PowerShell gateway and cmd.exe node-host) safe.
   // tokenizeWindowsSegment does track single quotes for accurate argv extraction
   // during enforcement, which is a separate concern from the safety check here.
-  for (const ch of command) {
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
     if (ch === '"') {
       inDouble = !inDouble;
+      continue;
+    }
+    // PowerShell expands $var, ${var}, and $(expr) inside double-quoted strings,
+    // so $ followed by an identifier-start character, {, or ( is always unsafe —
+    // regardless of quoting context.  A bare $ not followed by those characters
+    // is safe (e.g. UNC admin share suffix \\host\C$).
+    if (ch === "$") {
+      const next = command[i + 1];
+      if (next !== undefined && /[A-Za-z_{(]/.test(next)) {
+        return "$";
+      }
       continue;
     }
     if (WINDOWS_UNSUPPORTED_TOKENS.has(ch)) {

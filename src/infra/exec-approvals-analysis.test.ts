@@ -217,6 +217,28 @@ describe("exec approvals shell analysis", () => {
       expect(res.ok).toBe(false);
     });
 
+    it("rejects PowerShell $ expansions in Windows commands", () => {
+      // $ followed by identifier-start, { or ( is always unsafe — PowerShell
+      // expands these even inside double-quoted strings, matching windowsEscapeArg.
+      const cases = [
+        'node app.js "$env:USERPROFILE"',
+        "node app.js ${var}",
+        "node app.js $(whoami)",
+      ];
+      for (const command of cases) {
+        const res = analyzeShellCommand({ command, platform: "win32" });
+        expect(res.ok).toBe(false);
+      }
+    });
+
+    it("allows bare $ not followed by identifier on Windows (e.g. UNC paths)", () => {
+      const res = analyzeShellCommand({
+        command: 'net use "\\\\host\\C$"',
+        platform: "win32",
+      });
+      expect(res.ok).toBe(true);
+    });
+
     it("rejects metacharacters inside single-quoted arguments on Windows", () => {
       // Single quotes are NOT quoting characters in cmd.exe (the Windows execution
       // shell).  Shell metacharacters inside single quotes remain active and unsafe.
