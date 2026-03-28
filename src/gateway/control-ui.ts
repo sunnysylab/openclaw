@@ -112,7 +112,11 @@ type ControlUiAvatarMeta = {
 
 function applyControlUiSecurityHeaders(res: ServerResponse) {
   res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Content-Security-Policy", buildControlUiCspHeader());
+  // CSP is set per-response: HTML documents get the full policy (with
+  // optional inline-script hashes) inside serveResolvedIndexHtml; static
+  // assets intentionally omit CSP so that SVG paint-server references
+  // (e.g. fill="url(#gradient)") are not blocked in sandboxed <img>/favicon
+  // contexts where 'self' resolves to an opaque origin.
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
 }
@@ -235,12 +239,10 @@ function serveResolvedFile(res: ServerResponse, filePath: string, body: Buffer) 
 
 function serveResolvedIndexHtml(res: ServerResponse, body: string) {
   const hashes = computeInlineScriptHashes(body);
-  if (hashes.length > 0) {
-    res.setHeader(
-      "Content-Security-Policy",
-      buildControlUiCspHeader({ inlineScriptHashes: hashes }),
-    );
-  }
+  res.setHeader(
+    "Content-Security-Policy",
+    buildControlUiCspHeader(hashes.length > 0 ? { inlineScriptHashes: hashes } : undefined),
+  );
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
   res.end(body);
