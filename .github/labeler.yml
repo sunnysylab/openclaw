@@ -298,6 +298,10 @@
   - changed-files:
       - any-glob-to-any-file:
           - "extensions/qianfan/**"
+"extensions: serper":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "extensions/serper/**"
 "extensions: synthetic":
   - changed-files:
       - any-glob-to-any-file:
