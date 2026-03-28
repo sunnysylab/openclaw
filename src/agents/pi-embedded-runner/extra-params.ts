@@ -45,7 +45,6 @@ import {
   resolveOpenAITextVerbosity,
 } from "./openai-stream-wrappers.js";
 import { streamWithPayloadPatch } from "./stream-payload-utils.js";
-import { createXaiFastModeWrapper } from "./xai-stream-wrappers.js";
 import { createZaiToolStreamWrapper } from "./zai-stream-wrappers.js";
 
 const GOOGLE_SAFETY_CATEGORY_MAP = {
@@ -393,7 +392,10 @@ function applyPrePluginStreamWrappers(ctx: ApplyExtraParamsContext): void {
   const googleSafetySettings = resolveConfiguredGoogleSafetySettings(ctx.cfg, ctx.provider);
   if (googleSafetySettings) {
     log.debug(`applying Google safety settings for ${ctx.provider}/${ctx.modelId}`);
-    ctx.agent.streamFn = createGoogleSafetySettingsWrapper(ctx.agent.streamFn, googleSafetySettings);
+    ctx.agent.streamFn = createGoogleSafetySettingsWrapper(
+      ctx.agent.streamFn,
+      googleSafetySettings,
+    );
   }
 
   const wrappedStreamFn = createStreamFnWithExtraParams(
