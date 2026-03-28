@@ -1503,6 +1503,32 @@ describe("applyExtraParamsToAgent", () => {
     expect(payloads[0]).not.toHaveProperty("config.safetySettings");
   });
 
+  it("enables Z.AI tool_stream for the z.ai provider alias", () => {
+    const payloads: Record<string, unknown>[] = [];
+    const baseStreamFn: StreamFn = (_model, _context, options) => {
+      const payload: Record<string, unknown> = {
+        messages: [{ role: "user", content: "hello" }],
+      };
+      options?.onPayload?.(payload, _model);
+      payloads.push(payload);
+      return {} as ReturnType<StreamFn>;
+    };
+    const agent = { streamFn: baseStreamFn };
+
+    applyExtraParamsToAgent(agent, undefined, "z.ai", "glm-4.7");
+
+    const model = {
+      api: "openai-completions",
+      provider: "z.ai",
+      id: "glm-4.7",
+    } as Model<"openai-completions">;
+    const context: Context = { messages: [] };
+    void agent.streamFn?.(model, context, {});
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.tool_stream).toBe(true);
+  });
+
   it("injects configured Gemini safety settings from the active provider key", () => {
     const payloads: Record<string, unknown>[] = [];
     const baseStreamFn: StreamFn = (_model, _context, options) => {

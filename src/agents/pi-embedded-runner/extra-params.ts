@@ -9,7 +9,7 @@ import {
   wrapProviderStreamFn as wrapProviderStreamFnRuntime,
 } from "../../plugins/provider-runtime.js";
 import type { ProviderRuntimeModel } from "../../plugins/types.js";
-import { findNormalizedProviderValue } from "../provider-id.js";
+import { findNormalizedProviderValue, normalizeProviderId } from "../provider-id.js";
 import {
   createAnthropicBetaHeadersWrapper,
   createAnthropicFastModeWrapper,
@@ -462,7 +462,7 @@ function applyPostPluginStreamWrappers(
 
   // Enable Z.AI tool_stream for real-time tool call streaming.
   // Enabled by default for Z.AI provider, can be disabled via params.tool_stream: false
-  if (ctx.provider === "zai" || ctx.provider === "z-ai") {
+  if (normalizeProviderId(ctx.provider) === "zai") {
     const toolStreamEnabled = ctx.effectiveExtraParams?.tool_stream !== false;
     if (toolStreamEnabled) {
       log.debug(`enabling Z.AI tool_stream for ${ctx.provider}/${ctx.modelId}`);
