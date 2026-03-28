@@ -2,10 +2,10 @@ import type { RunOptions } from "@grammyjs/runner";
 import { resolveAgentMaxConcurrent } from "openclaw/plugin-sdk/config-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { loadConfig } from "openclaw/plugin-sdk/config-runtime";
-import { formatErrorMessage } from "openclaw/plugin-sdk/infra-runtime";
 import { waitForAbortSignal } from "openclaw/plugin-sdk/runtime-env";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
+import { formatErrorMessage } from "openclaw/plugin-sdk/ssrf-runtime";
 import { resolveTelegramAccount } from "./accounts.js";
 import { resolveTelegramAllowedUpdates } from "./allowed-updates.js";
 import { TelegramExecApprovalHandler } from "./exec-approvals-handler.js";
@@ -181,7 +181,8 @@ export async function monitorTelegramProvider(opts: MonitorTelegramOpts = {}) {
       return;
     }
 
-    // Create transport once to preserve sticky IPv4 fallback state across polling restarts
+    // Preserve sticky IPv4 fallback state across clean/conflict restarts.
+    // Dirty polling cycles rebuild transport inside TelegramPollingSession.
     const createTelegramTransportForPolling = () =>
       resolveTelegramTransport(proxyFetch, {
         network: account.config.network,
