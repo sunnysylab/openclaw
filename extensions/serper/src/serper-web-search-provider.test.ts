@@ -55,7 +55,7 @@ describe("serper web search provider", () => {
     const provider = createSerperWebSearchProvider();
     const tool = provider.createTool({
       config: {},
-      searchConfig: { apiKey: "test-key-123" },
+      searchConfig: { serper: { apiKey: "test-key-123" } },
     });
     if (!tool) {
       throw new Error("Expected tool definition");
@@ -102,7 +102,7 @@ describe("serper web search provider", () => {
     const provider = createSerperWebSearchProvider();
     const tool = provider.createTool({
       config: {},
-      searchConfig: { apiKey: "test-key" },
+      searchConfig: { serper: { apiKey: "test-key" } },
     });
     if (!tool) {
       throw new Error("Expected tool definition");

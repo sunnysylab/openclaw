@@ -15,7 +15,8 @@ import {
   resolveSearchCount,
   resolveSearchTimeoutSeconds,
   resolveSiteName,
-  setTopLevelCredentialValue,
+  getScopedCredentialValue,
+  setScopedCredentialValue,
   setProviderWebSearchPluginConfigValue,
   throwWebSearchApiError,
   type SearchConfigRecord,
@@ -39,9 +40,20 @@ type SerperSearchResponse = {
   organic?: SerperSearchResult[];
 };
 
-function resolveSerperApiKey(searchConfig?: SearchConfigRecord): string | undefined {
+type SerperConfig = {
+  apiKey?: string;
+};
+
+function resolveSerperConfig(searchConfig?: SearchConfigRecord): SerperConfig {
+  const serper = searchConfig?.serper;
+  return serper && typeof serper === "object" && !Array.isArray(serper)
+    ? (serper as SerperConfig)
+    : {};
+}
+
+function resolveSerperApiKey(serper?: SerperConfig): string | undefined {
   return (
-    readConfiguredSecretString(searchConfig?.apiKey, "tools.web.search.apiKey") ??
+    readConfiguredSecretString(serper?.apiKey, "tools.web.search.serper.apiKey") ??
     readProviderEnvValue(["SERPER_API_KEY"])
   );
 }
@@ -139,12 +151,14 @@ async function runSerperSearch(params: {
 function createSerperToolDefinition(
   searchConfig?: SearchConfigRecord,
 ): WebSearchProviderToolDefinition {
+  const serperConfig = resolveSerperConfig(searchConfig);
+
   return {
     description:
       "Search the web using Serper API (Google Search wrapper). Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.",
     parameters: createSerperSchema(),
     execute: async (args) => {
-      const apiKey = resolveSerperApiKey(searchConfig);
+      const apiKey = resolveSerperApiKey(serperConfig);
       if (!apiKey) {
         return missingSerperKeyPayload();
       }
@@ -217,8 +231,9 @@ export function createSerperWebSearchProvider(): WebSearchProviderPlugin {
     autoDetectOrder: 25,
     credentialPath: "plugins.entries.serper.config.webSearch.apiKey",
     inactiveSecretPaths: ["plugins.entries.serper.config.webSearch.apiKey"],
-    getCredentialValue: (searchConfig) => searchConfig?.apiKey,
-    setCredentialValue: setTopLevelCredentialValue,
+    getCredentialValue: (searchConfig) => getScopedCredentialValue(searchConfig, "serper"),
+    setCredentialValue: (searchConfigTarget, value) =>
+      setScopedCredentialValue(searchConfigTarget, "serper", value),
     getConfiguredCredentialValue: (config) =>
       resolveProviderWebSearchPluginConfig(config, "serper")?.apiKey,
     setConfiguredCredentialValue: (configTarget, value) => {
@@ -230,7 +245,6 @@ export function createSerperWebSearchProvider(): WebSearchProviderPlugin {
           ctx.searchConfig as SearchConfigRecord | undefined,
           "serper",
           resolveProviderWebSearchPluginConfig(ctx.config, "serper"),
-          { mirrorApiKeyToTopLevel: true },
         ) as SearchConfigRecord | undefined,
       ),
   };
