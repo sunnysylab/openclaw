@@ -162,6 +162,9 @@ function collectImageModelKeys(
     }
 
     // Third pass: if still no provider, use alias resolution on fallbacks
+    // Only use provider from fallbacks that are actual aliases.
+    // Providerless non-alias fallbacks (e.g., "gpt-4.1") would resolve to
+    // defaultProvider which is wrong in mixed-provider configs.
     if (!imageModelDefaultProvider && defaultProvider) {
       for (const fb of fallbacks) {
         if (typeof fb !== "string" || !fb.trim()) {
@@ -172,7 +175,7 @@ function collectImageModelKeys(
           defaultProvider,
           aliasIndex,
         });
-        if (resolved) {
+        if (resolved?.alias && resolved.ref.provider) {
           imageModelDefaultProvider = resolved.ref.provider;
           break;
         }
