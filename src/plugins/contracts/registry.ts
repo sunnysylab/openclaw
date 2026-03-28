@@ -7,7 +7,6 @@ import {
   BUNDLED_WEB_SEARCH_PLUGIN_IDS,
 } from "../bundled-capability-metadata.js";
 import { loadBundledCapabilityRuntimeRegistry } from "../bundled-capability-runtime.js";
-import { resolvePluginProviders } from "../providers.runtime.js";
 import type {
   ImageGenerationProviderPlugin,
   MediaUnderstandingProviderPlugin,
@@ -76,6 +75,7 @@ function uniqueStrings(values: readonly string[]): string[] {
 }
 
 let providerContractRegistryCache: ProviderContractEntry[] | null = null;
+let providerContractRegistryByPluginIdCache: Map<string, ProviderContractEntry[]> | null = null;
 let webSearchProviderContractRegistryCache: WebSearchProviderContractEntry[] | null = null;
 let speechProviderContractRegistryCache: SpeechProviderContractEntry[] | null = null;
 let mediaUnderstandingProviderContractRegistryCache:
@@ -84,36 +84,8 @@ let mediaUnderstandingProviderContractRegistryCache:
 let imageGenerationProviderContractRegistryCache: ImageGenerationProviderContractEntry[] | null =
   null;
 const providerContractPluginIdsByProviderId = createProviderContractPluginIdsByProviderId();
-const providerContractEntriesByPluginId = new Map<string, ProviderContractEntry[]>();
 
 export let providerContractLoadError: Error | undefined;
-
-function loadProviderContractEntriesForPluginId(pluginId: string): ProviderContractEntry[] {
-  const cached = providerContractEntriesByPluginId.get(pluginId);
-  if (cached) {
-    return cached;
-  }
-  try {
-    providerContractLoadError = undefined;
-    const entries = resolvePluginProviders({
-      bundledProviderAllowlistCompat: true,
-      bundledProviderVitestCompat: true,
-      onlyPluginIds: [pluginId],
-      pluginSdkResolution: "dist",
-      cache: false,
-      activate: false,
-    }).map((provider) => ({
-      pluginId: provider.pluginId ?? pluginId,
-      provider,
-    }));
-    providerContractEntriesByPluginId.set(pluginId, entries);
-    return entries;
-  } catch (error) {
-    providerContractLoadError = error instanceof Error ? error : new Error(String(error));
-    providerContractEntriesByPluginId.set(pluginId, []);
-    return [];
-  }
-}
 
 function loadProviderContractEntriesForPluginIds(
   pluginIds: readonly string[],
@@ -121,11 +93,52 @@ function loadProviderContractEntriesForPluginIds(
   return pluginIds.flatMap((pluginId) => loadProviderContractEntriesForPluginId(pluginId));
 }
 
+function loadProviderContractEntriesForPluginId(pluginId: string): ProviderContractEntry[] {
+  if (providerContractRegistryCache) {
+    return providerContractRegistryCache.filter((entry) => entry.pluginId === pluginId);
+  }
+
+  const cache =
+    providerContractRegistryByPluginIdCache ?? new Map<string, ProviderContractEntry[]>();
+  providerContractRegistryByPluginIdCache = cache;
+  const cached = cache.get(pluginId);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    providerContractLoadError = undefined;
+    const entries = loadBundledCapabilityRuntimeRegistry({
+      pluginIds: [pluginId],
+      pluginSdkResolution: "dist",
+    }).providers.map((entry) => ({
+      pluginId: entry.pluginId,
+      provider: entry.provider,
+    }));
+    cache.set(pluginId, entries);
+    return entries;
+  } catch (error) {
+    providerContractLoadError = error instanceof Error ? error : new Error(String(error));
+    cache.set(pluginId, []);
+    return [];
+  }
+}
+
 function loadProviderContractRegistry(): ProviderContractEntry[] {
   if (!providerContractRegistryCache) {
-    providerContractRegistryCache = loadProviderContractEntriesForPluginIds(
-      BUNDLED_PROVIDER_PLUGIN_IDS,
-    );
+    try {
+      providerContractLoadError = undefined;
+      providerContractRegistryCache = loadBundledCapabilityRuntimeRegistry({
+        pluginIds: BUNDLED_PROVIDER_PLUGIN_IDS,
+        pluginSdkResolution: "dist",
+      }).providers.map((entry) => ({
+        pluginId: entry.pluginId,
+        provider: entry.provider,
+      }));
+    } catch (error) {
+      providerContractLoadError = error instanceof Error ? error : new Error(String(error));
+      providerContractRegistryCache = [];
+    }
   }
   return providerContractRegistryCache;
 }
