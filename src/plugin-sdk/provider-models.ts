@@ -121,6 +121,11 @@ export {
   buildDoubaoModelDefinition,
 } from "./volcengine.js";
 export {
+  KIMI_CODING_DEFAULT_CONTEXT_WINDOW,
+  KIMI_CODING_DEFAULT_MAX_TOKENS,
+  KIMI_MODEL_CATALOG,
+} from "./kimi-coding.js";
+export {
   OLLAMA_DEFAULT_BASE_URL,
   OLLAMA_DEFAULT_CONTEXT_WINDOW,
   OLLAMA_DEFAULT_COST,
