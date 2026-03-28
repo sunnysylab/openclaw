@@ -181,8 +181,15 @@ function mergeLegacyAgent(
   const allowlist: ExecAllowlistEntry[] = [];
   const seen = new Set<string>();
   const pushEntry = (entry: ExecAllowlistEntry) => {
-    const key = normalizeAllowlistPattern(entry.pattern);
-    if (!key || seen.has(key)) {
+    const patternKey = normalizeAllowlistPattern(entry.pattern);
+    if (!patternKey) {
+      return;
+    }
+    // Key on (pattern, argPattern) to match addAllowlistEntry deduplication,
+    // so that entries sharing the same path but different argPattern variants
+    // are preserved instead of silently dropped during legacy merge.
+    const key = `${patternKey}\x00${entry.argPattern?.trim() ?? ""}`;
+    if (seen.has(key)) {
       return;
     }
     seen.add(key);
