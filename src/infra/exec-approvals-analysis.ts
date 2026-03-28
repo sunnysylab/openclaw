@@ -504,7 +504,10 @@ function stripWindowsShellWrapperOnce(command: string): string {
     new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+'(.+)'$`, "is"),
   );
   if (psInvokeSingleQuote) {
-    return psInvokeSingleQuote[1];
+    // Inside a PowerShell single-quoted string '' encodes a literal apostrophe.
+    // Unescape before tokenizing so that 'node a.js ''hello world''' correctly
+    // yields the single argv token "hello world".
+    return psInvokeSingleQuote[1].replace(/''/g, "'");
   }
   // PowerShell -Command without quotes (bare unquoted payload)
   const psInvokeNoQuote = command.match(

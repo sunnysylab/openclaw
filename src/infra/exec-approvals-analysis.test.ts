@@ -367,6 +367,20 @@ describe("exec approvals shell analysis", () => {
       expect(res.segments[0]?.argv).toEqual(["node", "a.js", "hello world"]);
     });
 
+    it("unescapes '' inside powershell -Command single-quoted payload", () => {
+      // In a PowerShell single-quoted string '' encodes a literal apostrophe.
+      // 'node a.js ''hello world''' has outer ' delimiters and '' acts as
+      // the escape for the space-containing argument — after unescaping the
+      // payload becomes "node a.js 'hello world'" which the tokenizer parses
+      // as a single argv token.
+      const res = analyzeShellCommand({
+        command: "powershell -Command 'node a.js ''hello world'''",
+        platform: "win32",
+      });
+      expect(res.ok).toBe(true);
+      expect(res.segments[0]?.argv).toEqual(["node", "a.js", "hello world"]);
+    });
+
     it("unwraps powershell -Command with value-taking flags", () => {
       const cases = [
         'powershell -NoProfile -ExecutionPolicy Bypass -Command "node a.js"',
