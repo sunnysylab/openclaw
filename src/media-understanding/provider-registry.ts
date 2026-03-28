@@ -1,7 +1,16 @@
 import type { OpenClawConfig } from "../config/config.js";
 import { resolvePluginCapabilityProviders } from "../plugins/capability-provider-runtime.js";
 import { normalizeMediaProviderId } from "./provider-id.js";
-import type { MediaUnderstandingProvider } from "./types.js";
+import type { MediaUnderstandingCapability, MediaUnderstandingProvider } from "./types.js";
+
+type ConfiguredModel = {
+  id?: string;
+  input?: string[];
+};
+
+type ConfiguredProvider = {
+  models?: ConfiguredModel[];
+};
 
 function mergeProviderIntoRegistry(
   registry: Map<string, MediaUnderstandingProvider>,
@@ -19,6 +28,30 @@ function mergeProviderIntoRegistry(
   registry.set(normalizedKey, merged);
 }
 
+/**
+ * Detect capabilities from configured provider models.
+ * Scans cfg.models.providers.*.models to find models with input: ["image"], ["audio"], etc.
+ */
+function detectCapabilitiesFromConfig(
+  providerConfig: ConfiguredProvider,
+): MediaUnderstandingCapability[] {
+  const capabilities: Set<MediaUnderstandingCapability> = new Set();
+  const models = providerConfig.models ?? [];
+  for (const model of models) {
+    const input = model.input ?? [];
+    if (input.includes("image")) {
+      capabilities.add("image");
+    }
+    if (input.includes("audio")) {
+      capabilities.add("audio");
+    }
+    if (input.includes("video")) {
+      capabilities.add("video");
+    }
+  }
+  return Array.from(capabilities);
+}
+
 export { normalizeMediaProviderId } from "./provider-id.js";
 
 export function buildMediaUnderstandingRegistry(
@@ -26,12 +59,39 @@ export function buildMediaUnderstandingRegistry(
   cfg?: OpenClawConfig,
 ): Map<string, MediaUnderstandingProvider> {
   const registry = new Map<string, MediaUnderstandingProvider>();
+
+  // 1. Register providers from plugins
   for (const provider of resolvePluginCapabilityProviders({
     key: "mediaUnderstandingProviders",
     cfg,
   })) {
     mergeProviderIntoRegistry(registry, provider);
   }
+
+  // 2. Auto-register custom providers from config with models that support media
+  // This allows providers like "bailian" with models having input: ["image"] to work
+  if (cfg?.models?.providers) {
+    for (const [providerId, providerConfig] of Object.entries(cfg.models.providers)) {
+      const normalizedId = normalizeMediaProviderId(providerId);
+
+      // Skip if already registered via plugin
+      if (registry.has(normalizedId)) {
+        continue;
+      }
+
+      const capabilities = detectCapabilitiesFromConfig(providerConfig as ConfiguredProvider);
+      if (capabilities.length > 0) {
+        // Create a minimal provider entry - actual image/audio handling is done by
+        // describeImageWithModel/transcribeAudio functions that read from config
+        registry.set(normalizedId, {
+          id: normalizedId,
+          capabilities,
+        });
+      }
+    }
+  }
+
+  // 3. Apply explicit overrides
   if (overrides) {
     for (const [key, provider] of Object.entries(overrides)) {
       const normalizedKey = normalizeMediaProviderId(key);
@@ -46,6 +106,7 @@ export function buildMediaUnderstandingRegistry(
       registry.set(normalizedKey, merged);
     }
   }
+
   return registry;
 }
 

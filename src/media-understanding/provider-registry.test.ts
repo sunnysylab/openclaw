@@ -58,4 +58,104 @@ describe("media-understanding provider registry", () => {
 
     expect(provider?.id).toBe("google");
   });
+
+  describe("custom provider auto-registration from config", () => {
+    it("auto-registers custom providers with models that support image input", () => {
+      const cfg = {
+        models: {
+          providers: {
+            bailian: {
+              baseUrl: "https://example.com/v1",
+              api: "openai-completions",
+              models: [
+                { id: "qwen3.5-plus", input: ["text", "image"] },
+                { id: "qwen3.5-lite", input: ["text"] },
+              ],
+            },
+          },
+        },
+      } as unknown as Parameters<typeof buildMediaUnderstandingRegistry>[1];
+
+      const registry = buildMediaUnderstandingRegistry(undefined, cfg);
+      const provider = getMediaUnderstandingProvider("bailian", registry);
+
+      expect(provider).toBeDefined();
+      expect(provider?.id).toBe("bailian");
+      expect(provider?.capabilities).toContain("image");
+      expect(provider?.capabilities).not.toContain("audio");
+    });
+
+    it("auto-registers custom providers with multiple capabilities", () => {
+      const cfg = {
+        models: {
+          providers: {
+            multi: {
+              baseUrl: "https://example.com/v1",
+              models: [
+                { id: "vision-model", input: ["text", "image"] },
+                { id: "audio-model", input: ["text", "audio"] },
+              ],
+            },
+          },
+        },
+      } as unknown as Parameters<typeof buildMediaUnderstandingRegistry>[1];
+
+      const registry = buildMediaUnderstandingRegistry(undefined, cfg);
+      const provider = getMediaUnderstandingProvider("multi", registry);
+
+      expect(provider?.capabilities).toContain("image");
+      expect(provider?.capabilities).toContain("audio");
+    });
+
+    it("does not register providers without media-capable models", () => {
+      const cfg = {
+        models: {
+          providers: {
+            textonly: {
+              baseUrl: "https://example.com/v1",
+              models: [{ id: "text-model", input: ["text"] }],
+            },
+          },
+        },
+      } as unknown as Parameters<typeof buildMediaUnderstandingRegistry>[1];
+
+      const registry = buildMediaUnderstandingRegistry(undefined, cfg);
+      const provider = getMediaUnderstandingProvider("textonly", registry);
+
+      expect(provider).toBeUndefined();
+    });
+
+    it("does not override plugin-registered providers", async () => {
+      const pluginRegistry = createEmptyPluginRegistry();
+      pluginRegistry.mediaUnderstandingProviders.push({
+        pluginId: "google",
+        pluginName: "Google Plugin",
+        source: "test",
+        provider: {
+          id: "google",
+          capabilities: ["image", "audio", "video"],
+          describeImage: async () => ({ text: "plugin image" }),
+        },
+      });
+      setActivePluginRegistry(pluginRegistry);
+
+      const cfg = {
+        models: {
+          providers: {
+            google: {
+              baseUrl: "https://custom.google.com/v1",
+              models: [{ id: "custom-model", input: ["text"] }],
+            },
+          },
+        },
+      } as unknown as Parameters<typeof buildMediaUnderstandingRegistry>[1];
+
+      const registry = buildMediaUnderstandingRegistry(undefined, cfg);
+      const provider = getMediaUnderstandingProvider("google", registry);
+
+      // Should keep plugin's capabilities, not override with config
+      expect(provider?.capabilities).toEqual(["image", "audio", "video"]);
+      expect(provider?.describeImage).toBeDefined();
+    });
+  });
 });
