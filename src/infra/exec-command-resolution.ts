@@ -263,7 +263,7 @@ function stripTrailingRedirections(value: string): string {
   }
 }
 
-function matchArgPattern(argPattern: string, argv: string[]): boolean {
+function matchArgPattern(argPattern: string, argv: string[], platform?: string | null): boolean {
   // Patterns built by buildArgPatternFromArgv use \x00 as the argument separator
   // to preserve boundaries (e.g. ["a b"] vs ["a", "b"]).  Legacy hand-authored
   // patterns use a plain space; detect which style to use by inspecting the pattern.
@@ -277,7 +277,10 @@ function matchArgPattern(argPattern: string, argv: string[]): boolean {
     // On Windows, LLMs may use forward slashes (`C:/path`) or backslashes
     // (`C:\path`) interchangeably.  Normalize to backslashes and retry so
     // that an argPattern built from one style still matches the other.
-    if (process.platform === "win32") {
+    // Use the caller-supplied target platform so Linux gateways evaluating
+    // Windows node commands also perform the normalization.
+    const effectivePlatform = String(platform ?? process.platform).trim().toLowerCase();
+    if (effectivePlatform.startsWith("win")) {
       const normalized = argsString.replace(/\//g, "\\");
       if (normalized !== argsString && regex.test(normalized)) {
         return true;
@@ -352,7 +355,7 @@ export function matchAllowlist(
       continue;
     }
     // Entry has argPattern — check argv match.
-    if (argv && matchArgPattern(entry.argPattern, argv)) {
+    if (argv && matchArgPattern(entry.argPattern, argv, platform)) {
       return entry;
     }
   }
