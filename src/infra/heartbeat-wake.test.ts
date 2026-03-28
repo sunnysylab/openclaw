@@ -341,6 +341,32 @@ describe("heartbeat-wake", () => {
     expect(handler).toHaveBeenCalledTimes(2);
   });
 
+  it("does not let non-subagent wakes start the subagent cooldown", async () => {
+    vi.useFakeTimers();
+    const handler = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });
+    setHeartbeatWakeHandler(handler);
+
+    requestHeartbeatNow({
+      reason: "exec-event",
+      sessionKey: "agent:main:telegram:group:-1001",
+      coalesceMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    requestHeartbeatNow({
+      reason: "acp:spawn:stream",
+      sessionKey: "agent:main:telegram:group:-1001",
+      coalesceMs: 0,
+    });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler.mock.calls[1]?.[0]).toEqual({
+      reason: "acp:spawn:stream",
+      sessionKey: "agent:main:telegram:group:-1001",
+    });
+  });
+
   it("executes distinct targeted wakes queued in the same coalescing window", async () => {
     vi.useFakeTimers();
     const handler = vi.fn().mockResolvedValue({ status: "ran", durationMs: 1 });

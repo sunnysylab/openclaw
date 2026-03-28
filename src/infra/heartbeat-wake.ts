@@ -192,7 +192,7 @@ function schedule(coalesceMs: number, kind: WakeTimerKind = "normal") {
           ...(pendingWake.sessionKey ? { sessionKey: pendingWake.sessionKey } : {}),
         };
         const res = await active(wakeOpts);
-        if (res.status === "ran") {
+        if (res.status === "ran" && isSubagentStreamWake(pendingWake.reason)) {
           const targetKey = getWakeTargetKey({
             agentId: pendingWake.agentId,
             sessionKey: pendingWake.sessionKey,
