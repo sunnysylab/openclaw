@@ -481,15 +481,19 @@ function stripWindowsShellWrapperOnce(command: string): string {
 
   // PowerShell invocation: powershell[.exe] [-flags] -Command "inner"
   // Also handles pwsh[.exe].
+  // Flags before -Command may be bare (-NoProfile) or take a single value
+  // (-ExecutionPolicy Bypass, -WindowStyle Hidden).  The lookahead (?!-)
+  // prevents a flag value from consuming the next flag name.
+  const psFlags = /(?:-\w+(?:\s+(?!-)\S+)?\s+)*/i.source;
   const psInvokeMatch = command.match(
-    /^(?:powershell|pwsh)(?:\.exe)?\s+(?:-\w+\s+)*-Command\s+"(.+)"$/is,
+    new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+"(.+)"$`, "is"),
   );
   if (psInvokeMatch) {
     return psInvokeMatch[1];
   }
   // PowerShell -Command without quotes
   const psInvokeNoQuote = command.match(
-    /^(?:powershell|pwsh)(?:\.exe)?\s+(?:-\w+\s+)*-Command\s+(.+)$/is,
+    new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+(.+)$`, "is"),
   );
   if (psInvokeNoQuote) {
     return psInvokeNoQuote[1];

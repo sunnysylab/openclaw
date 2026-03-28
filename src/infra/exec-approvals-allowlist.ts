@@ -505,6 +505,28 @@ function escapeRegExpLiteral(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Build an argPattern for a shell-wrapper script invocation.
+ * Only the arguments *after* the script token are encoded so that the pattern
+ * is independent of wrapper spelling (e.g. `pwsh -File script.ps1 foo` and
+ * `C:\full\script.ps1 foo` both produce the same argPattern `^foo$`).
+ */
+function buildScriptArgPatternFromArgv(argv: string[], scriptPath: string): string | undefined {
+  if (process.platform !== "win32") {
+    return undefined;
+  }
+  const scriptBase = path.basename(scriptPath).toLowerCase();
+  const scriptIdx = argv.findIndex(
+    (arg) => path.basename(arg).toLowerCase() === scriptBase || arg === scriptPath,
+  );
+  const scriptArgs = scriptIdx !== -1 ? argv.slice(scriptIdx + 1) : [];
+  if (scriptArgs.length === 0) {
+    return "^$";
+  }
+  const normalized = scriptArgs.map((a) => a.replace(/\//g, "\\"));
+  return `^${normalized.map(escapeRegExpLiteral).join("\x00")}$`;
+}
+
 function buildArgPatternFromArgv(argv: string[]): string | undefined {
   // argPattern is currently Windows-only.  On other platforms, allow-always
   // creates path-only entries (the pre-existing behaviour).
@@ -591,7 +613,9 @@ function collectAllowAlwaysPatterns(params: {
       cwd: params.cwd,
     });
     if (scriptPath) {
-      const argPattern = buildArgPatternFromArgv(params.segment.argv);
+      // Use script-specific helper so the argPattern encodes only the arguments
+      // passed to the script itself, not the wrapper tokens (e.g. -File, pwsh).
+      const argPattern = buildScriptArgPatternFromArgv(params.segment.argv, scriptPath);
       addAllowAlwaysPattern(params.out, scriptPath, argPattern);
     }
     return;

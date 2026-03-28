@@ -319,6 +319,19 @@ describe("exec approvals shell analysis", () => {
       expect(res.ok).toBe(true);
       expect(res.segments[0]?.argv).toEqual(["C:\\Program Files\\Tool\\tool.exe", "--version"]);
     });
+
+    it("unwraps powershell -Command with value-taking flags", () => {
+      const cases = [
+        'powershell -NoProfile -ExecutionPolicy Bypass -Command "node a.js"',
+        'powershell -NonInteractive -ExecutionPolicy RemoteSigned -Command "node a.js"',
+        'pwsh -NoLogo -WindowStyle Hidden -Command "node a.js"',
+      ];
+      for (const command of cases) {
+        const res = analyzeShellCommand({ command, platform: "win32" });
+        expect(res.ok).toBe(true);
+        expect(res.segments[0]?.argv[0]).toBe("node");
+      }
+    });
   });
 
   describe("shell allowlist (chained commands)", () => {
