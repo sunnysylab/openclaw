@@ -545,7 +545,7 @@ export const OpenClawSchema = z
             enabled: z.boolean().optional(),
             after: z.number().int().min(1).optional(),
             cooldownMs: z.number().int().min(0).optional(),
-            mode: z.enum(["announce", "webhook"]).optional(),
+            mode: z.enum(["announce", "webhook", "agent-turn"]).optional(),
             accountId: z.string().optional(),
           })
           .strict()
@@ -555,7 +555,7 @@ export const OpenClawSchema = z
             channel: z.string().optional(),
             to: z.string().optional(),
             accountId: z.string().optional(),
-            mode: z.enum(["announce", "webhook"]).optional(),
+            mode: z.enum(["announce", "webhook", "agent-turn"]).optional(),
           })
           .strict()
           .optional(),

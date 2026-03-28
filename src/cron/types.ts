@@ -35,7 +35,7 @@ export type CronFailureDestination = {
   channel?: CronMessageChannel;
   to?: string;
   accountId?: string;
-  mode?: "announce" | "webhook";
+  mode?: "announce" | "webhook" | "agent-turn";
 };
 
 export type CronDeliveryPatch = Partial<CronDelivery>;
@@ -72,8 +72,8 @@ export type CronFailureAlert = {
   channel?: CronMessageChannel;
   to?: string;
   cooldownMs?: number;
-  /** Delivery mode: announce (via messaging channels) or webhook (HTTP POST). */
-  mode?: "announce" | "webhook";
+  /** Delivery mode: announce (via messaging channels), webhook (HTTP POST), or agent-turn (inject into agent session). */
+  mode?: "announce" | "webhook" | "agent-turn";
   /** Account ID for multi-account channel configurations. */
   accountId?: string;
 };
