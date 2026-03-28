@@ -426,6 +426,23 @@ describe("exec approvals shell analysis", () => {
         expect(res.segments[0]?.argv[0]).toBe("node");
       }
     });
+
+    it("unwraps powershell -Command when a flag value contains spaces (quoted)", () => {
+      // psFlags previously used \S+ for flag values, which cannot match
+      // quoted values containing spaces such as "C:\Users\Jane Doe\proj".
+      // The wrapper was therefore not stripped, leaving powershell as the
+      // executable and breaking allow-always matching for the inner command.
+      const cases = [
+        'powershell -WorkingDirectory "C:\\Users\\Jane Doe\\proj" -Command "node a.js"',
+        "powershell -WorkingDirectory 'C:\\Users\\Jane Doe\\proj' -Command \"node a.js\"",
+        'pwsh -ExecutionPolicy Bypass -WorkingDirectory "C:\\My Projects\\app" -Command "node a.js"',
+      ];
+      for (const command of cases) {
+        const res = analyzeShellCommand({ command, platform: "win32" });
+        expect(res.ok).toBe(true);
+        expect(res.segments[0]?.argv[0]).toBe("node");
+      }
+    });
   });
 
   describe("shell allowlist (chained commands)", () => {

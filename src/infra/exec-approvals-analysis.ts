@@ -501,7 +501,15 @@ function stripWindowsShellWrapperOnce(command: string): string {
   // Flags before -Command may be bare (-NoProfile) or take a single value
   // (-ExecutionPolicy Bypass, -WindowStyle Hidden).  The lookahead (?!-)
   // prevents a flag value from consuming the next flag name.
-  const psFlags = /(?:-\w+(?:\s+(?!-)\S+)?\s+)*/i.source;
+  // psFlags matches zero or more PowerShell flags before -Command.
+  // Each flag is either bare (-NoProfile) or takes a single value.
+  // Flag values may be unquoted (-ExecutionPolicy Bypass) or quoted with
+  // double-quotes (-WorkingDirectory "C:\Users\Jane Doe\proj") or single-
+  // quotes (-WorkingDirectory 'C:\Users\Jane Doe\proj').  \S+ alone cannot
+  // match quoted values that contain spaces, so we try double-quoted and
+  // single-quoted patterns first, then fall back to \S+ for unquoted values.
+  const psFlags = /(?:-\w+(?:\s+(?!-)(?:"[^"]*(?:""[^"]*)*"|'[^']*(?:''[^']*)*'|\S+))?\s+)*/i
+    .source;
   const psInvokeMatch = command.match(
     new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+"(.+)"$`, "is"),
   );
