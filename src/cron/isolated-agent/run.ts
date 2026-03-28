@@ -25,6 +25,7 @@ import {
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { deriveSessionTotalTokens, hasNonzeroUsage } from "../../agents/usage.js";
 import { ensureAgentWorkspace } from "../../agents/workspace.js";
+import { buildSessionEndHookPayload } from "../../auto-reply/reply/session-hooks.js";
 import {
   normalizeThinkLevel,
   normalizeVerboseLevel,
@@ -39,6 +40,7 @@ import {
 } from "../../config/sessions.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
 import { logWarn } from "../../logger.js";
+import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import {
   buildSafeExternalPrompt,
@@ -689,6 +691,17 @@ export async function runCronIsolatedAgentTurn(params: {
       };
     }
     await persistSessionEntry();
+  }
+
+  // Fire session_end for the completed cron isolated agent session.
+  const hookRunner = getGlobalHookRunner();
+  if (hookRunner?.hasHooks("session_end")) {
+    const payload = buildSessionEndHookPayload({
+      sessionId: runSessionId,
+      sessionKey: runSessionKey,
+      cfg: params.cfg,
+    });
+    void hookRunner.runSessionEnd(payload.event, payload.context).catch(() => {});
   }
 
   if (isAborted()) {

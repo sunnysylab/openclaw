@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
+import { buildSessionEndHookPayload } from "../auto-reply/reply/session-hooks.js";
 import { formatThinkingLevels, normalizeThinkLevel } from "../auto-reply/thinking.js";
 import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import { loadConfig } from "../config/config.js";
@@ -712,6 +713,15 @@ export async function spawnSubagentDirect(
         } catch {
           // Spawn should still return an actionable error even if cleanup hooks fail.
         }
+      }
+      // Fire session_end for the failed child session alongside subagent_ended.
+      if (hookRunner?.hasHooks("session_end")) {
+        const payload = buildSessionEndHookPayload({
+          sessionId: childRunId,
+          sessionKey: childSessionKey,
+          cfg,
+        });
+        void hookRunner.runSessionEnd(payload.event, payload.context).catch(() => {});
       }
       emitLifecycleHooks = !endedHookEmitted;
     }
