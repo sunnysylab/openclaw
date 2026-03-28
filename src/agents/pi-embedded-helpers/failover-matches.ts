@@ -102,7 +102,7 @@ const ERROR_PATTERNS = {
     /requires?\s+more\s+credits/i,
     // Chinese provider billing messages
     "余额不足",
-    "账户余额",
+    "账户余额不足",
     "欠费",
     "账户已欠费",
   ],
