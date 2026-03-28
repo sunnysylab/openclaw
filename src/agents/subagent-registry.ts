@@ -476,7 +476,7 @@ export function replaceSubagentRunAfterSteer(params: {
   const cfg = loadConfig();
   const archiveAfterMs = resolveArchiveAfterMs(cfg);
   const archiveAtMs = archiveAfterMs ? now + archiveAfterMs : undefined;
-  const runTimeoutSeconds = params.runTimeoutSeconds ?? source.runTimeoutSeconds ?? undefined;
+  const runTimeoutSeconds = params.runTimeoutSeconds ?? source.runTimeoutSeconds;
   const waitTimeoutMs = resolveSubagentWaitTimeoutMs(cfg, runTimeoutSeconds);
 
   const next: SubagentRunRecord = {
