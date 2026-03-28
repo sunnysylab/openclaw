@@ -185,7 +185,7 @@ export async function handleInlineActions(params: {
     // `/skill …` needs the full skill command list.
     (slashCommandName === "skill" || !getBuiltinSlashCommands().has(slashCommandName));
   const skillCommands =
-    shouldLoadSkillCommands && params.skillCommands
+    shouldLoadSkillCommands && params.skillCommands && params.skillCommands.length > 0
       ? params.skillCommands
       : shouldLoadSkillCommands
         ? (await import("../skill-commands.runtime.js")).listSkillCommandsForWorkspace({

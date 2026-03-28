@@ -207,10 +207,13 @@ export async function resolveReplyDirectives(params: {
         .filter((alias) => !reservedCommands.has(alias.toLowerCase()))
     : [];
 
-  // Only load workspace skill commands when we actually need them to filter aliases.
-  // This avoids scanning skills for messages that only use plain text with no slash syntax.
+  // Load workspace skill commands when the message contains a slash and text commands are
+  // allowed.  Previously this was also gated on `rawAliases.length > 0`, which meant skill
+  // commands were never loaded (and therefore never transformed) when no model aliases were
+  // configured.  The downstream `handleInlineActions` needs the list to resolve `/skill`
+  // invocations regardless of whether model aliases exist.
   const skillCommands =
-    allowTextCommands && commandTextHasSlash && rawAliases.length > 0
+    allowTextCommands && commandTextHasSlash
       ? (await loadSkillCommands()).listSkillCommandsForWorkspace({
           workspaceDir,
           cfg,

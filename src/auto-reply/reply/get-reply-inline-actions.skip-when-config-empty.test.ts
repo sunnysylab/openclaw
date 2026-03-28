@@ -8,6 +8,7 @@ import type { TypingController } from "./typing.js";
 
 const handleCommandsMock = vi.fn();
 const getChannelPluginMock = vi.fn();
+const listSkillCommandsForWorkspaceMock = vi.fn();
 
 let handleInlineActions: typeof import("./get-reply-inline-actions.js").handleInlineActions;
 type HandleInlineActionsInput = Parameters<
@@ -27,6 +28,10 @@ async function loadFreshInlineActionsModuleForTest() {
       getChannelPlugin: (...args: unknown[]) => getChannelPluginMock(...args),
     };
   });
+  vi.doMock("../skill-commands.runtime.js", () => ({
+    listSkillCommandsForWorkspace: (...args: unknown[]) =>
+      listSkillCommandsForWorkspaceMock(...args),
+  }));
   ({ handleInlineActions } = await import("./get-reply-inline-actions.js"));
 }
 
@@ -118,6 +123,7 @@ describe("handleInlineActions", () => {
     getChannelPluginMock.mockImplementation((channelId?: string) =>
       channelId === "whatsapp" ? { commands: { skipWhenConfigEmpty: true } } : undefined,
     );
+    listSkillCommandsForWorkspaceMock.mockReset();
     await loadFreshInlineActionsModuleForTest();
   });
 
@@ -292,5 +298,53 @@ describe("handleInlineActions", () => {
         }),
       }),
     );
+  });
+
+  it("falls back to fresh skill command load when upstream passes empty array", async () => {
+    const typing = createTypingController();
+    handleCommandsMock.mockResolvedValue({ shouldContinue: false, reply: { text: "done" } });
+    const freshSkillCommands: SkillCommandSpec[] = [
+      {
+        name: "deploy",
+        skillName: "deploy-helper",
+        description: "Deploy helper",
+        promptTemplate: undefined,
+        sourceFilePath: "/tmp/plugin/commands/deploy.md",
+      },
+    ];
+    listSkillCommandsForWorkspaceMock.mockReturnValue(freshSkillCommands);
+
+    const ctx = buildTestCtx({
+      Body: "/deploy staging",
+      CommandBody: "/deploy staging",
+    });
+
+    const result = await handleInlineActions(
+      createHandleInlineActionsInput({
+        ctx,
+        typing,
+        cleanedBody: "/deploy staging",
+        command: {
+          isAuthorizedSender: true,
+          rawBodyNormalized: "/deploy staging",
+          commandBodyNormalized: "/deploy staging",
+        },
+        overrides: {
+          allowTextCommands: true,
+          cfg: { commands: { text: true } },
+          // Upstream passed empty array (e.g. no model aliases configured),
+          // handleInlineActions should fall back to loading fresh.
+          skillCommands: [],
+        },
+      }),
+    );
+
+    // The fresh load should have been called since upstream passed [].
+    expect(listSkillCommandsForWorkspaceMock).toHaveBeenCalledTimes(1);
+    // Skill command was resolved and body was rewritten.
+    expect(ctx.Body).toBe(
+      'Use the "deploy-helper" skill for this request.\n\nUser input:\nstaging',
+    );
+    expect(result).toEqual({ kind: "reply", reply: { text: "done" } });
   });
 });
