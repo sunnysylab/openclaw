@@ -26,6 +26,7 @@ import {
   extractShellWrapperInlineCommand,
   isShellWrapperExecutable,
   normalizeExecutableToken,
+  POWERSHELL_WRAPPERS,
 } from "./exec-wrapper-resolution.js";
 import { resolveExecWrapperTrustPlan } from "./exec-wrapper-trust-plan.js";
 import { expandHomePrefix } from "./home-dir.js";
@@ -232,7 +233,12 @@ function evaluateSegments(
       candidatePath && executableResolution
         ? { ...executableResolution, resolvedPath: candidatePath }
         : executableResolution;
-    const executableMatch = matchAllowlist(params.allowlist, candidateResolution, effectiveArgv, params.platform);
+    const executableMatch = matchAllowlist(
+      params.allowlist,
+      candidateResolution,
+      effectiveArgv,
+      params.platform,
+    );
     const inlineCommand = extractShellWrapperInlineCommand(allowlistSegment.argv);
     const shellPositionalArgvCandidatePath = resolveShellWrapperPositionalArgvCandidatePath({
       segment: allowlistSegment,
@@ -240,11 +246,16 @@ function evaluateSegments(
       env: params.env,
     });
     const shellPositionalArgvMatch = shellPositionalArgvCandidatePath
-      ? matchAllowlist(params.allowlist, {
-          rawExecutable: shellPositionalArgvCandidatePath,
-          resolvedPath: shellPositionalArgvCandidatePath,
-          executableName: path.basename(shellPositionalArgvCandidatePath),
-        }, undefined, params.platform)
+      ? matchAllowlist(
+          params.allowlist,
+          {
+            rawExecutable: shellPositionalArgvCandidatePath,
+            resolvedPath: shellPositionalArgvCandidatePath,
+            executableName: path.basename(shellPositionalArgvCandidatePath),
+          },
+          undefined,
+          params.platform,
+        )
       : null;
     const shellScriptCandidatePath =
       inlineCommand === null
@@ -267,18 +278,19 @@ function evaluateSegments(
           return [shellScriptCandidatePath, ...scriptArgs];
         })()
       : null;
-    const shellScriptMatch = shellScriptCandidatePath && shellScriptArgv
-      ? matchAllowlist(
-          params.allowlist,
-          {
-            rawExecutable: shellScriptCandidatePath,
-            resolvedPath: shellScriptCandidatePath,
-            executableName: path.basename(shellScriptCandidatePath),
-          },
-          shellScriptArgv,
-          params.platform,
-        )
-      : null;
+    const shellScriptMatch =
+      shellScriptCandidatePath && shellScriptArgv
+        ? matchAllowlist(
+            params.allowlist,
+            {
+              rawExecutable: shellScriptCandidatePath,
+              resolvedPath: shellScriptCandidatePath,
+              executableName: path.basename(shellScriptCandidatePath),
+            },
+            shellScriptArgv,
+            params.platform,
+          )
+        : null;
     const match = executableMatch ?? shellPositionalArgvMatch ?? shellScriptMatch;
     if (match) {
       matches.push(match);
@@ -389,6 +401,12 @@ const SHELL_WRAPPER_OPTIONS_WITH_VALUE = new Set([
   "--startup-file",
 ]);
 
+// PowerShell flags (other than -File and -Command, which are handled explicitly above)
+// that consume one positional value.  PowerShell supports prefix abbreviations, so we
+// list the full names and common short forms.  Case-insensitive match.
+const POWERSHELL_OPTIONS_WITH_VALUE_RE =
+  /^-(?:executionpolicy|ep|windowstyle|w|workingdirectory|wd|inputformat|outputformat|settingsfile|configurationfile)$/i;
+
 function resolveShellWrapperScriptCandidatePath(params: {
   segment: ExecCommandSegment;
   cwd?: string;
@@ -401,6 +419,9 @@ function resolveShellWrapperScriptCandidatePath(params: {
   if (!Array.isArray(argv) || argv.length < 2) {
     return undefined;
   }
+
+  const wrapperName = normalizeExecutableToken(argv[0] ?? "");
+  const isPowerShell = POWERSHELL_WRAPPERS.has(wrapperName);
 
   let idx = 1;
   while (idx < argv.length) {
@@ -423,6 +444,12 @@ function resolveShellWrapperScriptCandidatePath(params: {
       return undefined;
     }
     if (SHELL_WRAPPER_OPTIONS_WITH_VALUE.has(token)) {
+      idx += 2;
+      continue;
+    }
+    // PowerShell value-taking flags (e.g. -ExecutionPolicy Bypass) must skip both
+    // the flag and its argument so the script token is identified correctly.
+    if (isPowerShell && POWERSHELL_OPTIONS_WITH_VALUE_RE.test(token)) {
       idx += 2;
       continue;
     }

@@ -779,4 +779,27 @@ $0 \\"$1\\"" touch {marker}`,
     expect(patterns[0].argPattern).toBe("^test\\.py\x00--flag=val$");
   });
 
+  it("resolves correct script path for powershell -ExecutionPolicy Bypass -File script.ps1", () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+    const dir = makeTempDir();
+    const script = path.join(dir, "deploy.ps1");
+    fs.writeFileSync(script, "echo ok");
+    const pwshExe = path.join(dir, "powershell.exe");
+    fs.writeFileSync(pwshExe, "");
+    fs.chmodSync(pwshExe, 0o755);
+    const env = { PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}` };
+    const safeBins = resolveSafeBins(undefined);
+
+    const { persisted } = resolvePersistedPatterns({
+      command: `powershell -ExecutionPolicy Bypass -File "${script}"`,
+      dir,
+      env,
+      safeBins,
+    });
+    // Must resolve to the actual script path, not to "Bypass"
+    expect(persistedPaths(persisted)).toContain(script);
+    expect(persistedPaths(persisted).some((p) => p.includes("Bypass"))).toBe(false);
+  });
 });

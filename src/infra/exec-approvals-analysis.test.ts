@@ -231,6 +231,16 @@ describe("exec approvals shell analysis", () => {
       }
     });
 
+    it("rejects $? and $$ (PowerShell automatic variables) in Windows commands", () => {
+      // $? (last exit status) and $$ (PID) are expanded by PowerShell inside
+      // double-quoted strings and must be blocked to prevent unexpected expansion.
+      const cases = ['node app.js "$?"', 'node app.js "$$"', "node app.js $?", "node app.js $$"];
+      for (const command of cases) {
+        const res = analyzeShellCommand({ command, platform: "win32" });
+        expect(res.ok).toBe(false);
+      }
+    });
+
     it("allows bare $ not followed by identifier on Windows (e.g. UNC paths)", () => {
       const res = analyzeShellCommand({
         command: 'net use "\\\\host\\C$"',
@@ -354,7 +364,7 @@ describe("exec approvals shell analysis", () => {
       expect(res.segments[0]?.argv).toEqual(["C:\\Program Files\\Tool\\tool.exe", "--version"]);
     });
 
-    it("unescapes \"\" inside powershell -Command double-quoted payload", () => {
+    it('unescapes "" inside powershell -Command double-quoted payload', () => {
       // powershell -Command "node a.js ""hello world""" uses "" to encode a
       // literal " inside the outer double-quoted shell argument.  After stripping
       // the wrapper the payload must be unescaped so the tokenizer sees the
@@ -532,6 +542,11 @@ describe("windowsEscapeArg", () => {
     // a token like "$(whoami)" would execute whoami even when double-quoted.
     expect(windowsEscapeArg("$(whoami)")).toEqual({ ok: false });
     expect(windowsEscapeArg("$(Get-Date)")).toEqual({ ok: false });
+  });
+
+  it("rejects $? and $$ (PowerShell automatic variables)", () => {
+    expect(windowsEscapeArg("$?")).toEqual({ ok: false });
+    expect(windowsEscapeArg("$$")).toEqual({ ok: false });
   });
 
   it("allows $ not followed by identifier (e.g. UNC admin share C$)", () => {
