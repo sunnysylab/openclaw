@@ -493,7 +493,11 @@ function stripWindowsShellWrapperOnce(command: string): string {
     new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+"(.+)"$`, "is"),
   );
   if (psInvokeMatch) {
-    return psInvokeMatch[1];
+    // Within a double-quoted -Command argument, "" is the escape sequence for a
+    // literal ".  Unescape before passing the payload to the tokenizer so that
+    // `powershell -Command "node a.js ""hello world"""` correctly yields the
+    // single argv token "hello world" rather than splitting on the space.
+    return psInvokeMatch[1].replace(/""/g, '"');
   }
   // PowerShell -Command with single-quoted payload: powershell -Command 'node a.js'
   const psInvokeSingleQuote = command.match(

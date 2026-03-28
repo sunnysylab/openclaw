@@ -354,6 +354,19 @@ describe("exec approvals shell analysis", () => {
       expect(res.segments[0]?.argv).toEqual(["C:\\Program Files\\Tool\\tool.exe", "--version"]);
     });
 
+    it("unescapes \"\" inside powershell -Command double-quoted payload", () => {
+      // powershell -Command "node a.js ""hello world""" uses "" to encode a
+      // literal " inside the outer double-quoted shell argument.  After stripping
+      // the wrapper the payload must be unescaped so the tokenizer sees the
+      // correct double-quote boundaries.
+      const res = analyzeShellCommand({
+        command: 'powershell -Command "node a.js ""hello world"""',
+        platform: "win32",
+      });
+      expect(res.ok).toBe(true);
+      expect(res.segments[0]?.argv).toEqual(["node", "a.js", "hello world"]);
+    });
+
     it("unwraps powershell -Command with value-taking flags", () => {
       const cases = [
         'powershell -NoProfile -ExecutionPolicy Bypass -Command "node a.js"',
