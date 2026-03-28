@@ -174,13 +174,6 @@ async function validateScriptFileForShellBleed(params: {
 }
 
 /**
- * Derive a short executable name suitable for direct shell invocation.
- * For a full path like `C:\Program Files\nodejs\node.exe`, returns `node`
- * (basename without .exe) so the LLM can invoke it via PATH lookup.
- * Paths containing spaces MUST NOT be shown unquoted — the short name avoids
- * the quoting issue entirely.
- */
-/**
  * Derive the executable token to show in the pre-approved command hint.
  * Absolute paths to scripts (.ps1, .js, .py, .bat, .cmd) are kept as-is
  * because they are not on PATH and must be invoked with their full path.

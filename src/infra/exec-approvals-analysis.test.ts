@@ -469,6 +469,13 @@ describe("windowsEscapeArg", () => {
     expect(windowsEscapeArg("${var}")).toEqual({ ok: false });
   });
 
+  it("rejects $( subexpressions (PowerShell subexpression operator)", () => {
+    // PowerShell evaluates $(expression) inside double-quoted strings, so
+    // a token like "$(whoami)" would execute whoami even when double-quoted.
+    expect(windowsEscapeArg("$(whoami)")).toEqual({ ok: false });
+    expect(windowsEscapeArg("$(Get-Date)")).toEqual({ ok: false });
+  });
+
   it("allows $ not followed by identifier (e.g. UNC admin share C$)", () => {
     expect(windowsEscapeArg("\\\\host\\C$")).toEqual({ ok: true, escaped: '"\\\\host\\C$"' });
     expect(windowsEscapeArg("trailing$")).toEqual({ ok: true, escaped: '"trailing$"' });

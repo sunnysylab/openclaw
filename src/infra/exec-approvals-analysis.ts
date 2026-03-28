@@ -673,7 +673,7 @@ function shellEscapeSingleArg(value: string): string {
 // `   — PowerShell escape character; can form escape sequences like `n, `0 inside double quotes.
 // Note: ! is intentionally omitted — PowerShell does not treat ! as special in double-quoted
 // strings (unlike cmd.exe delayed expansion), so "Hello!" is safe to pass through.
-const WINDOWS_UNSAFE_CMD_META = /[%`]|\$(?=[A-Za-z_{])/;
+const WINDOWS_UNSAFE_CMD_META = /[%`]|\$(?=[A-Za-z_{(])/;
 
 export function windowsEscapeArg(value: string): { ok: true; escaped: string } | { ok: false } {
   if (value === "") {
