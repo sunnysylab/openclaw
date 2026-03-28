@@ -264,10 +264,16 @@ function stripTrailingRedirections(value: string): string {
 }
 
 function matchArgPattern(argPattern: string, argv: string[], platform?: string | null): boolean {
-  // Patterns built by buildArgPatternFromArgv use \x00 as the argument separator
-  // to preserve boundaries (e.g. ["a b"] vs ["a", "b"]).  Legacy hand-authored
-  // patterns use a plain space; detect which style to use by inspecting the pattern.
-  const sep = argPattern.includes("\x00") ? "\x00" : " ";
+  // Patterns built by buildArgPatternFromArgv are always anchored (^...$) and join
+  // argv with \x00 so that argument boundaries are preserved.  A single-argument
+  // auto-generated pattern such as ^hello world$ contains no \x00, but it was still
+  // built with \x00 joining — so detecting by .includes("\x00") would misclassify it
+  // as a legacy space-joined pattern and allow ["hello", "world"] to match.
+  // We instead detect by anchoring: auto-generated patterns always start with "^";
+  // legacy hand-authored patterns do not.  Redirection-stripping retries only apply
+  // to legacy patterns (sep === " ") since auto-generated ones never include redirection
+  // tokens (blocked upstream by findWindowsUnsupportedToken).
+  const sep = argPattern.startsWith("^") ? "\x00" : " ";
   const argsString = argv.slice(1).join(sep);
   try {
     const regex = new RegExp(argPattern);

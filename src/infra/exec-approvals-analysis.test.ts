@@ -607,6 +607,19 @@ describe("matchAllowlist with argPattern", () => {
     expect(matchAllowlist(entries, resolution, ["python3", "a.py"])).toBeNull();
   });
 
+  it("rejects split-arg bypass against single-arg anchored argPattern", () => {
+    // Auto-generated single-arg pattern ^hello world$ must NOT match argv ["hello", "world"]
+    // (two separate args), even though space-joining them produces "hello world".
+    // Detection uses startsWith("^") to force \x00 join for all anchored patterns.
+    const entries: ExecAllowlistEntry[] = [
+      { pattern: "/usr/bin/python3", argPattern: "^hello world$" },
+    ];
+    // Original approved single-arg must still match.
+    expect(matchAllowlist(entries, resolution, ["python3", "hello world"])).toBeTruthy();
+    // Split-arg bypass must be rejected.
+    expect(matchAllowlist(entries, resolution, ["python3", "hello", "world"])).toBeNull();
+  });
+
   it("supports regex alternation in argPattern", () => {
     const entries: ExecAllowlistEntry[] = [
       { pattern: "/usr/bin/python3", argPattern: "^(a|b)\\.py$" },
