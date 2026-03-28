@@ -133,11 +133,19 @@ export function renderOverview(props: OverviewProps) {
     if (props.connected || !props.lastError || !props.warnQueryToken) {
       return null;
     }
+    const lower = props.lastError.toLowerCase();
+    const authFailed =
+      lower.includes("unauthorized") ||
+      lower.includes("connect failed") ||
+      lower.includes("device identity required");
+    if (!authFailed) {
+      return null;
+    }
     return html`
       <div class="muted" style="margin-top: 8px">
         Auth token must be passed as a URL fragment:
         <span class="mono">/#token=&lt;token&gt;</span>.
-        Query parameters (<span class="mono">?token=</span>) are not sent securely.
+        Query parameters (<span class="mono">?token=</span>) may appear in server logs.
       </div>
     `;
   })();
