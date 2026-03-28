@@ -5,6 +5,7 @@ import { createCliRuntimeCapture } from "./test-runtime-capture.js";
 const loadConfigMock = vi.fn(() => ({}));
 const resolveDefaultAgentIdMock = vi.fn(() => "main");
 const resolveAgentWorkspaceDirMock = vi.fn(() => "/tmp/workspace");
+const resolveAgentIdByWorkspacePathMock = vi.fn();
 const searchSkillsFromClawHubMock = vi.fn();
 const installSkillFromClawHubMock = vi.fn();
 const updateSkillsFromClawHubMock = vi.fn();
@@ -22,8 +23,9 @@ vi.mock("../config/config.js", () => ({
 }));
 
 vi.mock("../agents/agent-scope.js", () => ({
-  resolveDefaultAgentId: () => resolveDefaultAgentIdMock(),
-  resolveAgentWorkspaceDir: () => resolveAgentWorkspaceDirMock(),
+  resolveDefaultAgentId: (...args: unknown[]) => resolveDefaultAgentIdMock(...args),
+  resolveAgentWorkspaceDir: (...args: unknown[]) => resolveAgentWorkspaceDirMock(...args),
+  resolveAgentIdByWorkspacePath: (...args: unknown[]) => resolveAgentIdByWorkspacePathMock(...args),
 }));
 
 vi.mock("../agents/skills-clawhub.js", () => ({
@@ -50,6 +52,7 @@ describe("skills cli commands", () => {
     loadConfigMock.mockReset();
     resolveDefaultAgentIdMock.mockReset();
     resolveAgentWorkspaceDirMock.mockReset();
+    resolveAgentIdByWorkspacePathMock.mockReset();
     searchSkillsFromClawHubMock.mockReset();
     installSkillFromClawHubMock.mockReset();
     updateSkillsFromClawHubMock.mockReset();
@@ -58,6 +61,7 @@ describe("skills cli commands", () => {
     loadConfigMock.mockReturnValue({});
     resolveDefaultAgentIdMock.mockReturnValue("main");
     resolveAgentWorkspaceDirMock.mockReturnValue("/tmp/workspace");
+    resolveAgentIdByWorkspacePathMock.mockReturnValue(undefined);
     searchSkillsFromClawHubMock.mockResolvedValue([]);
     installSkillFromClawHubMock.mockResolvedValue({
       ok: false,
@@ -108,6 +112,28 @@ describe("skills cli commands", () => {
         line.includes("Installed calendar@1.2.3 -> /tmp/workspace/skills/calendar"),
       ),
     ).toBe(true);
+  });
+
+  it("installs into the workspace inferred from cwd before falling back to the default agent", async () => {
+    resolveAgentIdByWorkspacePathMock.mockReturnValue("writer");
+    resolveAgentWorkspaceDirMock.mockImplementation((_cfg, agentId) => `/tmp/workspace-${agentId}`);
+    installSkillFromClawHubMock.mockResolvedValue({
+      ok: true,
+      slug: "content-writer",
+      version: "1.0.0",
+      targetDir: "/tmp/workspace-writer/skills/content-writer",
+    });
+
+    await runCommand(["skills", "install", "content-writer"]);
+
+    expect(resolveAgentIdByWorkspacePathMock).toHaveBeenCalledWith({}, process.cwd());
+    expect(installSkillFromClawHubMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/workspace-writer",
+      slug: "content-writer",
+      version: undefined,
+      force: false,
+      logger: expect.any(Object),
+    });
   });
 
   it("updates all tracked ClawHub skills", async () => {

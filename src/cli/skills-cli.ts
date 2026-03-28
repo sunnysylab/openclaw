@@ -1,5 +1,9 @@
 import type { Command } from "commander";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import {
+  resolveAgentIdByWorkspacePath,
+  resolveAgentWorkspaceDir,
+  resolveDefaultAgentId,
+} from "../agents/agent-scope.js";
 import {
   installSkillFromClawHub,
   readTrackedClawHubSkillSlugs,
@@ -42,7 +46,9 @@ async function runSkillsAction(render: (report: SkillStatusReport) => string): P
 
 function resolveActiveWorkspaceDir(): string {
   const config = loadConfig();
-  return resolveAgentWorkspaceDir(config, resolveDefaultAgentId(config));
+  const activeAgentId =
+    resolveAgentIdByWorkspacePath(config, process.cwd()) ?? resolveDefaultAgentId(config);
+  return resolveAgentWorkspaceDir(config, activeAgentId);
 }
 
 /**
