@@ -3,14 +3,27 @@ import { resolvePluginCapabilityProviders } from "../plugins/capability-provider
 import { normalizeMediaProviderId } from "./provider-id.js";
 import type { MediaUnderstandingCapability, MediaUnderstandingProvider } from "./types.js";
 
-type ConfiguredModel = {
-  id?: string;
-  input?: string[];
-};
+/**
+ * Extract provider model config type from OpenClawConfig.
+ * This ensures type safety when accessing cfg.models.providers.*.models.
+ */
+type ProviderModelConfig = NonNullable<
+  NonNullable<
+    NonNullable<OpenClawConfig["models"]>["providers"]
+  >[string]
+>["models"] extends (infer T)[] | undefined
+  ? NonNullable<T>
+  : never;
 
-type ConfiguredProvider = {
-  models?: ConfiguredModel[];
-};
+/**
+ * Extract provider config type from OpenClawConfig.
+ * This ensures type safety when accessing cfg.models.providers.*.
+ */
+type ProviderConfig = NonNullable<
+  NonNullable<
+    NonNullable<OpenClawConfig["models"]>["providers"]
+  >[string]
+>;
 
 function mergeProviderIntoRegistry(
   registry: Map<string, MediaUnderstandingProvider>,
@@ -39,7 +52,7 @@ function mergeProviderIntoRegistry(
  * cause runtime errors.
  */
 function detectCapabilitiesFromConfig(
-  providerConfig: ConfiguredProvider,
+  providerConfig: ProviderConfig,
 ): MediaUnderstandingCapability[] {
   const capabilities: Set<MediaUnderstandingCapability> = new Set();
   const models = providerConfig.models ?? [];
@@ -81,7 +94,7 @@ export function buildMediaUnderstandingRegistry(
         continue;
       }
 
-      const capabilities = detectCapabilitiesFromConfig(providerConfig as ConfiguredProvider);
+      const capabilities = detectCapabilitiesFromConfig(providerConfig as ProviderConfig);
       if (capabilities.length > 0) {
         // Create a minimal provider entry - actual image/audio handling is done by
         // describeImageWithModel/transcribeAudio functions that read from config

@@ -165,7 +165,9 @@ describe("media-understanding provider registry", () => {
           providers: {
             google: {
               baseUrl: "https://custom.google.com/v1",
-              models: [{ id: "custom-model", input: ["text"] }],
+              // Use image input to trigger auto-registration attempt
+              // This tests that plugin-registered providers are NOT overridden
+              models: [{ id: "custom-model", input: ["text", "image"] }],
             },
           },
         },
