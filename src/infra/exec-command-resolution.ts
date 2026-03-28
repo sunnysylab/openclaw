@@ -249,7 +249,7 @@ export function resolvePolicyAllowlistCandidatePath(
 // Strip trailing shell redirections (e.g. `2>&1`, `2>/dev/null`) so that
 // allow-always argPatterns built without them still match commands that include
 // them.  LLMs commonly add or omit these between runs of the same cron job.
-const TRAILING_SHELL_REDIRECTIONS_RE = /[\s\x00]+(?:[12]>&[12]|[12]>\/dev\/null)\s*$/;
+const TRAILING_SHELL_REDIRECTIONS_RE = /[\s\u0000]+(?:[12]>&[12]|[12]>\/dev\/null)\s*$/;
 
 function stripTrailingRedirections(value: string): string {
   let prev = value;

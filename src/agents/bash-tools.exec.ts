@@ -202,7 +202,7 @@ function argPatternToReadable(argPattern: string): string {
   return argPattern
     .replace(/^\^/, "")
     .replace(/\$$/, "")
-    .replace(/\x00/g, " ") // \x00 arg-boundary separator → space
+    .replace(/\u0000/g, " ") // \x00 arg-boundary separator → space
     .replace(/\\\\/g, "\\") // \\\\ → backslash
     .replace(/\\\./g, ".") // \\. → literal dot
     .replace(/\\([^\\])/g, "$1"); // remaining regex escapes → literal

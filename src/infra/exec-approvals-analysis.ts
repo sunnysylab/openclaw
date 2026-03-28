@@ -360,9 +360,7 @@ const WINDOWS_ALWAYS_UNSAFE_TOKENS = new Set(["\n", "\r", "%"]);
 
 function findWindowsUnsupportedToken(command: string): string | null {
   let inDouble = false;
-  const chars = [...command];
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i];
+  for (const ch of command) {
     if (ch === '"') {
       inDouble = !inDouble;
       continue;
