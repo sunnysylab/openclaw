@@ -285,13 +285,13 @@ function matchArgPattern(argPattern: string, argv: string[]): boolean {
     }
     // Retry after stripping trailing shell redirections (2>&1, etc.) so that
     // patterns saved without them still match commands that include them.
-    const stripped = stripTrailingRedirections(argsString);
-    if (stripped !== argsString && regex.test(stripped)) {
-      return true;
-    }
-    if (process.platform === "win32") {
-      const strippedNorm = stripped.replace(/\//g, "\\");
-      if (strippedNorm !== stripped && regex.test(strippedNorm)) {
+    // Only applies for space-joined (legacy hand-authored) patterns.  For
+    // \x00-joined auto-generated patterns, redirections are already blocked
+    // upstream by findWindowsUnsupportedToken, so any surviving 2>&1 token
+    // is a literal data argument and must not be stripped.
+    if (sep === " ") {
+      const stripped = stripTrailingRedirections(argsString);
+      if (stripped !== argsString && regex.test(stripped)) {
         return true;
       }
     }

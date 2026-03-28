@@ -242,15 +242,24 @@ describe("exec approvals shell analysis", () => {
       expect(res.ok).toBe(false);
     });
 
-    it("treats single-quote characters as literals when tokenizing Windows args", () => {
-      // Without single-quote quoting support, the ' characters are passed through
-      // as part of the token value.
+    it("tokenizer strips single quotes and treats content as one token on Windows", () => {
+      // tokenizeWindowsSegment recognises PowerShell single-quote quoting so that
+      // 'hello world' is correctly parsed as a single argument during enforcement.
       const res = analyzeShellCommand({
-        command: "node tool.js 'arg'",
+        command: "node tool.js 'hello world'",
         platform: "win32",
       });
       expect(res.ok).toBe(true);
-      expect(res.segments[0]?.argv).toEqual(["node", "tool.js", "'arg'"]);
+      expect(res.segments[0]?.argv).toEqual(["node", "tool.js", "hello world"]);
+    });
+
+    it("parses '' as escaped apostrophe in Windows single-quoted args", () => {
+      const res = analyzeShellCommand({
+        command: "node tool.js 'O''Brien'",
+        platform: "win32",
+      });
+      expect(res.ok).toBe(true);
+      expect(res.segments[0]?.argv).toEqual(["node", "tool.js", "O'Brien"]);
     });
 
     it.each(['echo "output: \\$(whoami)"', "echo 'output: $(whoami)'"])(

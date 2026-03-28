@@ -360,6 +360,13 @@ const WINDOWS_ALWAYS_UNSAFE_TOKENS = new Set(["\n", "\r", "%"]);
 
 function findWindowsUnsupportedToken(command: string): string | null {
   let inDouble = false;
+  // Single-quote tracking is intentionally omitted here.  cmd.exe (used by the
+  // node-host exec path via buildNodeShellCommand) does not recognise single
+  // quotes as quoting, so metacharacters inside single-quoted strings remain
+  // active at runtime.  Rejecting them at this layer keeps both execution paths
+  // (PowerShell gateway and cmd.exe node-host) safe.
+  // tokenizeWindowsSegment does track single quotes for accurate argv extraction
+  // during enforcement, which is a separate concern from the safety check here.
   for (const ch of command) {
     if (ch === '"') {
       inDouble = !inDouble;
@@ -385,6 +392,7 @@ function tokenizeWindowsSegment(segment: string): string[] | null {
   const tokens: string[] = [];
   let buf = "";
   let inDouble = false;
+  let inSingle = false;
 
   const pushToken = () => {
     if (buf.length > 0) {
@@ -395,19 +403,30 @@ function tokenizeWindowsSegment(segment: string): string[] | null {
 
   for (let i = 0; i < segment.length; i += 1) {
     const ch = segment[i];
-    // Double-quote toggle — PowerShell and cmd.exe both honour double-quote quoting.
-    if (ch === '"') {
+    // Double-quote toggle (not inside single quotes).
+    if (ch === '"' && !inSingle) {
       inDouble = !inDouble;
       continue;
     }
-    if (!inDouble && /\s/.test(ch)) {
+    // Single-quote toggle (not inside double quotes) — PowerShell literal strings.
+    // '' inside a single-quoted string is the PowerShell escape for a literal apostrophe.
+    if (ch === "'" && !inDouble) {
+      if (inSingle && segment[i + 1] === "'") {
+        buf += "'";
+        i += 1;
+        continue;
+      }
+      inSingle = !inSingle;
+      continue;
+    }
+    if (!inDouble && !inSingle && /\s/.test(ch)) {
       pushToken();
       continue;
     }
     buf += ch;
   }
 
-  if (inDouble) {
+  if (inDouble || inSingle) {
     return null;
   }
   pushToken();
