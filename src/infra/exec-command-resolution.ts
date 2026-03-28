@@ -305,6 +305,7 @@ export function matchAllowlist(
   entries: ExecAllowlistEntry[],
   resolution: ExecutableResolution | null,
   argv?: string[],
+  platform?: string | null,
 ): ExecAllowlistEntry | null {
   if (!entries.length) {
     return null;
@@ -323,7 +324,10 @@ export function matchAllowlist(
   // argPattern matching is currently Windows-only.  On other platforms every
   // path-matched entry is treated as a match regardless of argPattern, which
   // preserves the pre-existing behaviour.
-  const useArgPattern = process.platform === "win32";
+  // Use the caller-supplied target platform rather than process.platform so that
+  // a Linux gateway evaluating a Windows node command applies argPattern correctly.
+  const effectivePlatform = platform ?? process.platform;
+  const useArgPattern = String(effectivePlatform).trim().toLowerCase().startsWith("win");
   let pathOnlyMatch: ExecAllowlistEntry | null = null;
   for (const entry of entries) {
     const pattern = entry.pattern?.trim();

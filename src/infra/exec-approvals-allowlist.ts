@@ -232,7 +232,7 @@ function evaluateSegments(
       candidatePath && executableResolution
         ? { ...executableResolution, resolvedPath: candidatePath }
         : executableResolution;
-    const executableMatch = matchAllowlist(params.allowlist, candidateResolution, effectiveArgv);
+    const executableMatch = matchAllowlist(params.allowlist, candidateResolution, effectiveArgv, params.platform);
     const inlineCommand = extractShellWrapperInlineCommand(allowlistSegment.argv);
     const shellPositionalArgvCandidatePath = resolveShellWrapperPositionalArgvCandidatePath({
       segment: allowlistSegment,
@@ -244,7 +244,7 @@ function evaluateSegments(
           rawExecutable: shellPositionalArgvCandidatePath,
           resolvedPath: shellPositionalArgvCandidatePath,
           executableName: path.basename(shellPositionalArgvCandidatePath),
-        })
+        }, undefined, params.platform)
       : null;
     const shellScriptCandidatePath =
       inlineCommand === null
@@ -276,6 +276,7 @@ function evaluateSegments(
             executableName: path.basename(shellScriptCandidatePath),
           },
           shellScriptArgv,
+          params.platform,
         )
       : null;
     const match = executableMatch ?? shellPositionalArgvMatch ?? shellScriptMatch;
