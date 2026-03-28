@@ -732,7 +732,7 @@ $0 \\"$1\\"" touch {marker}`,
     });
     expect(patterns).toHaveLength(1);
     expect(patterns[0].pattern).toBe(exe);
-    expect(patterns[0].argPattern).toBe("^a\\.py$"); // single arg — no separator needed
+    expect(patterns[0].argPattern).toBe("^a\\.py\x00$"); // trailing \x00 sentinel
   });
 
   it("returns ^$ argPattern for segments with no arguments (prevents path-only fallback)", () => {
@@ -754,7 +754,7 @@ $0 \\"$1\\"" touch {marker}`,
     });
     expect(patterns).toHaveLength(1);
     expect(patterns[0].pattern).toBe(exe);
-    expect(patterns[0].argPattern).toBe("^$");
+    expect(patterns[0].argPattern).toBe("^\x00$"); // trailing \x00 sentinel, zero args
   });
 
   it("escapes regex special characters in argPattern", () => {
@@ -775,8 +775,8 @@ $0 \\"$1\\"" touch {marker}`,
       ],
     });
     expect(patterns).toHaveLength(1);
-    // \x00 separator preserves argument boundaries between "test.py" and "--flag=val"
-    expect(patterns[0].argPattern).toBe("^test\\.py\x00--flag=val$");
+    // \x00 separator preserves argument boundaries; trailing \x00 sentinel ensures detection
+    expect(patterns[0].argPattern).toBe("^test\\.py\x00--flag=val\x00$");
   });
 
   it("resolves correct script path for powershell -ExecutionPolicy Bypass -File script.ps1", () => {

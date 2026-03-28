@@ -607,16 +607,17 @@ describe("matchAllowlist with argPattern", () => {
     expect(matchAllowlist(entries, resolution, ["python3", "a.py"])).toBeNull();
   });
 
-  it("rejects split-arg bypass against single-arg anchored argPattern", () => {
-    // Auto-generated single-arg pattern ^hello world$ must NOT match argv ["hello", "world"]
-    // (two separate args), even though space-joining them produces "hello world".
-    // Detection uses startsWith("^") to force \x00 join for all anchored patterns.
+  it("rejects split-arg bypass against single-arg auto-generated argPattern", () => {
+    // buildArgPatternFromArgv always appends a trailing \x00 sentinel so that
+    // matchArgPattern can detect \x00-join style via .includes("\x00") even for
+    // single-arg patterns.  "^hello world\x00$" is the auto-generated form for
+    // argv ["python3", "hello world"].
     const entries: ExecAllowlistEntry[] = [
-      { pattern: "/usr/bin/python3", argPattern: "^hello world$" },
+      { pattern: "/usr/bin/python3", argPattern: "^hello world\x00$" },
     ];
-    // Original approved single-arg must still match.
+    // Original approved single-arg must still match (argsString = "hello world\x00").
     expect(matchAllowlist(entries, resolution, ["python3", "hello world"])).toBeTruthy();
-    // Split-arg bypass must be rejected.
+    // Split-arg bypass must be rejected (argsString = "hello\x00world\x00").
     expect(matchAllowlist(entries, resolution, ["python3", "hello", "world"])).toBeNull();
   });
 

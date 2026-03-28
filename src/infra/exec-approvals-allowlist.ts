@@ -562,11 +562,12 @@ function buildScriptArgPatternFromArgv(argv: string[], scriptPath: string): stri
     (arg) => path.basename(arg).toLowerCase() === scriptBase || arg === scriptPath,
   );
   const scriptArgs = scriptIdx !== -1 ? argv.slice(scriptIdx + 1) : [];
-  if (scriptArgs.length === 0) {
-    return "^$";
-  }
+  // Always append a trailing \x00 sentinel so that matchArgPattern can detect
+  // auto-generated patterns by .includes("\x00") even when there is only one arg
+  // (or zero). Without the sentinel, a single-arg pattern like ^hello world$ would
+  // be misidentified as a legacy space-joined pattern and allow a split-arg bypass.
   const normalized = scriptArgs.map((a) => a.replace(/\//g, "\\"));
-  return `^${normalized.map(escapeRegExpLiteral).join("\x00")}$`;
+  return `^${normalized.map(escapeRegExpLiteral).join("\x00")}\x00$`;
 }
 
 function buildArgPatternFromArgv(argv: string[]): string | undefined {
@@ -576,19 +577,15 @@ function buildArgPatternFromArgv(argv: string[]): string | undefined {
     return undefined;
   }
   const args = argv.slice(1);
-  if (args.length === 0) {
-    // Return "^$" (matches empty argument string) rather than undefined so
-    // that allow-always for `python3 --version` does NOT create a path-only
-    // entry that silently permits `python3 <anything>`.
-    return "^$";
-  }
   // Use \x00 as the argument separator so that argv boundaries are preserved.
   // Space-joined strings cannot distinguish `["a b"]` from `["a", "b"]`;
   // the null byte cannot appear in shell arguments and makes boundaries unambiguous.
-  // matchArgPattern detects the \x00 separator and joins argv the same way.
+  // A trailing \x00 sentinel is always appended so that matchArgPattern can detect
+  // auto-generated patterns by .includes("\x00") regardless of argument count —
+  // including the zero-arg and single-arg cases where the body contains no separator.
   const normalized = args.map((a) => a.replace(/\//g, "\\"));
   const joined = normalized.join("\x00");
-  return `^${escapeRegExpLiteral(joined)}$`;
+  return `^${escapeRegExpLiteral(joined)}\x00$`;
 }
 
 function addAllowAlwaysPattern(

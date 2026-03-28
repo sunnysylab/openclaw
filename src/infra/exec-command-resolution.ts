@@ -249,7 +249,7 @@ export function resolvePolicyAllowlistCandidatePath(
 // Strip trailing shell redirections (e.g. `2>&1`, `2>/dev/null`) so that
 // allow-always argPatterns built without them still match commands that include
 // them.  LLMs commonly add or omit these between runs of the same cron job.
-const TRAILING_SHELL_REDIRECTIONS_RE = /[\s\u0000]+(?:[12]>&[12]|[12]>\/dev\/null)\s*$/;
+const TRAILING_SHELL_REDIRECTIONS_RE = /\s+(?:[12]>&[12]|[12]>\/dev\/null)\s*$/;
 
 function stripTrailingRedirections(value: string): string {
   let prev = value;
@@ -264,17 +264,19 @@ function stripTrailingRedirections(value: string): string {
 }
 
 function matchArgPattern(argPattern: string, argv: string[], platform?: string | null): boolean {
-  // Patterns built by buildArgPatternFromArgv are always anchored (^...$) and join
-  // argv with \x00 so that argument boundaries are preserved.  A single-argument
-  // auto-generated pattern such as ^hello world$ contains no \x00, but it was still
-  // built with \x00 joining — so detecting by .includes("\x00") would misclassify it
-  // as a legacy space-joined pattern and allow ["hello", "world"] to match.
-  // We instead detect by anchoring: auto-generated patterns always start with "^";
-  // legacy hand-authored patterns do not.  Redirection-stripping retries only apply
-  // to legacy patterns (sep === " ") since auto-generated ones never include redirection
-  // tokens (blocked upstream by findWindowsUnsupportedToken).
-  const sep = argPattern.startsWith("^") ? "\x00" : " ";
-  const argsString = argv.slice(1).join(sep);
+  // Patterns built by buildArgPatternFromArgv use \x00 as the argument separator and
+  // always include a trailing \x00 sentinel so that every auto-generated pattern
+  // (including zero-arg "^\x00$" and single-arg "^hello world\x00$") contains at
+  // least one \x00.  This lets matchArgPattern detect the join style unambiguously
+  // via .includes("\x00") without misidentifying anchored hand-authored patterns.
+  // Legacy hand-authored patterns use a plain space and contain no \x00.
+  // When \x00 style is active, a trailing \x00 is appended to the joined args string
+  // to match the sentinel embedded in the pattern.
+  const sep = argPattern.includes("\x00") ? "\x00" : " ";
+  const argsString =
+    sep === "\x00"
+      ? argv.slice(1).join(sep) + sep // trailing sentinel to match pattern format
+      : argv.slice(1).join(sep);
   try {
     const regex = new RegExp(argPattern);
     if (regex.test(argsString)) {
@@ -285,7 +287,9 @@ function matchArgPattern(argPattern: string, argv: string[], platform?: string |
     // that an argPattern built from one style still matches the other.
     // Use the caller-supplied target platform so Linux gateways evaluating
     // Windows node commands also perform the normalization.
-    const effectivePlatform = String(platform ?? process.platform).trim().toLowerCase();
+    const effectivePlatform = String(platform ?? process.platform)
+      .trim()
+      .toLowerCase();
     if (effectivePlatform.startsWith("win")) {
       const normalized = argsString.replace(/\//g, "\\");
       if (normalized !== argsString && regex.test(normalized)) {
