@@ -30,6 +30,7 @@ import {
 } from "./moonshot-stream-wrappers.js";
 import {
   createOpenAIAttributionHeadersWrapper,
+  createOpenAICompatContentNormalizationWrapper,
   createOpenAIDefaultTransportWrapper,
   createOpenAIFastModeWrapper,
   createOpenAIResponsesContextManagementWrapper,
@@ -403,6 +404,12 @@ function applyPostPluginStreamWrappers(
     ctx.agent.streamFn,
     ctx.effectiveExtraParams,
   );
+
+  // Normalize text-only content arrays to plain strings in outbound
+  // openai-completions payloads. Many third-party OpenAI-compatible
+  // providers (NVIDIA, vLLM, Ollama, LiteLLM) reject the Anthropic-style
+  // [{type:"text", text:"..."}] format that pi-ai emits for user messages.
+  ctx.agent.streamFn = createOpenAICompatContentNormalizationWrapper(ctx.agent.streamFn);
 
   const rawParallelToolCalls = resolveAliasedParamValue(
     [ctx.resolvedExtraParams, ctx.override],
