@@ -1405,6 +1405,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                   },
                 ],
               },
+              imageTimeoutSeconds: {
+                type: "integer",
+                exclusiveMinimum: 0,
+                maximum: 9007199254740991,
+              },
               imageGenerationModel: {
                 anyOf: [
                   {
@@ -13804,6 +13809,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       label: "Image Model Fallbacks",
       help: "Ordered fallback image models (provider/model).",
       tags: ["reliability", "models", "media"],
+    },
+    "agents.defaults.imageTimeoutSeconds": {
+      label: "Image Timeout (sec)",
+      help: "Timeout in seconds for image-tool analysis requests before OpenClaw aborts the provider call (default: 30). Raise this for slower image-analysis providers while leaving the field unset to keep existing behavior.",
+      tags: ["performance", "media"],
     },
     "agents.defaults.imageGenerationModel.primary": {
       label: "Image Generation Model",

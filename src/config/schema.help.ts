@@ -1020,6 +1020,8 @@ export const FIELD_HELP: Record<string, string> = {
   "agents.defaults.imageModel.primary":
     "Optional image model (provider/model) used when the primary model lacks image input.",
   "agents.defaults.imageModel.fallbacks": "Ordered fallback image models (provider/model).",
+  "agents.defaults.imageTimeoutSeconds":
+    "Timeout in seconds for image-tool analysis requests before OpenClaw aborts the provider call (default: 30). Raise this for slower image-analysis providers while leaving the field unset to keep existing behavior.",
   "agents.defaults.imageGenerationModel.primary":
     "Optional image-generation model (provider/model) used by the shared image generation capability.",
   "agents.defaults.imageGenerationModel.fallbacks":
