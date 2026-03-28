@@ -54,6 +54,7 @@ const WINDOWS_UNSUPPORTED_TOKENS = new Set([
   ")",
   "%",
   "!",
+  "`",
   "\n",
   "\r",
 ]);
@@ -356,7 +357,9 @@ function splitShellPipeline(command: string): { ok: boolean; reason?: string; se
 // - \n / \r: newlines break command parsing regardless of quoting.
 // - %: cmd.exe expands %VAR% inside double quotes, so % can still be used
 //   for injection even when quoted.
-const WINDOWS_ALWAYS_UNSAFE_TOKENS = new Set(["\n", "\r", "%"]);
+// - `: PowerShell escape character; forms escape sequences (`n, `0, `") even
+//   inside double-quoted strings, so it cannot be safely quoted.
+const WINDOWS_ALWAYS_UNSAFE_TOKENS = new Set(["\n", "\r", "%", "`"]);
 
 function findWindowsUnsupportedToken(command: string): string | null {
   let inDouble = false;

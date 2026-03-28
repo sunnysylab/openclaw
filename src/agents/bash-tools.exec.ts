@@ -192,21 +192,6 @@ function deriveExecShortName(fullPath: string): string {
   return base.replace(/\.exe$/i, "") || base;
 }
 
-/**
- * Convert an internal argPattern regex back to a human-readable argument
- * string suitable for display in the pre-approved commands hint.
- * Strips regex anchors, unescapes literals, and replaces \x00 separators
- * (argument boundaries) with spaces.
- */
-function argPatternToReadable(argPattern: string): string {
-  return argPattern
-    .replace(/^\^/, "")
-    .replace(/\$$/, "")
-    .replace(/\u0000/g, " ") // \x00 arg-boundary separator → space
-    .replace(/\\\\/g, "\\") // \\\\ → backslash
-    .replace(/\\\./g, ".") // \\. → literal dot
-    .replace(/\\([^\\])/g, "$1"); // remaining regex escapes → literal
-}
 
 function buildExecToolDescription(agentId?: string): string {
   const base =
@@ -224,15 +209,13 @@ function buildExecToolDescription(agentId?: string): string {
     const agentEntry = approvals.agents?.[agentKey];
     const allowlist = Array.isArray(agentEntry?.allowlist) ? agentEntry.allowlist : [];
     if (allowlist.length > 0) {
-      lines.push("Pre-approved commands (use EXACTLY this format, no approval needed):");
+      lines.push(
+        "Pre-approved executables (exact arguments are enforced at runtime; no approval prompt needed when args match):",
+      );
       for (const entry of allowlist.slice(0, 10)) {
         const shortName = deriveExecShortName(entry.pattern);
-        if (entry.argPattern) {
-          const readable = argPatternToReadable(entry.argPattern);
-          lines.push(`  ${shortName} ${readable}`);
-        } else {
-          lines.push(`  ${shortName} (any arguments)`);
-        }
+        const argNote = entry.argPattern ? "(restricted args)" : "(any arguments)";
+        lines.push(`  ${shortName} ${argNote}`);
       }
     }
   } catch {
