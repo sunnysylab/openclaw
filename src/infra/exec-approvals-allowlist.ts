@@ -271,19 +271,14 @@ function evaluateSegments(
     const shellScriptArgv = shellScriptCandidatePath
       ? (() => {
           const scriptBase = path.basename(shellScriptCandidatePath).toLowerCase();
-          const cwdBase =
-            params.cwd && params.cwd.trim() ? params.cwd.trim() : process.cwd();
+          const cwdBase = params.cwd && params.cwd.trim() ? params.cwd.trim() : process.cwd();
           const resolveArgPath = (a: string): string =>
             path.isAbsolute(a) ? a : path.resolve(cwdBase, a);
           // Prefer exact path match (normalizing relative tokens) to avoid
           // shadowing by earlier args with the same basename.
-          let idx = effectiveArgv.findIndex(
-            (a) => resolveArgPath(a) === shellScriptCandidatePath,
-          );
+          let idx = effectiveArgv.findIndex((a) => resolveArgPath(a) === shellScriptCandidatePath);
           if (idx === -1) {
-            idx = effectiveArgv.findIndex(
-              (a) => path.basename(a).toLowerCase() === scriptBase,
-            );
+            idx = effectiveArgv.findIndex((a) => path.basename(a).toLowerCase() === scriptBase);
           }
           const scriptArgs = idx !== -1 ? effectiveArgv.slice(idx + 1) : [];
           return [shellScriptCandidatePath, ...scriptArgs];
@@ -448,10 +443,14 @@ function resolveShellWrapperScriptCandidatePath(params: {
     if (token === "-c" || token === "--command") {
       return undefined;
     }
-    if (/^-[^-]*c[^-]*$/i.test(token)) {
+    // Combined short-flag checks (e.g. -lc, -ic) only apply to POSIX shells.
+    // PowerShell uses full-word flags and never combines them; applying the
+    // regex to PowerShell flags like -ExecutionPolicy or -SettingsFile would
+    // incorrectly match because those words contain the letter 'c' or 's'.
+    if (!isPowerShell && /^-[^-]*c[^-]*$/i.test(token)) {
       return undefined;
     }
-    if (token === "-s" || /^-[^-]*s[^-]*$/i.test(token)) {
+    if (token === "-s" || (!isPowerShell && /^-[^-]*s[^-]*$/i.test(token))) {
       return undefined;
     }
     if (SHELL_WRAPPER_OPTIONS_WITH_VALUE.has(token)) {
@@ -670,8 +669,24 @@ function collectAllowAlwaysPatterns(params: {
     addAllowAlwaysPattern(params.out, positionalArgvPath);
     return;
   }
-  const inlineCommand =
-    trustPlan.shellInlineCommand ?? extractShellWrapperInlineCommand(segment.argv);
+  // For PowerShell -File invocations, POWERSHELL_INLINE_COMMAND_FLAGS includes "-file"
+  // so extractShellWrapperInlineCommand returns the script path as the "inline command".
+  // Treating it as an inline shell command loses the script's trailing arguments.
+  // Detect this case and fall through to resolveShellWrapperScriptCandidatePath instead,
+  // which correctly slices out the script args for argPattern building.
+  const isPowerShellFileInvocation =
+    POWERSHELL_WRAPPERS.has(normalizeExecutableToken(segment.argv[0] ?? "")) &&
+    segment.argv.some((t) => {
+      const lower = t.trim().toLowerCase();
+      return lower === "-file" || lower === "-f";
+    }) &&
+    !segment.argv.some((t) => {
+      const lower = t.trim().toLowerCase();
+      return lower === "-command" || lower === "-c" || lower === "--command";
+    });
+  const inlineCommand = isPowerShellFileInvocation
+    ? null
+    : (trustPlan.shellInlineCommand ?? extractShellWrapperInlineCommand(segment.argv));
   if (!inlineCommand) {
     const scriptPath = resolveShellWrapperScriptCandidatePath({
       segment,
