@@ -31,6 +31,12 @@ function mergeProviderIntoRegistry(
 /**
  * Detect capabilities from configured provider models.
  * Scans cfg.models.providers.*.models to find models with input: ["image"], ["audio"], etc.
+ *
+ * NOTE: Only "image" capability is currently supported for auto-registration because
+ * it has a runtime fallback (describeImageWithModel). Audio and video require explicit
+ * provider functions (transcribeAudio, describeVideo) which are not available for
+ * auto-registered providers. Registering audio/video without these functions would
+ * cause runtime errors.
  */
 function detectCapabilitiesFromConfig(
   providerConfig: ConfiguredProvider,
@@ -39,14 +45,10 @@ function detectCapabilitiesFromConfig(
   const models = providerConfig.models ?? [];
   for (const model of models) {
     const input = model.input ?? [];
+    // Only auto-register "image" capability - it has describeImageWithModel fallback
+    // Audio and video require explicit provider functions that auto-registered providers lack
     if (input.includes("image")) {
       capabilities.add("image");
-    }
-    if (input.includes("audio")) {
-      capabilities.add("audio");
-    }
-    if (input.includes("video")) {
-      capabilities.add("video");
     }
   }
   return Array.from(capabilities);
