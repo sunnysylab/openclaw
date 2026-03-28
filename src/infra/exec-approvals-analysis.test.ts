@@ -294,6 +294,26 @@ describe("exec approvals shell analysis", () => {
       expect(res.segments[0]?.argv).toEqual(["node", "tool.js", "O'Brien"]);
     });
 
+    it("preserves empty double-quoted args on Windows", () => {
+      // tokenizeWindowsSegment must not drop "" — empty quoted args are intentional
+      // (e.g. node tool.js "" passes an explicit empty string to the child process).
+      const res = analyzeShellCommand({
+        command: 'node tool.js ""',
+        platform: "win32",
+      });
+      expect(res.ok).toBe(true);
+      expect(res.segments[0]?.argv).toEqual(["node", "tool.js", ""]);
+    });
+
+    it("preserves empty single-quoted args on Windows", () => {
+      const res = analyzeShellCommand({
+        command: "node tool.js ''",
+        platform: "win32",
+      });
+      expect(res.ok).toBe(true);
+      expect(res.segments[0]?.argv).toEqual(["node", "tool.js", ""]);
+    });
+
     it.each(['echo "output: \\$(whoami)"', "echo 'output: $(whoami)'"])(
       "accepts inert substitution-like syntax for %s",
       (command) => {

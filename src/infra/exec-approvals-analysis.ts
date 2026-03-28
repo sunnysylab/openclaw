@@ -411,18 +411,25 @@ function tokenizeWindowsSegment(segment: string): string[] | null {
   let buf = "";
   let inDouble = false;
   let inSingle = false;
+  // Set to true when a quote-open is seen; ensures empty quoted args ("" or '')
+  // are preserved as empty-string tokens rather than being silently dropped.
+  let wasQuoted = false;
 
   const pushToken = () => {
-    if (buf.length > 0) {
+    if (buf.length > 0 || wasQuoted) {
       tokens.push(buf);
       buf = "";
     }
+    wasQuoted = false;
   };
 
   for (let i = 0; i < segment.length; i += 1) {
     const ch = segment[i];
     // Double-quote toggle (not inside single quotes).
     if (ch === '"' && !inSingle) {
+      if (!inDouble) {
+        wasQuoted = true;
+      }
       inDouble = !inDouble;
       continue;
     }
@@ -433,6 +440,9 @@ function tokenizeWindowsSegment(segment: string): string[] | null {
         buf += "'";
         i += 1;
         continue;
+      }
+      if (!inSingle) {
+        wasQuoted = true;
       }
       inSingle = !inSingle;
       continue;
