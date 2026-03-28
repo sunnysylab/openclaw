@@ -217,7 +217,9 @@ describe("exec approvals shell analysis", () => {
       expect(res.ok).toBe(false);
     });
 
-    it("accepts metacharacters inside single-quoted arguments on Windows", () => {
+    it("rejects metacharacters inside single-quoted arguments on Windows", () => {
+      // Single quotes are NOT quoting characters in cmd.exe (the Windows execution
+      // shell).  Shell metacharacters inside single quotes remain active and unsafe.
       const cases = [
         "node tool.js '--name=foo & bar'",
         "node tool.js '--filter=a|b'",
@@ -226,14 +228,13 @@ describe("exec approvals shell analysis", () => {
       ];
       for (const command of cases) {
         const res = analyzeShellCommand({ command, platform: "win32" });
-        expect(res.ok).toBe(true);
-        expect(res.segments[0]?.argv[0]).toBe("node");
+        expect(res.ok).toBe(false);
       }
     });
 
-    it("still rejects % inside single-quoted arguments on Windows", () => {
-      // % must be blocked even inside single quotes because windowsEscapeArg
-      // always rebuilds with double-quoting where % is unsafe (cmd.exe expansion).
+    it("rejects % in single-quoted arguments on Windows", () => {
+      // Single quotes are literal in cmd.exe, so % is treated as unquoted and
+      // can be used for variable-expansion injection.
       const res = analyzeShellCommand({
         command: "node tool.js '--label=%USERNAME%'",
         platform: "win32",
@@ -241,13 +242,15 @@ describe("exec approvals shell analysis", () => {
       expect(res.ok).toBe(false);
     });
 
-    it("parses '' as escaped apostrophe in Windows single-quoted args", () => {
+    it("treats single-quote characters as literals when tokenizing Windows args", () => {
+      // Without single-quote quoting support, the ' characters are passed through
+      // as part of the token value.
       const res = analyzeShellCommand({
-        command: "node tool.js 'O''Brien'",
+        command: "node tool.js 'arg'",
         platform: "win32",
       });
       expect(res.ok).toBe(true);
-      expect(res.segments[0]?.argv).toEqual(["node", "tool.js", "O'Brien"]);
+      expect(res.segments[0]?.argv).toEqual(["node", "tool.js", "'arg'"]);
     });
 
     it.each(['echo "output: \\$(whoami)"', "echo 'output: $(whoami)'"])(

@@ -360,21 +360,11 @@ const WINDOWS_ALWAYS_UNSAFE_TOKENS = new Set(["\n", "\r", "%"]);
 
 function findWindowsUnsupportedToken(command: string): string | null {
   let inDouble = false;
-  let inSingle = false;
   const chars = [...command];
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
-    if (!inSingle && ch === '"') {
+    if (ch === '"') {
       inDouble = !inDouble;
-      continue;
-    }
-    if (!inDouble && ch === "'") {
-      if (inSingle && chars[i + 1] === "'") {
-        // '' inside a single-quoted string is an escaped single quote; skip both.
-        i++;
-        continue;
-      }
-      inSingle = !inSingle;
       continue;
     }
     if (WINDOWS_UNSUPPORTED_TOKENS.has(ch)) {
@@ -382,12 +372,6 @@ function findWindowsUnsupportedToken(command: string): string | null {
       // values (e.g. "2026-03-28 (土) - LifeLog" contains "()" which are fine).
       // tokenizeWindowsSegment already handles all of these correctly inside quotes.
       if (inDouble && !WINDOWS_ALWAYS_UNSAFE_TOKENS.has(ch)) {
-        continue;
-      }
-      // Inside single-quoted PowerShell strings most metacharacters are literal — no
-      // variable expansion, no escape sequences. However, % must still be blocked because
-      // windowsEscapeArg always rebuilds args with double-quoting, where % is unsafe.
-      if (inSingle && ch !== "\n" && ch !== "\r" && ch !== "%") {
         continue;
       }
       if (ch === "\n" || ch === "\r") {
@@ -403,7 +387,6 @@ function tokenizeWindowsSegment(segment: string): string[] | null {
   const tokens: string[] = [];
   let buf = "";
   let inDouble = false;
-  let inSingle = false;
 
   const pushToken = () => {
     if (buf.length > 0) {
@@ -414,30 +397,19 @@ function tokenizeWindowsSegment(segment: string): string[] | null {
 
   for (let i = 0; i < segment.length; i += 1) {
     const ch = segment[i];
-    // Double-quote toggle (not inside single quotes)
-    if (ch === '"' && !inSingle) {
+    // Double-quote toggle — PowerShell and cmd.exe both honour double-quote quoting.
+    if (ch === '"') {
       inDouble = !inDouble;
       continue;
     }
-    // Single-quote toggle (not inside double quotes) — PowerShell literal strings.
-    // '' inside a single-quoted string is the PowerShell escape for a literal apostrophe.
-    if (ch === "'" && !inDouble) {
-      if (inSingle && segment[i + 1] === "'") {
-        buf += "'";
-        i += 1;
-        continue;
-      }
-      inSingle = !inSingle;
-      continue;
-    }
-    if (!inDouble && !inSingle && /\s/.test(ch)) {
+    if (!inDouble && /\s/.test(ch)) {
       pushToken();
       continue;
     }
     buf += ch;
   }
 
-  if (inDouble || inSingle) {
+  if (inDouble) {
     return null;
   }
   pushToken();
@@ -506,16 +478,11 @@ function stripWindowsShellWrapperOnce(command: string): string {
     return psInvokeNoQuote[1];
   }
 
-  // cmd.exe pass-through: cmd [/d] [/s] /c "inner"
-  const cmdMatch = command.match(/^cmd(?:\.exe)?\s+(?:\/[ds]\s+)*\/c\s+"(.+)"$/is);
-  if (cmdMatch) {
-    return cmdMatch[1];
-  }
-  // cmd /c without quotes
-  const cmdNoQuote = command.match(/^cmd(?:\.exe)?\s+(?:\/[ds]\s+)*\/c\s+(.+)$/is);
-  if (cmdNoQuote) {
-    return cmdNoQuote[1];
-  }
+  // Note: cmd /c is intentionally NOT stripped here.  If a command is wrapped
+  // with `cmd /c`, its inner payload would later be executed by PowerShell, which
+  // changes semantics for cmd.exe builtins (dir, copy, etc.).  Callers that submit
+  // `cmd /c <thing>` must have an explicit allowlist entry for `cmd` itself, or
+  // the command will require user approval.
 
   return command;
 }
