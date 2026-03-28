@@ -316,7 +316,7 @@ describe("memory plugin e2e", () => {
         resolvePath: (p: string) => p,
       };
 
-      memoryPlugin.register(mockApi as OpenClawPluginApi);
+      memoryPlugin.register(mockApi as unknown as OpenClawPluginApi);
       const recallTool = registeredTools.find((t) => t.opts?.name === "memory_recall")?.tool;
       if (!recallTool) {
         throw new Error("memory_recall tool was not registered");
@@ -518,7 +518,7 @@ describe("memory plugin e2e", () => {
         tableDelete,
         registeredTools,
       });
-      memoryPlugin.register(mockApi as OpenClawPluginApi);
+      memoryPlugin.register(mockApi as unknown as OpenClawPluginApi);
 
       const refreshTool = registeredTools.find((t) => t.opts?.name === "memory_refresh")!.tool;
       expect(refreshTool).toBeDefined();
@@ -606,7 +606,7 @@ describe("memory plugin e2e", () => {
           tableDelete,
           registeredTools,
         });
-        memoryPlugin.register(mockApi as OpenClawPluginApi);
+        memoryPlugin.register(mockApi as unknown as OpenClawPluginApi);
 
         const refreshTool = registeredTools.find((t) => t.opts?.name === "memory_refresh")!.tool;
         expect(refreshTool).toBeDefined();
@@ -714,7 +714,7 @@ describe("memory plugin e2e", () => {
         tableDelete,
         registeredTools,
       });
-      memoryPlugin.register(mockApi as OpenClawPluginApi);
+      memoryPlugin.register(mockApi as unknown as OpenClawPluginApi);
 
       const refreshTool = registeredTools.find((t) => t.opts?.name === "memory_refresh")!.tool;
       expect(refreshTool).toBeDefined();
@@ -804,7 +804,7 @@ describe("memory plugin e2e", () => {
         tableDelete,
         registeredTools,
       });
-      memoryPlugin.register(mockApi as OpenClawPluginApi);
+      memoryPlugin.register(mockApi as unknown as OpenClawPluginApi);
 
       const refreshTool = registeredTools.find((t) => t.opts?.name === "memory_refresh")!.tool;
       expect(refreshTool).toBeDefined();
@@ -902,7 +902,7 @@ describe("memory plugin e2e", () => {
         tableDelete,
         registeredTools,
       });
-      memoryPlugin.register(mockApi as OpenClawPluginApi);
+      memoryPlugin.register(mockApi as unknown as OpenClawPluginApi);
 
       const refreshTool = registeredTools.find((t) => t.opts?.name === "memory_refresh")!.tool;
       expect(refreshTool).toBeDefined();
@@ -979,7 +979,7 @@ describe("memory plugin e2e", () => {
         tableDelete,
         registeredTools,
       });
-      memoryPlugin.register(mockApi as OpenClawPluginApi);
+      memoryPlugin.register(mockApi as unknown as OpenClawPluginApi);
 
       const refreshTool = registeredTools.find((t) => t.opts?.name === "memory_refresh")!.tool;
       expect(refreshTool).toBeDefined();
@@ -1076,7 +1076,7 @@ describe("memory plugin e2e", () => {
         tableDelete,
         registeredTools,
       });
-      memoryPlugin.register(mockApi as OpenClawPluginApi);
+      memoryPlugin.register(mockApi as unknown as OpenClawPluginApi);
 
       const refreshTool = registeredTools.find((t) => t.opts?.name === "memory_refresh")!.tool;
       expect(refreshTool).toBeDefined();
@@ -1283,7 +1283,7 @@ describeLive("memory plugin live tests", () => {
     };
 
     // Register plugin
-    memoryPlugin.register(mockApi as OpenClawPluginApi);
+    memoryPlugin.register(mockApi as unknown as OpenClawPluginApi);
 
     // Check registration
     expect(registeredTools.length).toBe(4);
