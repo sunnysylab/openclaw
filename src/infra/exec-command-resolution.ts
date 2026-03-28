@@ -264,7 +264,11 @@ function stripTrailingRedirections(value: string): string {
 }
 
 function matchArgPattern(argPattern: string, argv: string[]): boolean {
-  const argsString = argv.slice(1).join(" ");
+  // Patterns built by buildArgPatternFromArgv use \x00 as the argument separator
+  // to preserve boundaries (e.g. ["a b"] vs ["a", "b"]).  Legacy hand-authored
+  // patterns use a plain space; detect which style to use by inspecting the pattern.
+  const sep = argPattern.includes("\x00") ? "\x00" : " ";
+  const argsString = argv.slice(1).join(sep);
   try {
     const regex = new RegExp(argPattern);
     if (regex.test(argsString)) {

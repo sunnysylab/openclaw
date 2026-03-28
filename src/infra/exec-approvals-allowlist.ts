@@ -518,10 +518,12 @@ function buildArgPatternFromArgv(argv: string[]): string | undefined {
     // entry that silently permits `python3 <anything>`.
     return "^$";
   }
-  // Normalize forward slashes to backslashes so that the persisted argPattern
-  // is consistent regardless of how the LLM formatted the path.
-  let joined = args.join(" ");
-  joined = joined.replace(/\//g, "\\");
+  // Use \x00 as the argument separator so that argv boundaries are preserved.
+  // Space-joined strings cannot distinguish `["a b"]` from `["a", "b"]`;
+  // the null byte cannot appear in shell arguments and makes boundaries unambiguous.
+  // matchArgPattern detects the \x00 separator and joins argv the same way.
+  const normalized = args.map((a) => a.replace(/\//g, "\\"));
+  const joined = normalized.join("\x00");
   return `^${escapeRegExpLiteral(joined)}$`;
 }
 

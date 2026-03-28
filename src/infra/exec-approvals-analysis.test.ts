@@ -217,6 +217,39 @@ describe("exec approvals shell analysis", () => {
       expect(res.ok).toBe(false);
     });
 
+    it("accepts metacharacters inside single-quoted arguments on Windows", () => {
+      const cases = [
+        "node tool.js '--name=foo & bar'",
+        "node tool.js '--filter=a|b'",
+        "node tool.js '--msg=Hello!'",
+        "node tool.js '--pattern=(x)'",
+      ];
+      for (const command of cases) {
+        const res = analyzeShellCommand({ command, platform: "win32" });
+        expect(res.ok).toBe(true);
+        expect(res.segments[0]?.argv[0]).toBe("node");
+      }
+    });
+
+    it("still rejects % inside single-quoted arguments on Windows", () => {
+      // % must be blocked even inside single quotes because windowsEscapeArg
+      // always rebuilds with double-quoting where % is unsafe (cmd.exe expansion).
+      const res = analyzeShellCommand({
+        command: "node tool.js '--label=%USERNAME%'",
+        platform: "win32",
+      });
+      expect(res.ok).toBe(false);
+    });
+
+    it("parses '' as escaped apostrophe in Windows single-quoted args", () => {
+      const res = analyzeShellCommand({
+        command: "node tool.js 'O''Brien'",
+        platform: "win32",
+      });
+      expect(res.ok).toBe(true);
+      expect(res.segments[0]?.argv).toEqual(["node", "tool.js", "O'Brien"]);
+    });
+
     it.each(['echo "output: \\$(whoami)"', "echo 'output: $(whoami)'"])(
       "accepts inert substitution-like syntax for %s",
       (command) => {
@@ -407,8 +440,8 @@ describe("windowsEscapeArg", () => {
     expect(windowsEscapeArg("%PATH%")).toEqual({ ok: false });
   });
 
-  it("rejects tokens with ! meta character", () => {
-    expect(windowsEscapeArg("hello!")).toEqual({ ok: false });
+  it("allows ! in double-quoted args (PowerShell does not treat ! as special)", () => {
+    expect(windowsEscapeArg("hello!")).toEqual({ ok: true, escaped: '"hello!"' });
   });
 });
 

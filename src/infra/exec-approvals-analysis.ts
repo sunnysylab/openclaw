@@ -360,9 +360,21 @@ const WINDOWS_ALWAYS_UNSAFE_TOKENS = new Set(["\n", "\r", "%"]);
 
 function findWindowsUnsupportedToken(command: string): string | null {
   let inDouble = false;
-  for (const ch of command) {
-    if (ch === '"') {
+  let inSingle = false;
+  const chars = [...command];
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (!inSingle && ch === '"') {
       inDouble = !inDouble;
+      continue;
+    }
+    if (!inDouble && ch === "'") {
+      if (inSingle && chars[i + 1] === "'") {
+        // '' inside a single-quoted string is an escaped single quote; skip both.
+        i++;
+        continue;
+      }
+      inSingle = !inSingle;
       continue;
     }
     if (WINDOWS_UNSUPPORTED_TOKENS.has(ch)) {
@@ -370,6 +382,12 @@ function findWindowsUnsupportedToken(command: string): string | null {
       // values (e.g. "2026-03-28 (土) - LifeLog" contains "()" which are fine).
       // tokenizeWindowsSegment already handles all of these correctly inside quotes.
       if (inDouble && !WINDOWS_ALWAYS_UNSAFE_TOKENS.has(ch)) {
+        continue;
+      }
+      // Inside single-quoted PowerShell strings most metacharacters are literal — no
+      // variable expansion, no escape sequences. However, % must still be blocked because
+      // windowsEscapeArg always rebuilds args with double-quoting, where % is unsafe.
+      if (inSingle && ch !== "\n" && ch !== "\r" && ch !== "%") {
         continue;
       }
       if (ch === "\n" || ch === "\r") {
@@ -401,8 +419,14 @@ function tokenizeWindowsSegment(segment: string): string[] | null {
       inDouble = !inDouble;
       continue;
     }
-    // Single-quote toggle (not inside double quotes) — PowerShell literal strings
+    // Single-quote toggle (not inside double quotes) — PowerShell literal strings.
+    // '' inside a single-quoted string is the PowerShell escape for a literal apostrophe.
     if (ch === "'" && !inDouble) {
+      if (inSingle && segment[i + 1] === "'") {
+        buf += "'";
+        i += 1;
+        continue;
+      }
       inSingle = !inSingle;
       continue;
     }
@@ -664,11 +688,13 @@ function shellEscapeSingleArg(value: string): string {
   return `'${value.replace(/'/g, singleQuoteEscape)}'`;
 }
 
-// Characters that cannot be safely quoted in cmd.exe or PowerShell double-quoted strings.
-// %! — cmd.exe delayed/immediate expansion meta characters.
+// Characters that cannot be safely double-quoted in PowerShell enforced commands.
+// %  — cmd.exe immediate/delayed expansion; also blocked in analysis phase.
 // $  — PowerShell variable expansion inside double-quoted strings (e.g. "$env:SECRET").
 // `  — PowerShell escape character; can form escape sequences like `n, `0 inside double quotes.
-const WINDOWS_UNSAFE_CMD_META = /[%!$`]/;
+// Note: ! is intentionally omitted — PowerShell does not treat ! as special in double-quoted
+// strings (unlike cmd.exe delayed expansion), so "Hello!" is safe to pass through.
+const WINDOWS_UNSAFE_CMD_META = /[%$`]/;
 
 export function windowsEscapeArg(value: string): { ok: true; escaped: string } | { ok: false } {
   if (value === "") {

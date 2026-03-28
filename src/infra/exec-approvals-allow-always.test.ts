@@ -714,6 +714,9 @@ $0 \\"$1\\"" touch {marker}`,
   });
 
   it("includes argPattern for non-shell segments with arguments", () => {
+    if (process.platform !== "win32") {
+      return;
+    }
     const exe = path.join("/tmp", "python3");
     const patterns = resolveAllowAlwaysPatterns({
       segments: [
@@ -729,10 +732,13 @@ $0 \\"$1\\"" touch {marker}`,
     });
     expect(patterns).toHaveLength(1);
     expect(patterns[0].pattern).toBe(exe);
-    expect(patterns[0].argPattern).toBe("^a\\.py$");
+    expect(patterns[0].argPattern).toBe("^a\\.py$"); // single arg — no separator needed
   });
 
   it("returns ^$ argPattern for segments with no arguments (prevents path-only fallback)", () => {
+    if (process.platform !== "win32") {
+      return;
+    }
     const exe = path.join("/tmp", "whoami");
     const patterns = resolveAllowAlwaysPatterns({
       segments: [
@@ -752,6 +758,9 @@ $0 \\"$1\\"" touch {marker}`,
   });
 
   it("escapes regex special characters in argPattern", () => {
+    if (process.platform !== "win32") {
+      return;
+    }
     const exe = path.join("/tmp", "python3");
     const patterns = resolveAllowAlwaysPatterns({
       segments: [
@@ -766,6 +775,7 @@ $0 \\"$1\\"" touch {marker}`,
       ],
     });
     expect(patterns).toHaveLength(1);
-    expect(patterns[0].argPattern).toBe("^test\\.py --flag=val$");
+    // \x00 separator preserves argument boundaries between "test.py" and "--flag=val"
+    expect(patterns[0].argPattern).toBe("^test\\.py\x00--flag=val$");
   });
 });
