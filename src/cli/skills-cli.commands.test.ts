@@ -1,11 +1,16 @@
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { OpenClawConfig } from "../config/config.js";
 import { createCliRuntimeCapture } from "./test-runtime-capture.js";
 
-const loadConfigMock = vi.fn(() => ({}));
-const resolveDefaultAgentIdMock = vi.fn(() => "main");
-const resolveAgentWorkspaceDirMock = vi.fn(() => "/tmp/workspace");
-const resolveAgentIdByWorkspacePathMock = vi.fn();
+const loadConfigMock = vi.fn<() => OpenClawConfig>(() => ({}));
+const resolveDefaultAgentIdMock = vi.fn<(cfg: OpenClawConfig) => string>(() => "main");
+const resolveAgentWorkspaceDirMock = vi.fn<(cfg: OpenClawConfig, agentId: string) => string>(
+  () => "/tmp/workspace",
+);
+const resolveAgentIdByWorkspacePathMock = vi.fn<
+  (cfg: OpenClawConfig, workspacePath: string) => string | undefined
+>();
 const searchSkillsFromClawHubMock = vi.fn();
 const installSkillFromClawHubMock = vi.fn();
 const updateSkillsFromClawHubMock = vi.fn();
@@ -23,9 +28,11 @@ vi.mock("../config/config.js", () => ({
 }));
 
 vi.mock("../agents/agent-scope.js", () => ({
-  resolveDefaultAgentId: (...args: unknown[]) => resolveDefaultAgentIdMock(...args),
-  resolveAgentWorkspaceDir: (...args: unknown[]) => resolveAgentWorkspaceDirMock(...args),
-  resolveAgentIdByWorkspacePath: (...args: unknown[]) => resolveAgentIdByWorkspacePathMock(...args),
+  resolveDefaultAgentId: (cfg: OpenClawConfig) => resolveDefaultAgentIdMock(cfg),
+  resolveAgentWorkspaceDir: (cfg: OpenClawConfig, agentId: string) =>
+    resolveAgentWorkspaceDirMock(cfg, agentId),
+  resolveAgentIdByWorkspacePath: (cfg: OpenClawConfig, workspacePath: string) =>
+    resolveAgentIdByWorkspacePathMock(cfg, workspacePath),
 }));
 
 vi.mock("../agents/skills-clawhub.js", () => ({
