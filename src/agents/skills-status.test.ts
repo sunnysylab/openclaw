@@ -18,7 +18,10 @@ describe("buildWorkspaceSkillStatus", () => {
         description: "test",
         filePath: "/tmp/os-scoped",
         baseDir: "/tmp",
-        sourceInfo: createSyntheticSourceInfo("/tmp/os-scoped", { source: "test" }),
+        sourceInfo: createSyntheticSourceInfo("/tmp/os-scoped", {
+          source: "test",
+          baseDir: "/tmp",
+        }),
         disableModelInvocation: false,
       },
       frontmatter: {},

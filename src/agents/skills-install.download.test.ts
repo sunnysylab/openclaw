@@ -63,6 +63,7 @@ function buildEntry(name: string): SkillEntry {
       baseDir: skillDir,
       sourceInfo: createSyntheticSourceInfo(path.join(skillDir, "SKILL.md"), {
         source: "openclaw-workspace",
+        baseDir: skillDir,
       }),
       disableModelInvocation: false,
     },
