@@ -232,7 +232,7 @@ function evaluateSegments(
       candidatePath && executableResolution
         ? { ...executableResolution, resolvedPath: candidatePath }
         : executableResolution;
-    const executableMatch = matchAllowlist(params.allowlist, candidateResolution);
+    const executableMatch = matchAllowlist(params.allowlist, candidateResolution, effectiveArgv);
     const inlineCommand = extractShellWrapperInlineCommand(allowlistSegment.argv);
     const shellPositionalArgvCandidatePath = resolveShellWrapperPositionalArgvCandidatePath({
       segment: allowlistSegment,
@@ -254,11 +254,15 @@ function evaluateSegments(
           })
         : undefined;
     const shellScriptMatch = shellScriptCandidatePath
-      ? matchAllowlist(params.allowlist, {
-          rawExecutable: shellScriptCandidatePath,
-          resolvedPath: shellScriptCandidatePath,
-          executableName: path.basename(shellScriptCandidatePath),
-        })
+      ? matchAllowlist(
+          params.allowlist,
+          {
+            rawExecutable: shellScriptCandidatePath,
+            resolvedPath: shellScriptCandidatePath,
+            executableName: path.basename(shellScriptCandidatePath),
+          },
+          effectiveArgv,
+        )
       : null;
     const match = executableMatch ?? shellPositionalArgvMatch ?? shellScriptMatch;
     if (match) {
@@ -492,13 +496,55 @@ function isDirectShellPositionalCarrierInvocation(command: string): boolean {
   ).test(trimmed);
 }
 
+export type AllowAlwaysPattern = {
+  pattern: string;
+  argPattern?: string;
+};
+
+function escapeRegExpLiteral(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildArgPatternFromArgv(argv: string[]): string | undefined {
+  // argPattern is currently Windows-only.  On other platforms, allow-always
+  // creates path-only entries (the pre-existing behaviour).
+  if (process.platform !== "win32") {
+    return undefined;
+  }
+  const args = argv.slice(1);
+  if (args.length === 0) {
+    // Return "^$" (matches empty argument string) rather than undefined so
+    // that allow-always for `python3 --version` does NOT create a path-only
+    // entry that silently permits `python3 <anything>`.
+    return "^$";
+  }
+  // Normalize forward slashes to backslashes so that the persisted argPattern
+  // is consistent regardless of how the LLM formatted the path.
+  let joined = args.join(" ");
+  joined = joined.replace(/\//g, "\\");
+  return `^${escapeRegExpLiteral(joined)}$`;
+}
+
+function addAllowAlwaysPattern(
+  out: AllowAlwaysPattern[],
+  pattern: string,
+  argPattern?: string,
+): void {
+  const exists = out.some(
+    (p) => p.pattern === pattern && (p.argPattern ?? undefined) === (argPattern ?? undefined),
+  );
+  if (!exists) {
+    out.push({ pattern, argPattern });
+  }
+}
+
 function collectAllowAlwaysPatterns(params: {
   segment: ExecCommandSegment;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   platform?: string | null;
   depth: number;
-  out: Set<string>;
+  out: AllowAlwaysPattern[];
 }) {
   if (params.depth >= 3) {
     return;
@@ -522,7 +568,8 @@ function collectAllowAlwaysPatterns(params: {
     return;
   }
   if (!trustPlan.shellWrapperExecutable) {
-    params.out.add(candidatePath);
+    const argPattern = buildArgPatternFromArgv(params.segment.argv);
+    addAllowAlwaysPattern(params.out, candidatePath, argPattern);
     return;
   }
   const positionalArgvPath = resolveShellWrapperPositionalArgvCandidatePath({
@@ -531,7 +578,7 @@ function collectAllowAlwaysPatterns(params: {
     env: params.env,
   });
   if (positionalArgvPath) {
-    params.out.add(positionalArgvPath);
+    addAllowAlwaysPattern(params.out, positionalArgvPath);
     return;
   }
   const inlineCommand =
@@ -542,7 +589,8 @@ function collectAllowAlwaysPatterns(params: {
       cwd: params.cwd,
     });
     if (scriptPath) {
-      params.out.add(scriptPath);
+      const argPattern = buildArgPatternFromArgv(params.segment.argv);
+      addAllowAlwaysPattern(params.out, scriptPath, argPattern);
     }
     return;
   }
@@ -577,8 +625,8 @@ export function resolveAllowAlwaysPatterns(params: {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   platform?: string | null;
-}): string[] {
-  const patterns = new Set<string>();
+}): AllowAlwaysPattern[] {
+  const patterns: AllowAlwaysPattern[] = [];
   for (const segment of params.segments) {
     collectAllowAlwaysPatterns({
       segment,
@@ -589,7 +637,7 @@ export function resolveAllowAlwaysPatterns(params: {
       out: patterns,
     });
   }
-  return Array.from(patterns);
+  return patterns;
 }
 
 /**

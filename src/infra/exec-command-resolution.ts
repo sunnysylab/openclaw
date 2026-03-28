@@ -246,9 +246,61 @@ export function resolvePolicyAllowlistCandidatePath(
   return resolvePolicyTargetCandidatePath(resolution, cwd);
 }
 
+// Strip trailing shell redirections (e.g. `2>&1`, `2>/dev/null`) so that
+// allow-always argPatterns built without them still match commands that include
+// them.  LLMs commonly add or omit these between runs of the same cron job.
+const TRAILING_SHELL_REDIRECTIONS_RE = /\s+(?:[12]>&[12]|[12]>\/dev\/null)\s*$/;
+
+function stripTrailingRedirections(value: string): string {
+  let prev = value;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const next = prev.replace(TRAILING_SHELL_REDIRECTIONS_RE, "");
+    if (next === prev) {
+      return next;
+    }
+    prev = next;
+  }
+}
+
+function matchArgPattern(argPattern: string, argv: string[]): boolean {
+  const argsString = argv.slice(1).join(" ");
+  try {
+    const regex = new RegExp(argPattern);
+    if (regex.test(argsString)) {
+      return true;
+    }
+    // On Windows, LLMs may use forward slashes (`C:/path`) or backslashes
+    // (`C:\path`) interchangeably.  Normalize to backslashes and retry so
+    // that an argPattern built from one style still matches the other.
+    if (process.platform === "win32") {
+      const normalized = argsString.replace(/\//g, "\\");
+      if (normalized !== argsString && regex.test(normalized)) {
+        return true;
+      }
+    }
+    // Retry after stripping trailing shell redirections (2>&1, etc.) so that
+    // patterns saved without them still match commands that include them.
+    const stripped = stripTrailingRedirections(argsString);
+    if (stripped !== argsString && regex.test(stripped)) {
+      return true;
+    }
+    if (process.platform === "win32") {
+      const strippedNorm = stripped.replace(/\//g, "\\");
+      if (strippedNorm !== stripped && regex.test(strippedNorm)) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function matchAllowlist(
   entries: ExecAllowlistEntry[],
   resolution: ExecutableResolution | null,
+  argv?: string[],
 ): ExecAllowlistEntry | null {
   if (!entries.length) {
     return null;
@@ -256,7 +308,7 @@ export function matchAllowlist(
   // A bare "*" wildcard allows any parsed executable command.
   // Check it before the resolvedPath guard so unresolved PATH lookups still
   // match (for example platform-specific executables without known extensions).
-  const bareWild = entries.find((e) => e.pattern?.trim() === "*");
+  const bareWild = entries.find((e) => e.pattern?.trim() === "*" && !e.argPattern);
   if (bareWild && resolution) {
     return bareWild;
   }
@@ -264,6 +316,11 @@ export function matchAllowlist(
     return null;
   }
   const resolvedPath = resolution.resolvedPath;
+  // argPattern matching is currently Windows-only.  On other platforms every
+  // path-matched entry is treated as a match regardless of argPattern, which
+  // preserves the pre-existing behaviour.
+  const useArgPattern = process.platform === "win32";
+  let pathOnlyMatch: ExecAllowlistEntry | null = null;
   for (const entry of entries) {
     const pattern = entry.pattern?.trim();
     if (!pattern) {
@@ -273,11 +330,25 @@ export function matchAllowlist(
     if (!hasPath) {
       continue;
     }
-    if (matchesExecAllowlistPattern(pattern, resolvedPath)) {
+    if (!matchesExecAllowlistPattern(pattern, resolvedPath)) {
+      continue;
+    }
+    if (!useArgPattern) {
+      // Non-Windows: first path match wins (legacy behaviour).
+      return entry;
+    }
+    if (!entry.argPattern) {
+      if (!pathOnlyMatch) {
+        pathOnlyMatch = entry;
+      }
+      continue;
+    }
+    // Entry has argPattern — check argv match.
+    if (argv && matchArgPattern(entry.argPattern, argv)) {
       return entry;
     }
   }
-  return null;
+  return pathOnlyMatch;
 }
 
 export type ExecArgvToken =

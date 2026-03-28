@@ -8,9 +8,11 @@ import {
   buildEnforcedShellCommand,
   buildSafeBinsShellCommand,
   resolvePlannedSegmentArgv,
+  windowsEscapeArg,
 } from "./exec-approvals-analysis.js";
 import { makePathEnv, makeTempDir } from "./exec-approvals-test-helpers.js";
 import type { ExecAllowlistEntry } from "./exec-approvals.js";
+import { matchAllowlist } from "./exec-command-resolution.js";
 
 function expectAnalyzedShellCommand(
   command: string,
@@ -174,6 +176,45 @@ describe("exec approvals shell analysis", () => {
       const res = analyzeShellCommand({ command, platform });
       expect(res.ok).toBe(false);
       expect(res.reason).toBe(reason);
+    });
+
+    it("accepts shell metacharacters inside double-quoted arguments on Windows", () => {
+      const cases = [
+        // parentheses in a date/title argument
+        'node add_lifelog.js "2026-03-28" "2026-03-28 (土) - LifeLog" --markdown',
+        // pipe, redirection, ampersand inside quotes
+        'node tool.js "--filter=a|b" "--label=x>y" "--name=foo & bar"',
+        // caret inside quotes
+        'node tool.js "--pattern=a^b"',
+        // exclamation inside quotes
+        'node tool.js "--msg=Hello!"',
+      ];
+      for (const command of cases) {
+        const res = analyzeShellCommand({ command, platform: "win32" });
+        expect(res.ok).toBe(true);
+        expect(res.segments[0]?.argv[0]).toBe("node");
+      }
+    });
+
+    it("still rejects unquoted metacharacters on Windows", () => {
+      const cases = [
+        "ping 127.0.0.1 -n 1 & whoami",
+        "echo hello | clip",
+        "node tool.js > output.txt",
+        "for /f %i in (file.txt) do echo %i",
+      ];
+      for (const command of cases) {
+        const res = analyzeShellCommand({ command, platform: "win32" });
+        expect(res.ok).toBe(false);
+      }
+    });
+
+    it("still rejects % inside double quotes on Windows", () => {
+      const res = analyzeShellCommand({
+        command: 'node tool.js "--user=%USERNAME%"',
+        platform: "win32",
+      });
+      expect(res.ok).toBe(false);
     });
 
     it.each(['echo "output: \\$(whoami)"', "echo 'output: $(whoami)'"])(
@@ -341,5 +382,114 @@ describe("exec approvals shell analysis", () => {
     it("normalizes safe bin names", () => {
       expect([...normalizeSafeBins([" jq ", "", "JQ", " sort "])]).toEqual(["jq", "sort"]);
     });
+  });
+});
+
+describe("windowsEscapeArg", () => {
+  it("returns empty string quoted", () => {
+    expect(windowsEscapeArg("")).toEqual({ ok: true, escaped: '""' });
+  });
+
+  it("returns safe values as-is", () => {
+    expect(windowsEscapeArg("foo.exe")).toEqual({ ok: true, escaped: "foo.exe" });
+    expect(windowsEscapeArg("C:/Program/bin")).toEqual({ ok: true, escaped: "C:/Program/bin" });
+  });
+
+  it("double-quotes values with spaces", () => {
+    expect(windowsEscapeArg("hello world")).toEqual({ ok: true, escaped: '"hello world"' });
+  });
+
+  it("escapes embedded double quotes", () => {
+    expect(windowsEscapeArg('say "hi"')).toEqual({ ok: true, escaped: '"say ""hi"""' });
+  });
+
+  it("rejects tokens with % meta character", () => {
+    expect(windowsEscapeArg("%PATH%")).toEqual({ ok: false });
+  });
+
+  it("rejects tokens with ! meta character", () => {
+    expect(windowsEscapeArg("hello!")).toEqual({ ok: false });
+  });
+});
+
+describe("matchAllowlist with argPattern", () => {
+  const resolution = {
+    rawExecutable: "python3",
+    resolvedPath: "/usr/bin/python3",
+    executableName: "python3",
+  };
+
+  it("matches path-only entry regardless of argv", () => {
+    const entries: ExecAllowlistEntry[] = [{ pattern: "/usr/bin/python3" }];
+    expect(matchAllowlist(entries, resolution, ["python3", "a.py"])).toBeTruthy();
+    expect(matchAllowlist(entries, resolution, ["python3", "b.py"])).toBeTruthy();
+    expect(matchAllowlist(entries, resolution, ["python3"])).toBeTruthy();
+  });
+
+  it("matches argPattern with regex", () => {
+    const entries: ExecAllowlistEntry[] = [{ pattern: "/usr/bin/python3", argPattern: "^a\\.py$" }];
+    expect(matchAllowlist(entries, resolution, ["python3", "a.py"])).toBeTruthy();
+    expect(matchAllowlist(entries, resolution, ["python3", "b.py"])).toBeNull();
+    expect(matchAllowlist(entries, resolution, ["python3", "a.py", "--verbose"])).toBeNull();
+  });
+
+  it("prefers argPattern match over path-only match", () => {
+    const entries: ExecAllowlistEntry[] = [
+      { pattern: "/usr/bin/python3" },
+      { pattern: "/usr/bin/python3", argPattern: "^a\\.py$" },
+    ];
+    const match = matchAllowlist(entries, resolution, ["python3", "a.py"]);
+    expect(match).toBeTruthy();
+    expect(match!.argPattern).toBe("^a\\.py$");
+  });
+
+  it("falls back to path-only match when argPattern doesn't match", () => {
+    const entries: ExecAllowlistEntry[] = [
+      { pattern: "/usr/bin/python3" },
+      { pattern: "/usr/bin/python3", argPattern: "^a\\.py$" },
+    ];
+    const match = matchAllowlist(entries, resolution, ["python3", "b.py"]);
+    expect(match).toBeTruthy();
+    expect(match!.argPattern).toBeUndefined();
+  });
+
+  it("handles invalid regex gracefully", () => {
+    const entries: ExecAllowlistEntry[] = [{ pattern: "/usr/bin/python3", argPattern: "[invalid" }];
+    expect(matchAllowlist(entries, resolution, ["python3", "a.py"])).toBeNull();
+  });
+
+  it("supports regex alternation in argPattern", () => {
+    const entries: ExecAllowlistEntry[] = [
+      { pattern: "/usr/bin/python3", argPattern: "^(a|b)\\.py$" },
+    ];
+    expect(matchAllowlist(entries, resolution, ["python3", "a.py"])).toBeTruthy();
+    expect(matchAllowlist(entries, resolution, ["python3", "b.py"])).toBeTruthy();
+    expect(matchAllowlist(entries, resolution, ["python3", "c.py"])).toBeNull();
+  });
+});
+
+describe("Windows rebuildShellCommandFromSource", () => {
+  it("builds enforced command for simple Windows command", () => {
+    const analysis = analyzeShellCommand({
+      command: "python3 a.py",
+      platform: "win32",
+    });
+    expect(analysis.ok).toBe(true);
+    const result = buildEnforcedShellCommand({
+      command: "python3 a.py",
+      segments: analysis.segments,
+      platform: "win32",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.command).toBeDefined();
+  });
+
+  it("rejects Windows commands with unsafe tokens", () => {
+    const result = buildEnforcedShellCommand({
+      command: "echo ok & del file",
+      segments: [],
+      platform: "win32",
+    });
+    expect(result.ok).toBe(false);
   });
 });

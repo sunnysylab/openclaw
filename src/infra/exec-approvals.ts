@@ -106,6 +106,7 @@ export type ExecApprovalsDefaults = {
 export type ExecAllowlistEntry = {
   id?: string;
   pattern: string;
+  argPattern?: string;
   lastUsedAt?: number;
   lastUsedCommand?: string;
   lastResolvedPath?: string;
@@ -507,7 +508,8 @@ export function recordAllowlistUse(
   const existing = agents[target] ?? {};
   const allowlist = Array.isArray(existing.allowlist) ? existing.allowlist : [];
   const nextAllowlist = allowlist.map((item) =>
-    item.pattern === entry.pattern
+    item.pattern === entry.pattern &&
+    (item.argPattern ?? undefined) === (entry.argPattern ?? undefined)
       ? {
           ...item,
           id: item.id ?? crypto.randomUUID(),
@@ -526,6 +528,7 @@ export function addAllowlistEntry(
   approvals: ExecApprovalsFile,
   agentId: string | undefined,
   pattern: string,
+  argPattern?: string,
 ) {
   const target = agentId ?? DEFAULT_AGENT_ID;
   const agents = approvals.agents ?? {};
@@ -535,10 +538,23 @@ export function addAllowlistEntry(
   if (!trimmed) {
     return;
   }
-  if (allowlist.some((entry) => entry.pattern === trimmed)) {
+  const trimmedArgPattern = argPattern?.trim() || undefined;
+  if (
+    allowlist.some(
+      (entry) => entry.pattern === trimmed && (entry.argPattern ?? undefined) === trimmedArgPattern,
+    )
+  ) {
     return;
   }
-  allowlist.push({ id: crypto.randomUUID(), pattern: trimmed, lastUsedAt: Date.now() });
+  const newEntry: ExecAllowlistEntry = {
+    id: crypto.randomUUID(),
+    pattern: trimmed,
+    lastUsedAt: Date.now(),
+  };
+  if (trimmedArgPattern) {
+    newEntry.argPattern = trimmedArgPattern;
+  }
+  allowlist.push(newEntry);
   agents[target] = { ...existing, allowlist };
   approvals.agents = agents;
   saveExecApprovals(approvals);
@@ -554,7 +570,7 @@ export function maxAsk(a: ExecAsk, b: ExecAsk): ExecAsk {
   return order[a] >= order[b] ? a : b;
 }
 
-export type ExecApprovalDecision = "allow-once" | "allow-always" | "deny";
+export type ExecApprovalDecision = "allow-once" | "allow-always" | "deny" | "expired";
 
 export async function requestExecApprovalViaSocket(params: {
   socketPath: string;

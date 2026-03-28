@@ -816,6 +816,10 @@
       "types": "./dist/plugin-sdk/signal-account.d.ts",
       "default": "./dist/plugin-sdk/signal-account.js"
     },
+    "./plugin-sdk/signal-core": {
+      "types": "./dist/plugin-sdk/signal-core.d.ts",
+      "default": "./dist/plugin-sdk/signal-core.js"
+    },
     "./plugin-sdk/signal-surface": {
       "types": "./dist/plugin-sdk/signal-surface.d.ts",
       "default": "./dist/plugin-sdk/signal-surface.js"
