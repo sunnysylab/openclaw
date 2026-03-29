@@ -986,7 +986,8 @@ export function classifyFailoverReason(raw: string): FailoverReason | null {
   if (isImageSizeError(raw)) {
     return null;
   }
-  const leadingStatus = extractLeadingHttpStatus(raw.trim());
+  const trimmed = raw.trim();
+  const leadingStatus = extractLeadingHttpStatus(trimmed);
   if (leadingStatus) {
     const statusReason = classifyFailoverReasonFromHttpStatus(
       leadingStatus.code,
