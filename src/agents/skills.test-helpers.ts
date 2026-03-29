@@ -41,6 +41,7 @@ export function createCanonicalFixtureSkill(params: {
       source: params.source,
       baseDir: params.baseDir,
     }),
+    source: params.source,
     disableModelInvocation: params.disableModelInvocation ?? false,
-  };
+  } as Skill;
 }

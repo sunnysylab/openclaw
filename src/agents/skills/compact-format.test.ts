@@ -23,8 +23,9 @@ function makeSkill(name: string, desc = "A skill", filePath = `/skills/${name}/S
       source: "workspace",
       baseDir: `/skills/${name}`,
     }),
+    source: "workspace",
     disableModelInvocation: false,
-  };
+  } as Skill;
 }
 
 function makeEntry(skill: Skill): SkillEntry {
