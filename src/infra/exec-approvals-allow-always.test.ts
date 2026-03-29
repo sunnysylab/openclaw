@@ -142,9 +142,9 @@ describe("resolveAllowAlwaysPatterns", () => {
       safeBins,
     });
     if (params.expectPersisted) {
-      expect(persisted).toEqual([touch]);
+      expect(persistedPaths(persisted)).toEqual([touch]);
     } else {
-      expect(persisted).not.toContain(touch);
+      expect(persistedPaths(persisted)).not.toContain(touch);
     }
 
     const second = evaluateShellAllowlist({
@@ -289,7 +289,7 @@ describe("resolveAllowAlwaysPatterns", () => {
       env,
       safeBins,
     });
-    expect(persisted).toEqual([touch]);
+    expect(persistedPaths(persisted)).toEqual([touch]);
 
     const second = evaluateShellAllowlist({
       command: `sh -lc '$0 "$1"' touch ${path.join(dir, "second-marker")}`,
@@ -489,8 +489,8 @@ $0 \\"$1\\"" touch {marker}`,
       env: makePathEnv(dir),
       platform: process.platform,
     });
-    expect(patterns).toEqual([whoami]);
-    expect(patterns).not.toContain("/usr/bin/time");
+    expect(persistedPaths(patterns)).toEqual([whoami]);
+    expect(persistedPaths(patterns)).not.toContain("/usr/bin/time");
   });
 
   it("unwraps busybox/toybox shell applets and persists inner executables", () => {
