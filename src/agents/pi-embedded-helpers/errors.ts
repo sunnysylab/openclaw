@@ -986,6 +986,16 @@ export function classifyFailoverReason(raw: string): FailoverReason | null {
   if (isImageSizeError(raw)) {
     return null;
   }
+  const leadingStatus = extractLeadingHttpStatus(raw.trim());
+  if (leadingStatus) {
+    const statusReason = classifyFailoverReasonFromHttpStatus(
+      leadingStatus.code,
+      leadingStatus.rest,
+    );
+    if (statusReason) {
+      return statusReason;
+    }
+  }
   if (isCliSessionExpiredErrorMessage(raw)) {
     return "session_expired";
   }
