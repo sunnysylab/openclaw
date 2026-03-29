@@ -1003,11 +1003,6 @@ export function classifyFailoverReason(raw: string): FailoverReason | null {
   if (isModelNotFoundErrorMessage(raw)) {
     return "model_not_found";
   }
-  const trimmed = raw.trim();
-  const leadingStatus = extractLeadingHttpStatus(trimmed);
-  if (leadingStatus?.code === 410) {
-    return classifyFailoverReasonFromHttpStatus(leadingStatus.code, leadingStatus.rest);
-  }
   const reasonFrom402Text = classifyFailoverReasonFrom402Text(raw);
   if (reasonFrom402Text) {
     return reasonFrom402Text;
