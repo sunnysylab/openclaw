@@ -15,6 +15,10 @@ export function resolveDefaultAgentWorkspaceDir(
   homedir: () => string = os.homedir,
 ): string {
   const stateDir = resolveStateDir(env, () => resolveRequiredHomeDir(env, homedir));
+  const profile = env.OPENCLAW_PROFILE?.trim();
+  if (profile && profile.toLowerCase() !== "default") {
+    return path.join(stateDir, `workspace-${profile}`);
+  }
   return path.join(stateDir, "workspace");
 }
 

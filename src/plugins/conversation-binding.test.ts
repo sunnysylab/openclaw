@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ConversationRef,
   SessionBindingAdapter,
@@ -13,7 +13,18 @@ import type { PluginRegistry } from "./registry.js";
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-plugin-binding-"));
 const approvalsPath = path.join(tempRoot, "plugin-binding-approvals.json");
 
-process.env.OPENCLAW_STATE_DIR = tempRoot;
+let savedStateDir: string | undefined;
+beforeAll(() => {
+  savedStateDir = process.env.OPENCLAW_STATE_DIR;
+  process.env.OPENCLAW_STATE_DIR = tempRoot;
+});
+afterAll(() => {
+  if (savedStateDir === undefined) {
+    delete process.env.OPENCLAW_STATE_DIR;
+  } else {
+    process.env.OPENCLAW_STATE_DIR = savedStateDir;
+  }
+});
 
 const sessionBindingState = vi.hoisted(() => {
   const records = new Map<string, SessionBindingRecord>();
