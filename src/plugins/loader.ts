@@ -1237,6 +1237,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
           pluginConfig: {},
           hookPolicy: entry?.hooks,
           registrationMode,
+          shouldActivate,
         });
         api.registerChannel(setupRegistration.plugin);
         registry.plugins.push(record);
@@ -1326,6 +1327,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       pluginConfig: validatedConfig.value,
       hookPolicy: entry?.hooks,
       registrationMode,
+      shouldActivate,
     });
     const previousMemoryEmbeddingProviders = listRegisteredMemoryEmbeddingProviders();
     const previousMemoryFlushPlanResolver = getMemoryFlushPlanResolver();
