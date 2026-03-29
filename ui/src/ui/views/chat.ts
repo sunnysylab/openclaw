@@ -1515,13 +1515,22 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
   const tools = Array.isArray(props.toolMessages) ? props.toolMessages : [];
   const historyStart = resolveHistoryStartIndex(history, props.showToolCalls);
   if (historyStart > 0) {
-    const visibleCount = history.length - historyStart;
+    let visibleCount = 0;
+    for (let i = historyStart; i < history.length; i++) {
+      if (
+        !props.showToolCalls &&
+        normalizeMessage(history[i]).role.toLowerCase() === "toolresult"
+      ) {
+        continue;
+      }
+      visibleCount++;
+    }
     items.push({
       kind: "message",
       key: "chat:history:notice",
       message: {
         role: "system",
-        content: `Showing last ${visibleCount} messages (${historyStart} hidden).`,
+        content: `Showing last ${visibleCount} messages (${historyStart} older messages hidden).`,
         timestamp: Date.now(),
       },
     });

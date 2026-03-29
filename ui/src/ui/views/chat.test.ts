@@ -380,7 +380,7 @@ describe("chat view", () => {
       container,
     );
 
-    expect(container.textContent).toContain("Showing last 200 messages (5 hidden).");
+    expect(container.textContent).toContain("Showing last 200 messages (5 older messages hidden).");
   });
 
   it("caps rendered history by total render char budget", () => {
@@ -400,7 +400,7 @@ describe("chat view", () => {
       container,
     );
 
-    expect(container.textContent).toContain("Showing last 2 messages (4 hidden).");
+    expect(container.textContent).toContain("Showing last 2 messages (4 older messages hidden).");
   });
 
   it("counts tool_result content field toward the char budget", () => {
@@ -446,6 +446,23 @@ describe("chat view", () => {
     expect(container.textContent).not.toContain("hidden");
   });
 
+  it("history notice counts only visible messages when tool calls are hidden", () => {
+    const messages: unknown[] = [];
+    for (let i = 0; i < 210; i++) {
+      messages.push({ role: "user", content: `msg ${i}`, timestamp: i * 2 + 1 });
+      messages.push({ role: "toolresult", content: "tool output", timestamp: i * 2 + 2 });
+    }
+    const container = document.createElement("div");
+    render(renderChat(createProps({ messages, showToolCalls: false })), container);
+    const text = container.textContent ?? "";
+    expect(text).toContain("older messages hidden");
+    expect(text).not.toContain("Showing last 400");
+    const match = text.match(/Showing last (\d+) messages/);
+    expect(match).toBeTruthy();
+    const visibleCount = Number(match![1]);
+    expect(visibleCount).toBeLessThanOrEqual(200);
+  });
+
   it("caps the raw walk when most history items are hidden tool messages", () => {
     const messages: unknown[] = [];
     for (let i = 0; i < 1000; i++) {
@@ -462,7 +479,7 @@ describe("chat view", () => {
 
     const text = container.textContent ?? "";
     expect(text).toContain("hidden");
-    expect(text).not.toContain("Showing last 2 messages (1000 hidden)");
+    expect(text).not.toContain("1000 older messages hidden");
   });
 
   it("uses the assistant avatar URL for the welcome state when the identity avatar is only initials", () => {
