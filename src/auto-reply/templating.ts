@@ -26,6 +26,10 @@ export type MsgContext = {
     sender: string;
     body: string;
     timestamp?: number;
+    /** Local file path for a downloaded media attachment in this history entry. */
+    mediaPath?: string;
+    /** MIME type of the media attachment, if present. */
+    mediaType?: string;
   }>;
   /**
    * Raw message body without structural context (history, sender labels).
@@ -65,6 +69,9 @@ export type MsgContext = {
   ReplyToBody?: string;
   ReplyToSender?: string;
   ReplyToIsQuote?: boolean;
+  /** Local file path of the reply-target media attachment, if any. */
+  ReplyToMediaPath?: string;
+  ReplyToMediaType?: string;
   /** Forward origin from the reply target (when reply_to_message is a forwarded message). */
   ReplyToForwardedFrom?: string;
   ReplyToForwardedFromType?: string;
