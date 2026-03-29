@@ -114,11 +114,31 @@ function countJsonlLines(filePath: string): number {
   }
 }
 
+export function resolveStateDirScanRoots(
+  currentHome: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const roots = new Set<string>();
+  if (platform === "darwin") {
+    roots.add("/Users");
+  } else if (platform === "linux") {
+    roots.add("/home");
+  }
+
+  const resolvedHome = path.resolve(currentHome);
+  const homeParent = path.dirname(resolvedHome);
+  const fsRoot = path.parse(resolvedHome).root;
+  if (homeParent !== fsRoot && homeParent !== resolvedHome) {
+    roots.add(homeParent);
+  }
+
+  return Array.from(roots);
+}
+
 function findOtherStateDirs(stateDir: string): string[] {
   const resolvedState = canonicalizePathForComparison(stateDir);
   const currentHome = resolveRequiredHomeDir(process.env, os.homedir);
-  const homeParent = path.dirname(path.resolve(currentHome));
-  const roots = process.platform === "darwin" || process.platform === "linux" ? [homeParent] : [];
+  const roots = resolveStateDirScanRoots(currentHome);
   const found: string[] = [];
   for (const root of roots) {
     let entries: fs.Dirent[] = [];

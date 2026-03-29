@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveStorePath, resolveSessionTranscriptsDirForAgent } from "../config/sessions.js";
 import { note } from "../terminal/note.js";
-import { noteStateIntegrity } from "./doctor-state-integrity.js";
+import { noteStateIntegrity, resolveStateDirScanRoots } from "./doctor-state-integrity.js";
 
 vi.mock("../terminal/note.js", () => ({
   note: vi.fn(),
@@ -203,5 +203,19 @@ describe("doctor state integrity oauth dir checks", () => {
     const text = await runStateIntegrityText({});
     expect(text).not.toContain(legacyStateDir);
     expect(text).not.toContain("$OPENCLAW_HOME/.openclaw");
+  });
+});
+
+describe("resolveStateDirScanRoots", () => {
+  it("does not scan filesystem root when linux home is /root", () => {
+    expect(resolveStateDirScanRoots("/root", "linux")).toEqual(["/home"]);
+  });
+
+  it("keeps scanning sibling homes for non-root custom home parents", () => {
+    expect(resolveStateDirScanRoots("/srv/openclaw", "linux")).toEqual(["/home", "/srv"]);
+  });
+
+  it("deduplicates the default macOS users root", () => {
+    expect(resolveStateDirScanRoots("/Users/chris", "darwin")).toEqual(["/Users"]);
   });
 });
