@@ -4,6 +4,10 @@
   "private": true,
   "description": "OpenClaw Venice provider plugin",
   "type": "module",
+  "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@noble/secp256k1": "^2.1.0"
+  },
   "openclaw": {
     "extensions": [
       "./index.ts"
