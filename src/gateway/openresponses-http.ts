@@ -36,6 +36,7 @@ import type { ResolvedGatewayAuth } from "./auth.js";
 import { sendJson, setSseHeaders, writeDone } from "./http-common.js";
 import { handleGatewayPostJsonEndpoint } from "./http-endpoint-helpers.js";
 import {
+  GatewaySessionKeyOverrideError,
   getBearerToken,
   getHeader,
   resolveAgentIdForRequest,
@@ -625,14 +626,28 @@ export async function handleOpenResponsesHttpRequest(
     });
     return true;
   }
-  const resolved = resolveGatewayRequestContext({
-    req,
-    model,
-    user,
-    sessionPrefix: "openresponses",
-    defaultMessageChannel: "webchat",
-    useMessageChannelHeader: true,
-  });
+  let resolved: ReturnType<typeof resolveGatewayRequestContext>;
+  try {
+    resolved = resolveGatewayRequestContext({
+      req,
+      model,
+      user,
+      sessionPrefix: "openresponses",
+      defaultMessageChannel: "webchat",
+      useMessageChannelHeader: true,
+    });
+  } catch (err) {
+    if (err instanceof GatewaySessionKeyOverrideError) {
+      sendJson(res, 400, {
+        error: {
+          message: err.message,
+          type: "invalid_request_error",
+        },
+      });
+      return true;
+    }
+    throw err;
+  }
   const responseSessionScope = createResponseSessionScope({
     req,
     auth: opts.auth,
