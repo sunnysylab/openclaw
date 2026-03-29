@@ -488,7 +488,7 @@ export async function runReplyAgent(params: {
         accountId: sessionCtx?.accountId,
       });
       const accountConfig = telegramResolved.config;
-      return accountConfig?.modelStatusNotices ?? cfg.channels?.telegram?.modelStatusNotices ?? true;
+      return accountConfig?.modelStatusNotices ?? cfg.channels?.telegram?.modelStatusNotices ?? false;
     })();
     const selectedProvider = followupRun.run.provider;
     const selectedModel = followupRun.run.model;

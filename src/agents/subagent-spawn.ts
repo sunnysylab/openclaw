@@ -816,6 +816,43 @@ export async function spawnSubagentDirect(
     }
   }
 
+  // Send Telegram subagent start announcement if enabled in config
+  if (requesterOrigin?.channel === "telegram") {
+    try {
+      const { resolveTelegramSubagentNoticeFlags, buildTelegramSubagentStartNotice } = await import(
+        "./telegram-subagent-notifications.js"
+      );
+      const flags = resolveTelegramSubagentNoticeFlags(cfg, requesterOrigin?.accountId);
+      if (flags.subagentStartAnnouncements) {
+        const noticeText = buildTelegramSubagentStartNotice({
+          label: label || undefined,
+          task,
+          model: resolvedModel || undefined,
+        });
+        if (noticeText) {
+          // Emit as a verbose notice via the gateway so it reaches the user's chat
+          try {
+            await callGateway({
+              method: "message.send",
+              params: {
+                channel: requesterOrigin.channel,
+                accountId: requesterOrigin.accountId,
+                to: requesterOrigin.to,
+                threadId: requesterOrigin.threadId,
+                text: noticeText,
+              },
+              timeoutMs: 10_000,
+            });
+          } catch {
+            // Best-effort; don't fail spawn on notification error.
+          }
+        }
+      }
+    } catch {
+      // Best-effort; notification module may not be available.
+    }
+  }
+
   // Emit lifecycle event so the gateway can broadcast sessions.changed to SSE subscribers.
   emitSessionLifecycleEvent({
     sessionKey: childSessionKey,
