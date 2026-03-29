@@ -68,6 +68,23 @@ export function isFallbackSummaryError(err: unknown): err is FallbackSummaryErro
 
 export type ModelFallbackRunOptions = {
   allowTransientCooldownProbe?: boolean;
+  /**
+   * When true, the inner runner should throw FailoverError for recognized
+   * provider errors (billing, rate-limit, overloaded, auth) even if its own
+   * config-based fallback check returns false. This bridges the gap between
+   * the outer fallback candidate list (which may include session/override
+   * fallbacks) and the inner runner's defaults-only fallback gate.
+   */
+  externalFallbackActive?: boolean;
+  /**
+   * Original requested model selection for the outer fallback run. Later
+   * fallback attempts can differ from the persisted session selection without
+   * implying a user-requested live model switch.
+   */
+  fallbackBaselineSelection?: {
+    provider: string;
+    model: string;
+  };
 };
 
 type ModelFallbackRunFn<T> = (
@@ -607,6 +624,12 @@ export async function runWithModelFallback<T>(params: {
   const attempts: FallbackAttempt[] = [];
   let lastError: unknown;
   const cooldownProbeUsedProviders = new Set<string>();
+  const fallbackBaselineSelection = candidates[0]
+    ? {
+        provider: candidates[0].provider,
+        model: candidates[0].model,
+      }
+    : undefined;
 
   const hasFallbackCandidates = candidates.length > 1;
 
@@ -728,11 +751,28 @@ export async function runWithModelFallback<T>(params: {
       }
     }
 
+    // Tell the inner runner that the outer fallback loop has additional
+    // candidates so it throws FailoverError for recognized provider errors
+    // even when its own config-based fallback gate says otherwise.
+    // Only set when there are remaining candidates after this one — the last
+    // candidate has nothing to fall back to and should not get the flag.
+    const hasRemainingCandidates = i < candidates.length - 1;
+    const effectiveOptions =
+      i > 0
+        ? {
+            ...runOptions,
+            ...(hasRemainingCandidates ? { externalFallbackActive: true } : {}),
+            fallbackBaselineSelection,
+          }
+        : hasRemainingCandidates
+          ? { ...runOptions, externalFallbackActive: true }
+          : runOptions;
+
     const attemptRun = await runFallbackAttempt({
       run: params.run,
       ...candidate,
       attempts,
-      options: runOptions,
+      options: effectiveOptions,
     });
     if ("success" in attemptRun) {
       if (i > 0 || attempts.length > 0 || attemptedDuringCooldown) {

@@ -137,6 +137,20 @@ function createFallbackOnlyRun() {
   });
 }
 
+function withFallbackBaseline(
+  provider: string,
+  model: string,
+  extra?: Record<string, unknown>,
+) {
+  return {
+    ...extra,
+    fallbackBaselineSelection: {
+      provider,
+      model,
+    },
+  };
+}
+
 async function expectSkippedUnavailableProvider(params: {
   providerPrefix: string;
   usageStat: NonNullable<AuthProfileStore["usageStats"]>[string];
@@ -170,7 +184,7 @@ async function expectSkippedUnavailableProvider(params: {
   });
 
   expect(result.result).toBe("ok");
-  expect(run.mock.calls).toEqual([["fallback", "ok-model"]]);
+  expect(run.mock.calls).toEqual([["fallback", "ok-model", withFallbackBaseline(provider, "m1")]]);
   expect(result.attempts[0]?.reason).toBe(params.expectedReason);
 }
 
@@ -203,7 +217,7 @@ describe("runWithModelFallback", () => {
 
     expect(result.result).toBe("ok");
     expect(run).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith("openai", "gpt-5.4");
+    expect(run).toHaveBeenCalledWith("openai", "gpt-5.4", { externalFallbackActive: true });
   });
 
   it("falls back on unrecognized errors when candidates remain", async () => {
@@ -302,8 +316,8 @@ describe("runWithModelFallback", () => {
     expect(result.provider).toBe("openai");
     expect(result.model).toBe("gpt-4.1-mini");
     expect(run.mock.calls).toEqual([
-      ["anthropic", "claude-opus-4-5"],
-      ["openai", "gpt-4.1-mini"],
+      ["anthropic", "claude-opus-4-5", { externalFallbackActive: true }],
+      ["openai", "gpt-4.1-mini", withFallbackBaseline("anthropic", "claude-opus-4-5")],
     ]);
   });
 
@@ -340,8 +354,12 @@ describe("runWithModelFallback", () => {
     expect(result.provider).toBe("openrouter");
     expect(result.model).toBe("openrouter/deepseek-chat");
     expect(run.mock.calls).toEqual([
-      ["anthropic", "claude-haiku-3-5"],
-      ["openrouter", "openrouter/deepseek-chat"],
+      ["anthropic", "claude-haiku-3-5", { externalFallbackActive: true }],
+      [
+        "openrouter",
+        "openrouter/deepseek-chat",
+        withFallbackBaseline("anthropic", "claude-haiku-3-5", { externalFallbackActive: true }),
+      ],
     ]);
   });
 
@@ -371,8 +389,8 @@ describe("runWithModelFallback", () => {
 
     expect(result.result).toBe("ok");
     expect(run.mock.calls).toEqual([
-      ["openai", "gpt-4.1-mini"],
-      ["anthropic", "claude-haiku-3-5"],
+      ["openai", "gpt-4.1-mini", { externalFallbackActive: true }],
+      ["anthropic", "claude-haiku-3-5", withFallbackBaseline("openai", "gpt-4.1-mini")],
     ]);
   });
 
@@ -442,8 +460,8 @@ describe("runWithModelFallback", () => {
 
     expect(result.result).toBe("ok");
     expect(run.mock.calls).toEqual([
-      ["anthropic", "claude-opus-4"],
-      ["openai", "gpt-4.1-mini"],
+      ["anthropic", "claude-opus-4", { externalFallbackActive: true }],
+      ["openai", "gpt-4.1-mini", withFallbackBaseline("anthropic", "claude-opus-4")],
     ]);
   });
 
@@ -645,7 +663,7 @@ describe("runWithModelFallback", () => {
     });
 
     expect(result.result).toBe("ok");
-    expect(run.mock.calls).toEqual([[provider, "m1"]]);
+    expect(run.mock.calls).toEqual([[provider, "m1", { externalFallbackActive: true }]]);
     expect(result.attempts).toEqual([]);
   });
 
@@ -674,8 +692,12 @@ describe("runWithModelFallback", () => {
     ).rejects.toThrow("All models failed");
 
     expect(run.mock.calls).toEqual([
-      ["anthropic", "claude-opus-4-5"],
-      ["anthropic", "claude-haiku-3-5"],
+      ["anthropic", "claude-opus-4-5", { externalFallbackActive: true }],
+      [
+        "anthropic",
+        "claude-haiku-3-5",
+        withFallbackBaseline("anthropic", "claude-opus-4-5"),
+      ],
     ]);
   });
 
@@ -870,8 +892,12 @@ describe("runWithModelFallback", () => {
 
     expect(result.result).toBe("ok");
     expect(run.mock.calls).toEqual([
-      ["anthropic", "claude-sonnet-4"],
-      ["openai", "gpt-4o"],
+      ["anthropic", "claude-sonnet-4", { externalFallbackActive: true }],
+      [
+        "openai",
+        "gpt-4o",
+        withFallbackBaseline("anthropic", "claude-sonnet-4", { externalFallbackActive: true }),
+      ],
     ]);
   });
 
@@ -1137,8 +1163,16 @@ describe("runWithModelFallback", () => {
 
       expect(result.result).toBe("fallback success");
       expect(run).toHaveBeenCalledTimes(2);
-      expect(run).toHaveBeenNthCalledWith(1, "anthropic", "claude-sonnet-4-20250514");
-      expect(run).toHaveBeenNthCalledWith(2, "anthropic", "claude-sonnet-4-5"); // Fallback tried
+      expect(run).toHaveBeenNthCalledWith(1, "anthropic", "claude-sonnet-4-20250514", {
+        externalFallbackActive: true,
+      });
+      expect(run).toHaveBeenNthCalledWith(2, "anthropic", "claude-sonnet-4-5", {
+        externalFallbackActive: true,
+        fallbackBaselineSelection: {
+          provider: "anthropic",
+          model: "claude-sonnet-4-20250514",
+        },
+      }); // Fallback tried
     });
 
     it("allows fallbacks with model version differences within same provider", async () => {
@@ -1167,7 +1201,13 @@ describe("runWithModelFallback", () => {
 
       expect(result.result).toBe("groq success");
       expect(run).toHaveBeenCalledTimes(2);
-      expect(run).toHaveBeenNthCalledWith(2, "groq", "llama-3.3-70b-versatile");
+      expect(run).toHaveBeenNthCalledWith(2, "groq", "llama-3.3-70b-versatile", {
+        externalFallbackActive: true,
+        fallbackBaselineSelection: {
+          provider: "anthropic",
+          model: "claude-opus-4-5",
+        },
+      });
     });
 
     it("still skips fallbacks when using different provider than config", async () => {
@@ -1197,8 +1237,15 @@ describe("runWithModelFallback", () => {
       // Cross-provider requests should skip configured fallbacks but still try configured primary
       expect(result.result).toBe("config primary worked");
       expect(run).toHaveBeenCalledTimes(2);
-      expect(run).toHaveBeenNthCalledWith(1, "openai", "gpt-4.1-mini"); // Original request
-      expect(run).toHaveBeenNthCalledWith(2, "anthropic", "claude-opus-4-6"); // Config primary as final fallback
+      expect(run).toHaveBeenNthCalledWith(1, "openai", "gpt-4.1-mini", {
+        externalFallbackActive: true,
+      }); // Original request
+      expect(run).toHaveBeenNthCalledWith(
+        2,
+        "anthropic",
+        "claude-opus-4-6",
+        withFallbackBaseline("openai", "gpt-4.1-mini"),
+      ); // Config primary as final fallback
     });
 
     it("uses fallbacks when session model exactly matches config primary", async () => {
@@ -1227,7 +1274,9 @@ describe("runWithModelFallback", () => {
 
       expect(result.result).toBe("fallback worked");
       expect(run).toHaveBeenCalledTimes(2);
-      expect(run).toHaveBeenNthCalledWith(2, "groq", "llama-3.3-70b-versatile");
+      expect(
+        run,
+      ).toHaveBeenNthCalledWith(2, "groq", "llama-3.3-70b-versatile", withFallbackBaseline("anthropic", "claude-opus-4-6"));
     });
   });
 
@@ -1291,6 +1340,11 @@ describe("runWithModelFallback", () => {
       expect(run).toHaveBeenCalledTimes(1); // Primary skipped, fallback attempted
       expect(run).toHaveBeenNthCalledWith(1, "anthropic", "claude-sonnet-4-5", {
         allowTransientCooldownProbe: true,
+        externalFallbackActive: true,
+        fallbackBaselineSelection: {
+          provider: "anthropic",
+          model: "claude-opus-4-6",
+        },
       });
     });
 
@@ -1321,6 +1375,11 @@ describe("runWithModelFallback", () => {
       expect(run).toHaveBeenCalledTimes(1);
       expect(run).toHaveBeenNthCalledWith(1, "anthropic", "claude-sonnet-4-5", {
         allowTransientCooldownProbe: true,
+        externalFallbackActive: true,
+        fallbackBaselineSelection: {
+          provider: "anthropic",
+          model: "claude-opus-4-6",
+        },
       });
     });
 
@@ -1349,7 +1408,9 @@ describe("runWithModelFallback", () => {
 
       expect(result.result).toBe("groq success");
       expect(run).toHaveBeenCalledTimes(1);
-      expect(run).toHaveBeenNthCalledWith(1, "groq", "llama-3.3-70b-versatile");
+      expect(
+        run,
+      ).toHaveBeenNthCalledWith(1, "groq", "llama-3.3-70b-versatile", withFallbackBaseline("anthropic", "claude-opus-4-6"));
     });
 
     it("skips same-provider models on billing cooldown but still tries no-profile fallback providers", async () => {
@@ -1377,7 +1438,9 @@ describe("runWithModelFallback", () => {
 
       expect(result.result).toBe("groq success");
       expect(run).toHaveBeenCalledTimes(1);
-      expect(run).toHaveBeenNthCalledWith(1, "groq", "llama-3.3-70b-versatile");
+      expect(
+        run,
+      ).toHaveBeenNthCalledWith(1, "groq", "llama-3.3-70b-versatile", withFallbackBaseline("anthropic", "claude-opus-4-6"));
     });
 
     it("tries cross-provider fallbacks when same provider has rate limit", async () => {
@@ -1428,8 +1491,15 @@ describe("runWithModelFallback", () => {
       expect(run).toHaveBeenCalledTimes(2);
       expect(run).toHaveBeenNthCalledWith(1, "anthropic", "claude-sonnet-4-5", {
         allowTransientCooldownProbe: true,
+        externalFallbackActive: true,
+        fallbackBaselineSelection: {
+          provider: "anthropic",
+          model: "claude-opus-4-6",
+        },
       }); // Rate limit allows attempt
-      expect(run).toHaveBeenNthCalledWith(2, "groq", "llama-3.3-70b-versatile"); // Cross-provider works
+      expect(
+        run,
+      ).toHaveBeenNthCalledWith(2, "groq", "llama-3.3-70b-versatile", withFallbackBaseline("anthropic", "claude-opus-4-6")); // Cross-provider works
     });
 
     it("limits cooldown probes to one per provider before moving to cross-provider fallback", async () => {
@@ -1468,8 +1538,15 @@ describe("runWithModelFallback", () => {
       expect(run).toHaveBeenCalledTimes(2);
       expect(run).toHaveBeenNthCalledWith(1, "anthropic", "claude-sonnet-4-5", {
         allowTransientCooldownProbe: true,
+        externalFallbackActive: true,
+        fallbackBaselineSelection: {
+          provider: "anthropic",
+          model: "claude-opus-4-6",
+        },
       });
-      expect(run).toHaveBeenNthCalledWith(2, "groq", "llama-3.3-70b-versatile");
+      expect(
+        run,
+      ).toHaveBeenNthCalledWith(2, "groq", "llama-3.3-70b-versatile", withFallbackBaseline("anthropic", "claude-opus-4-6"));
     });
 
     it("does not consume transient probe slot when first same-provider probe fails with model_not_found", async () => {
@@ -1506,9 +1583,19 @@ describe("runWithModelFallback", () => {
       expect(run).toHaveBeenCalledTimes(2);
       expect(run).toHaveBeenNthCalledWith(1, "anthropic", "claude-sonnet-4-5", {
         allowTransientCooldownProbe: true,
+        externalFallbackActive: true,
+        fallbackBaselineSelection: {
+          provider: "anthropic",
+          model: "claude-opus-4-6",
+        },
       });
       expect(run).toHaveBeenNthCalledWith(2, "anthropic", "claude-haiku-3-5", {
         allowTransientCooldownProbe: true,
+        externalFallbackActive: true,
+        fallbackBaselineSelection: {
+          provider: "anthropic",
+          model: "claude-opus-4-6",
+        },
       });
     });
   });

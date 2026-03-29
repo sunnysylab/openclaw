@@ -129,4 +129,19 @@ export type RunEmbeddedPiAgentParams = {
    * where transient service pressure is often model-scoped.
    */
   allowTransientCooldownProbe?: boolean;
+  /**
+   * When true, the outer model-fallback orchestrator has additional candidates
+   * to try. The inner runner should throw FailoverError for recognized provider
+   * errors even if its own config-based `fallbackConfigured` check is false.
+   */
+  externalFallbackActive?: boolean;
+  /**
+   * Original requested selection for an outer fallback run. Later fallback
+   * attempts can differ from persisted session selection without implying a
+   * user-requested live model switch.
+   */
+  fallbackBaselineSelection?: {
+    provider: string;
+    model: string;
+  };
 };
