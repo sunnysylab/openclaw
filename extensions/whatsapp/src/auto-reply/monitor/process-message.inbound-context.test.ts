@@ -330,6 +330,31 @@ describe("web processMessage inbound context", () => {
     );
   });
 
+  it("delivers media-only block payloads to WhatsApp", async () => {
+    await processMessage(createWhatsAppDirectStreamingArgs());
+
+    // oxlint-disable-next-line typescript/no-explicit-any
+    const deliver = (capturedDispatchParams as any)?.dispatcherOptions?.deliver as
+      | ((
+          payload: { text?: string; mediaUrl?: string; audioAsVoice?: boolean },
+          info: { kind: "block" },
+        ) => Promise<void>)
+      | undefined;
+    expect(deliver).toBeTypeOf("function");
+
+    await deliver?.({ mediaUrl: "/tmp/test.opus", audioAsVoice: true }, { kind: "block" });
+
+    expect(deliverWebReplyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyResult: expect.objectContaining({
+          mediaUrl: "/tmp/test.opus",
+          text: undefined,
+          audioAsVoice: true,
+        }),
+      }),
+    );
+  });
+
   it("forces disableBlockStreaming for WhatsApp dispatch", async () => {
     await processMessage(createWhatsAppDirectStreamingArgs());
 

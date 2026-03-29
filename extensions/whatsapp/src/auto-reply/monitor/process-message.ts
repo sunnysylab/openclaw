@@ -20,7 +20,6 @@ import type { getReplyFromConfig } from "openclaw/plugin-sdk/reply-runtime";
 import { finalizeInboundContext } from "openclaw/plugin-sdk/reply-runtime";
 import { dispatchReplyWithBufferedBlockDispatcher } from "openclaw/plugin-sdk/reply-runtime";
 import type { ReplyPayload } from "openclaw/plugin-sdk/reply-runtime";
-import { resolveToolDeliveryPayload } from "../../../../../src/auto-reply/reply/reply-payloads.js";
 import {
   resolveInboundLastRouteSessionKey,
   type resolveAgentRoute,
@@ -33,6 +32,7 @@ import {
   resolveDmGroupAccessWithCommandGate,
 } from "openclaw/plugin-sdk/security-runtime";
 import { jidToE164, normalizeE164 } from "openclaw/plugin-sdk/text-runtime";
+import { resolveToolDeliveryPayload } from "../../../../../src/auto-reply/reply/reply-payloads.js";
 import { resolveWhatsAppAccount } from "../../accounts.js";
 import {
   getPrimaryIdentityId,
@@ -417,15 +417,14 @@ export async function processMessage(params: {
         const deliveryPayload =
           info.kind === "final"
             ? payload
-            : info.kind === "tool"
-              ? resolveToolDeliveryPayload(payload, {
-                  allowText: false,
-                  allowExecApproval: false,
-                })
-              : null;
+            : resolveToolDeliveryPayload(payload, {
+                allowText: false,
+                allowExecApproval: false,
+              });
         if (info.kind !== "final") {
           // Block (reasoning/thinking) updates are meant for the internal web UI only.
-          // Media-only tool results, such as TTS audio, still need delivery.
+          // Media-only tool/block results, such as TTS audio flushed at agent end,
+          // still need delivery.
           if (!deliveryPayload) {
             return;
           }
