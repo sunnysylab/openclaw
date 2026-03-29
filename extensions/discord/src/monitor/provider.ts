@@ -910,6 +910,7 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts = {}) {
         createDiscordGatewaySupervisorForTesting ?? createDiscordGatewaySupervisor,
       createAutoPresenceController: createDiscordAutoPresenceController,
       isDisallowedIntentsError: isDiscordDisallowedIntentsError,
+      restFetch: discordRestFetch,
     });
     lifecycleGateway = gateway;
     gatewaySupervisor = createdGatewaySupervisor;
