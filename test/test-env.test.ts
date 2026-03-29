@@ -152,8 +152,6 @@ describe("installTestEnv", () => {
       }
       return existsSync(targetPath);
     });
-
->>>>>>> cdaee82a4a (test: load live profile env without bash)
     process.env.HOME = realHome;
     process.env.USERPROFILE = realHome;
     process.env.OPENCLAW_LIVE_TEST = "1";

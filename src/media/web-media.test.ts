@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { importFreshModule } from "../../test/helpers/import-fresh.js";
 import { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
 import { createJpegBufferWithDimensions, createPngBufferWithDimensions } from "./test-helpers.js";
 
@@ -13,13 +14,24 @@ const TINY_PNG_BASE64 =
 let fixtureRoot = "";
 let oversizedJpegFile = "";
 let tinyPngFile = "";
+let fakeHeicFile = "";
+
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.resetModules();
+  vi.doUnmock("./image-ops.js");
+  vi.doUnmock("./mime.js");
+  vi.doUnmock("./ffmpeg-exec.js");
+});
 
 beforeAll(async () => {
   ({ loadWebMedia } = await import("./web-media.js"));
   fixtureRoot = await fs.mkdtemp(path.join(resolvePreferredOpenClawTmpDir(), "web-media-core-"));
   tinyPngFile = path.join(fixtureRoot, "tiny.png");
   oversizedJpegFile = path.join(fixtureRoot, "oversized.jpg");
+  fakeHeicFile = path.join(fixtureRoot, "tiny.heic");
   await fs.writeFile(tinyPngFile, Buffer.from(TINY_PNG_BASE64, "base64"));
+  await fs.writeFile(fakeHeicFile, Buffer.from(TINY_PNG_BASE64, "base64"));
   await fs.writeFile(
     oversizedJpegFile,
     createJpegBufferWithDimensions({ width: 6_000, height: 5_000 }),
@@ -170,5 +182,46 @@ describe("loadWebMedia", () => {
       expect(result.kind).toBe("image");
       expect(result.buffer.length).toBeGreaterThan(0);
     });
+  });
+
+  it("normalizes HEIC local files to JPEG output", async () => {
+    const result = await loadWebMedia(fakeHeicFile, createLocalWebMediaOptions());
+
+    expect(result.kind).toBe("image");
+    expect(result.contentType).toBe("image/jpeg");
+    expect(result.fileName).toBe("tiny.jpg");
+    expect(result.buffer[0]).toBe(0xff);
+    expect(result.buffer[1]).toBe(0xd8);
+  });
+
+  it("relabels audio-only webm files as audio before delivery", async () => {
+    const audioOnlyWebmFile = path.join(fixtureRoot, "voice.webm");
+    await fs.writeFile(audioOnlyWebmFile, Buffer.from("fake-webm"));
+    const detectMimeMock = vi.fn().mockResolvedValueOnce("video/webm");
+    const runFfprobeMock = vi.fn().mockResolvedValueOnce("audio\n");
+    vi.doMock("./mime.js", async () => {
+      const actual = await vi.importActual<typeof import("./mime.js")>("./mime.js");
+      return {
+        ...actual,
+        detectMime: detectMimeMock,
+      };
+    });
+    vi.doMock("./ffmpeg-exec.js", async () => {
+      const actual = await vi.importActual<typeof import("./ffmpeg-exec.js")>("./ffmpeg-exec.js");
+      return {
+        ...actual,
+        runFfprobe: runFfprobeMock,
+      };
+    });
+    const { loadWebMedia: loadFreshWebMedia } = await importFreshModule<
+      typeof import("./web-media.js")
+    >(import.meta.url, "./web-media.js?scope=audio-only-webm");
+
+    const result = await loadFreshWebMedia(audioOnlyWebmFile, createLocalWebMediaOptions());
+
+    expect(detectMimeMock).toHaveBeenCalledTimes(1);
+    expect(runFfprobeMock).toHaveBeenCalledTimes(1);
+    expect(result.kind).toBe("audio");
+    expect(result.contentType).toBe("audio/webm");
   });
 });
