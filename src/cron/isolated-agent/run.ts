@@ -693,7 +693,8 @@ export async function runCronIsolatedAgentTurn(params: {
     await persistSessionEntry();
   }
 
-  // Fire session_end for the completed cron isolated agent session.
+  // Fire session_end for the cron isolated agent session (fires on all exit paths,
+  // including abort — plugin authors should fetch session state for outcome details).
   const hookRunner = getGlobalHookRunner();
   if (hookRunner?.hasHooks("session_end")) {
     const payload = buildSessionEndHookPayload({
