@@ -250,7 +250,7 @@ export function buildGogWatchServeArgs(cfg: GmailHookRuntimeConfig): string[] {
   if (cfg.includeBody) {
     args.push("--include-body");
   }
-  if (cfg.excludeLabels && cfg.excludeLabels.length > 0) {
+  if (cfg.excludeLabels.length > 0) {
     args.push("--exclude-labels", cfg.excludeLabels.join(","));
   }
   if (cfg.maxBytes > 0) {

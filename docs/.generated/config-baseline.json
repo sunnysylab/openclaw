@@ -41174,6 +41174,26 @@
       "hasChildren": false
     },
     {
+      "path": "hooks.gmail.excludeLabels",
+      "kind": "core",
+      "type": "array",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": true
+    },
+    {
+      "path": "hooks.gmail.excludeLabels.*",
+      "kind": "core",
+      "type": "string",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": false
+    },
+    {
       "path": "hooks.gmail.hookUrl",
       "kind": "core",
       "type": "string",

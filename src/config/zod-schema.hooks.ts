@@ -131,7 +131,6 @@ export const HooksGmailSchema = z
     renewEveryMinutes: z.number().int().positive().optional(),
     excludeLabels: z
       .array(z.string())
-      .default(["SPAM", "TRASH", "DRAFT", "SENT"])
       .describe("Gmail labels to exclude from webhook notifications")
       .optional(),
     allowUnsafeExternalContent: z.boolean().optional(),

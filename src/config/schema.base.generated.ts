@@ -9253,12 +9253,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                 maximum: 9007199254740991,
               },
               excludeLabels: {
-                default: ["SPAM", "TRASH", "DRAFT", "SENT"],
-                description: "Gmail labels to exclude from webhook notifications",
                 type: "array",
                 items: {
                   type: "string",
                 },
+                description: "Gmail labels to exclude from webhook notifications",
               },
               allowUnsafeExternalContent: {
                 type: "boolean",
