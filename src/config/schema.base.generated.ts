@@ -1360,6 +1360,9 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       agents: {
         type: "object",
         properties: {
+          defaultAgentId: {
+            type: "string",
+          },
           defaults: {
             type: "object",
             properties: {
