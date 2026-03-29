@@ -20,46 +20,6 @@ import type { ThemeTransitionContext } from "./theme-transition.ts";
 import type { ThemeMode, ThemeName } from "./theme.ts";
 import type { SessionsListResult } from "./types.ts";
 
-type SessionDefaultsSnapshot = {
-  mainSessionKey?: string;
-  mainKey?: string;
-};
-
-function resolveSidebarChatSessionKey(state: AppViewState): string {
-  const snapshot = state.hello?.snapshot as
-    | { sessionDefaults?: SessionDefaultsSnapshot }
-    | undefined;
-  const mainSessionKey = snapshot?.sessionDefaults?.mainSessionKey?.trim();
-  if (mainSessionKey) {
-    return mainSessionKey;
-  }
-  const mainKey = snapshot?.sessionDefaults?.mainKey?.trim();
-  if (mainKey) {
-    return mainKey;
-  }
-  return "main";
-}
-
-function resetChatStateForSessionSwitch(state: AppViewState, sessionKey: string) {
-  state.sessionKey = sessionKey;
-  state.chatMessage = "";
-  state.chatAttachments = [];
-  state.chatMessages = [];
-  state.chatToolMessages = [];
-  state.chatThinkingLevel = null;
-  state.chatStream = null;
-  (state as unknown as OpenClawApp).chatStreamStartedAt = null;
-  state.chatRunId = null;
-  (state as unknown as { chatQueue: unknown[] }).chatQueue = [];
-  (state as unknown as OpenClawApp).resetToolStream();
-  (state as unknown as OpenClawApp).resetChatScroll();
-  state.applySettings({
-    ...state.settings,
-    sessionKey,
-    lastActiveSessionKey: sessionKey,
-  });
-}
-
 export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: boolean }) {
   const href = pathForTab(tab, state.basePath);
   const isActive = state.tab === tab;
@@ -80,13 +40,6 @@ export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: bo
           return;
         }
         event.preventDefault();
-        if (tab === "chat") {
-          const mainSessionKey = resolveSidebarChatSessionKey(state);
-          if (state.sessionKey !== mainSessionKey) {
-            resetChatStateForSessionSwitch(state, mainSessionKey);
-            void state.loadAssistantIdentity();
-          }
-        }
         state.setTab(tab);
       }}
       title=${titleForTab(tab)}
