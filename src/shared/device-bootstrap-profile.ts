@@ -88,10 +88,10 @@ export function satisfiesDeviceBootstrapProfile(
     }),
   );
 
-  // If no scopes are requested, scopesMatch will be true.
-  // If multiple roles are requested, and some scopes are 'operator' scopes and some are 'node' scopes,
-  // roleScopesAllow requires that ALL requested scopes be valid for the GIVEN role.
-  // To support multi-role requests requesting a mix of scopes, we must fall back to basic inclusion
-  // if `roleScopesAllow` fails, because `roleScopesAllow` enforces prefix checking (e.g. `operator.` for operator).
+  // Even if technically redundant with `roleScopesAllow`'s default behavior,
+  // we include a strict inclusion fallback. This makes the security intent
+  // ("strict subsets are always permitted") explicitly clear and protects
+  // the auth flow in case `roleScopesAllow` or `operatorScopeSatisfied`
+  // is ever refactored to be more restrictive.
   return scopesMatch || requested.scopes.every((scope) => allowed.scopes.includes(scope));
 }
