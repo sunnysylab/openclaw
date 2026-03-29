@@ -403,6 +403,68 @@ describe("chat view", () => {
     expect(container.textContent).toContain("Showing last 2 messages (4 hidden).");
   });
 
+  it("counts tool_result content field toward the char budget", () => {
+    const largeContent = "x".repeat(150_000);
+    const messages: unknown[] = [];
+    for (let i = 0; i < 4; i++) {
+      messages.push({ role: "user", content: "run the tool", timestamp: i * 3 + 1 });
+      messages.push({
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: `tool-${i}`, content: largeContent }],
+        timestamp: i * 3 + 2,
+      });
+      messages.push({ role: "assistant", content: "ok", timestamp: i * 3 + 3 });
+    }
+    const container = document.createElement("div");
+    render(renderChat(createProps({ messages })), container);
+
+    expect(container.textContent).toContain("hidden");
+  });
+
+  it("excludes hidden tool messages from the history budget when showToolCalls is false", () => {
+    const messages: unknown[] = [];
+    for (let i = 0; i < 10; i++) {
+      messages.push({
+        role: "user",
+        content: "short question",
+        timestamp: i * 3 + 1,
+      });
+      messages.push({
+        role: "assistant",
+        content: [{ type: "tool_use", id: `tool-${i}`, name: "get_data", input: {} }],
+        timestamp: i * 3 + 2,
+      });
+      messages.push({
+        role: "toolresult",
+        content: "x".repeat(50_000),
+        timestamp: i * 3 + 3,
+      });
+    }
+    const container = document.createElement("div");
+    render(renderChat(createProps({ messages, showToolCalls: false })), container);
+
+    expect(container.textContent).not.toContain("hidden");
+  });
+
+  it("caps the raw walk when most history items are hidden tool messages", () => {
+    const messages: unknown[] = [];
+    for (let i = 0; i < 1000; i++) {
+      messages.push({
+        role: "toolresult",
+        content: "tool output",
+        timestamp: i + 1,
+      });
+    }
+    messages.push({ role: "user", content: "hello", timestamp: 1001 });
+    messages.push({ role: "assistant", content: "hi", timestamp: 1002 });
+    const container = document.createElement("div");
+    render(renderChat(createProps({ messages, showToolCalls: false })), container);
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("hidden");
+    expect(text).not.toContain("Showing last 2 messages (1000 hidden)");
+  });
+
   it("uses the assistant avatar URL for the welcome state when the identity avatar is only initials", () => {
     const container = document.createElement("div");
     render(
