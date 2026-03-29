@@ -56,54 +56,17 @@ import {
   readChannelAllowFromStore,
   upsertChannelPairingRequest,
 } from "../../pairing/pairing-store.js";
-import {
-  buildTemplateMessageFromPayload,
-  createQuickReplyItems,
-  monitorLineProvider,
-  probeLineBot,
-  pushFlexMessage,
-  pushLocationMessage,
-  pushMessageLine,
-  pushMessagesLine,
-  pushTemplateMessage,
-  pushTextMessageWithQuickReplies,
-  sendMessageLine,
-} from "../../plugin-sdk/line-runtime.js";
-import {
-  listLineAccountIds,
-  normalizeAccountId as normalizeLineAccountId,
-  resolveDefaultLineAccountId,
-  resolveLineAccount,
-} from "../../plugin-sdk/line.js";
 import { buildAgentSessionKey, resolveAgentRoute } from "../../routing/resolve-route.js";
+import { defineCachedValue } from "./runtime-cache.js";
 import { createRuntimeDiscord } from "./runtime-discord.js";
 import { createRuntimeIMessage } from "./runtime-imessage.js";
+import { createRuntimeLine } from "./runtime-line.js";
 import { createRuntimeMatrix } from "./runtime-matrix.js";
 import { createRuntimeSignal } from "./runtime-signal.js";
 import { createRuntimeSlack } from "./runtime-slack.js";
 import { createRuntimeTelegram } from "./runtime-telegram.js";
 import { createRuntimeWhatsApp } from "./runtime-whatsapp.js";
 import type { PluginRuntime } from "./types.js";
-
-function defineCachedValue<T extends object, K extends PropertyKey>(
-  target: T,
-  key: K,
-  create: () => unknown,
-): void {
-  let cached: unknown;
-  let ready = false;
-  Object.defineProperty(target, key, {
-    configurable: true,
-    enumerable: true,
-    get() {
-      if (!ready) {
-        cached = create();
-        ready = true;
-      }
-      return cached;
-    },
-  });
-}
 
 export function createRuntimeChannel(): PluginRuntime["channel"] {
   const channelRuntime = {
@@ -188,31 +151,14 @@ export function createRuntimeChannel(): PluginRuntime["channel"] {
       shouldComputeCommandAuthorized,
       shouldHandleTextCommands,
     },
-    line: {
-      listLineAccountIds,
-      resolveDefaultLineAccountId,
-      resolveLineAccount,
-      normalizeAccountId: normalizeLineAccountId,
-      probeLineBot,
-      sendMessageLine,
-      pushMessageLine,
-      pushMessagesLine,
-      pushFlexMessage,
-      pushTemplateMessage,
-      pushLocationMessage,
-      pushTextMessageWithQuickReplies,
-      createQuickReplyItems,
-      buildTemplateMessageFromPayload,
-      monitorLineProvider,
-    },
   } satisfies Omit<
     PluginRuntime["channel"],
-    "discord" | "slack" | "telegram" | "matrix" | "signal" | "imessage" | "whatsapp"
+    "discord" | "slack" | "telegram" | "matrix" | "signal" | "imessage" | "whatsapp" | "line"
   > &
     Partial<
       Pick<
         PluginRuntime["channel"],
-        "discord" | "slack" | "telegram" | "matrix" | "signal" | "imessage" | "whatsapp"
+        "discord" | "slack" | "telegram" | "matrix" | "signal" | "imessage" | "whatsapp" | "line"
       >
     >;
 
@@ -223,6 +169,7 @@ export function createRuntimeChannel(): PluginRuntime["channel"] {
   defineCachedValue(channelRuntime, "signal", createRuntimeSignal);
   defineCachedValue(channelRuntime, "imessage", createRuntimeIMessage);
   defineCachedValue(channelRuntime, "whatsapp", createRuntimeWhatsApp);
+  defineCachedValue(channelRuntime, "line", createRuntimeLine);
 
   return channelRuntime as PluginRuntime["channel"];
 }

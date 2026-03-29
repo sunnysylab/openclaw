@@ -1,17 +1,19 @@
+import * as conversationRuntime from "openclaw/plugin-sdk/conversation-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ensureConfiguredBindingRouteReadyMock = vi.hoisted(() => vi.fn());
 const resolveConfiguredBindingRouteMock = vi.hoisted(() => vi.fn());
 
-vi.mock("openclaw/plugin-sdk/conversation-runtime", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/conversation-runtime")>();
-  return {
-    ...actual,
-    ensureConfiguredBindingRouteReady: (...args: unknown[]) =>
-      ensureConfiguredBindingRouteReadyMock(...args),
-    resolveConfiguredBindingRoute: (...args: unknown[]) =>
-      resolveConfiguredBindingRouteMock(...args),
-  };
+vi.mock("../../../../src/channels/plugins/binding-routing.js", async (importOriginal) => {
+  const { createConfiguredBindingConversationRuntimeModuleMock } =
+    await import("../../../../test/helpers/plugins/configured-binding-runtime.js");
+  return await createConfiguredBindingConversationRuntimeModuleMock(
+    {
+      ensureConfiguredBindingRouteReadyMock,
+      resolveConfiguredBindingRouteMock,
+    },
+    importOriginal,
+  );
 });
 
 import { __testing as sessionBindingTesting } from "../../../../src/infra/outbound/session-binding-service.js";
@@ -229,6 +231,12 @@ describe("preflightDiscordMessage configured ACP bindings", () => {
     resolveConfiguredBindingRouteMock.mockReset();
     resolveConfiguredBindingRouteMock.mockReturnValue(createConfiguredDiscordRoute());
     ensureConfiguredBindingRouteReadyMock.mockResolvedValue({ ok: true });
+    vi.spyOn(conversationRuntime, "resolveConfiguredBindingRoute").mockImplementation(
+      resolveConfiguredBindingRouteMock,
+    );
+    vi.spyOn(conversationRuntime, "ensureConfiguredBindingRouteReady").mockImplementation(
+      ensureConfiguredBindingRouteReadyMock,
+    );
   });
 
   it("does not initialize configured ACP bindings for rejected messages", async () => {
@@ -298,7 +306,7 @@ describe("preflightDiscordMessage configured ACP bindings", () => {
           author: message.author,
           message,
         }),
-        guildEntries: createAllowedGuildEntries(true),
+        guildEntries: createAllowedGuildEntries(false),
       }),
     );
 

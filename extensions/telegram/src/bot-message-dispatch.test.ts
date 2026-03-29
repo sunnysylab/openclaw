@@ -32,6 +32,7 @@ const buildModelsProviderData = vi.hoisted(() =>
     byProvider: new Map<string, Set<string>>(),
     providers: [],
     resolvedDefault: { provider: "openai", model: "gpt-test" },
+    modelNames: new Map<string, string>(),
   })),
 );
 const listSkillCommandsForAgents = vi.hoisted(() => vi.fn(() => []));
@@ -121,7 +122,6 @@ describe("dispatchTelegramMessage draft streaming", () => {
   type TelegramMessageContext = Parameters<typeof dispatchTelegramMessage>[0]["context"];
 
   beforeAll(async () => {
-    vi.resetModules();
     ({ dispatchTelegramMessage } = await import("./bot-message-dispatch.js"));
   });
 
