@@ -194,7 +194,6 @@
   "secret-input",
   "signal",
   "signal-account",
-  "signal-core",
   "signal-surface",
   "channel-status",
   "slack",
