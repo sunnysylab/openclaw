@@ -411,7 +411,7 @@ const SHELL_WRAPPER_OPTIONS_WITH_VALUE = new Set([
 // that consume one positional value.  PowerShell supports prefix abbreviations, so we
 // list the full names and common short forms.  Case-insensitive match.
 const POWERSHELL_OPTIONS_WITH_VALUE_RE =
-  /^-(?:executionpolicy|ep|windowstyle|w|workingdirectory|wd|inputformat|outputformat|settingsfile|configurationfile)$/i;
+  /^-(?:executionpolicy|ep|windowstyle|w|workingdirectory|wd|inputformat|outputformat|settingsfile|configurationfile|version|v|psconsolefile|pscf|encodedcommand|en|enc|encodedarguments|ea)$/i;
 
 function resolveShellWrapperScriptCandidatePath(params: {
   segment: ExecCommandSegment;

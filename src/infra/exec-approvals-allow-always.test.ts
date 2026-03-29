@@ -802,4 +802,28 @@ $0 \\"$1\\"" touch {marker}`,
     expect(persistedPaths(persisted)).toContain(script);
     expect(persistedPaths(persisted).some((p) => p.includes("Bypass"))).toBe(false);
   });
+
+  it("resolves correct script path for powershell -Version 7 -File script.ps1", () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+    const dir = makeTempDir();
+    const script = path.join(dir, "deploy.ps1");
+    fs.writeFileSync(script, "echo ok");
+    const pwshExe = path.join(dir, "powershell.exe");
+    fs.writeFileSync(pwshExe, "");
+    fs.chmodSync(pwshExe, 0o755);
+    const env = { PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}` };
+    const safeBins = resolveSafeBins(undefined);
+
+    const { persisted } = resolvePersistedPatterns({
+      command: `powershell -Version 7 -File "${script}"`,
+      dir,
+      env,
+      safeBins,
+    });
+    // -Version consumes "7"; must resolve to the actual script path, not to "7"
+    expect(persistedPaths(persisted)).toContain(script);
+    expect(persistedPaths(persisted).some((p) => p.includes("7"))).toBe(false);
+  });
 });
