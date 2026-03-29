@@ -51,8 +51,14 @@ export const handlePluginCommand: CommandHandler = async (
     threadParentId: params.ctx.ThreadParentId?.trim() || undefined,
   });
 
+  // Plugin commands can opt into continuing to the LLM agent by returning
+  // shouldContinue: true. This is useful for commands that change agent state
+  // (e.g., granting a permission) and need the agent to act on the change.
+  const safeResult = result ?? {};
+  const { shouldContinue, ...reply } = safeResult;
+  const continueToAgent = shouldContinue === true;
   return {
-    shouldContinue: false,
-    reply: result,
+    shouldContinue: continueToAgent,
+    reply: continueToAgent ? undefined : reply,
   };
 };
