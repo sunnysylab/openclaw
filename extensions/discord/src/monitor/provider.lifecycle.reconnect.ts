@@ -49,7 +49,7 @@ export function createDiscordGatewayReconnectController(params: {
   abortSignal?: AbortSignal;
   pushStatus: (patch: Parameters<DiscordMonitorStatusSink>[0]) => void;
   isLifecycleStopping: () => boolean;
-  drainPendingGatewayErrors: () => "continue" | "stop";
+  drainPendingGatewayErrors: (phase: "startup" | "poll") => "continue" | "stop";
 }) {
   let forceStopHandler: ((err: unknown) => void) | undefined;
   let queuedForceStopError: unknown;
@@ -416,7 +416,7 @@ export function createDiscordGatewayReconnectController(params: {
       gateway: params.gateway,
       abortSignal: params.abortSignal,
       timeoutMs: DISCORD_GATEWAY_READY_TIMEOUT_MS,
-      beforePoll: params.drainPendingGatewayErrors,
+      beforePoll: () => params.drainPendingGatewayErrors("startup"),
     });
     if (initialReady === "stopped" || shouldStop()) {
       return;
@@ -441,7 +441,7 @@ export function createDiscordGatewayReconnectController(params: {
         gateway: params.gateway,
         abortSignal: params.abortSignal,
         timeoutMs: DISCORD_GATEWAY_READY_TIMEOUT_MS,
-        beforePoll: params.drainPendingGatewayErrors,
+        beforePoll: () => params.drainPendingGatewayErrors("startup"),
       });
       if (reconnected === "stopped" || shouldStop()) {
         return;

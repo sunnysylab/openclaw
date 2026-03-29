@@ -48,7 +48,7 @@ export async function runDiscordGatewayLifecycle(params: {
     abortSignal: params.abortSignal,
     pushStatus,
     isLifecycleStopping: () => lifecycleStopping,
-    drainPendingGatewayErrors: () => drainPendingGatewayErrors(),
+    drainPendingGatewayErrors: (phase: "startup" | "poll") => drainPendingGatewayErrors(phase),
   });
   const onGatewayDebug = reconnectController.onGatewayDebug;
   gatewayEmitter?.on("debug", onGatewayDebug);
@@ -67,28 +67,37 @@ export async function runDiscordGatewayLifecycle(params: {
     // When we deliberately set maxAttempts=0 and disconnected (health-monitor
     // stale-socket restart), Carbon fires "Max reconnect attempts (0)". This
     // is expected — log at info instead of error to avoid false alarms.
-    if (lifecycleStopping && event.type === "reconnect-exhausted") {
-      params.runtime.log?.(
-        `discord: ignoring expected reconnect-exhausted during shutdown: ${event.message}`,
-      );
+    // Even outside shutdown, reconnect exhaustion must never crash the gateway
+    // process — stop the lifecycle gracefully so the health monitor can retry.
+    if (event.type === "reconnect-exhausted") {
+      if (lifecycleStopping || params.abortSignal?.aborted === true) {
+        params.runtime.log?.(
+          `discord: ignoring expected reconnect-exhausted during shutdown: ${event.message}`,
+        );
+      } else {
+        params.runtime.error?.(
+          danger(
+            `discord: reconnect attempts exhausted: ${event.message}. The gateway lifecycle will stop gracefully instead of crashing the process.`,
+          ),
+        );
+      }
       return "stop";
     }
     params.runtime.error?.(danger(`discord gateway error: ${event.message}`));
     return event.shouldStopLifecycle ? "stop" : "continue";
   };
-  const drainPendingGatewayErrors = (): "continue" | "stop" =>
+  const drainPendingGatewayErrors = (phase: "startup" | "poll"): "continue" | "stop" =>
     params.gatewaySupervisor.drainPending((event) => {
       const decision = handleGatewayEvent(event);
       if (decision !== "stop") {
         return "continue";
       }
-      // Don't throw for expected shutdown events. `reconnect-exhausted` can be
-      // queued just before an abort-driven shutdown flips `lifecycleStopping`,
-      // so only suppress it when shutdown is already underway.
+      if (event.type === "disallowed-intents") {
+        return "stop";
+      }
       if (
-        event.type === "disallowed-intents" ||
-        (event.type === "reconnect-exhausted" &&
-          (lifecycleStopping || params.abortSignal?.aborted === true))
+        event.type === "reconnect-exhausted" &&
+        (phase === "poll" || lifecycleStopping || params.abortSignal?.aborted === true)
       ) {
         return "stop";
       }
@@ -100,13 +109,13 @@ export async function runDiscordGatewayLifecycle(params: {
     }
 
     // Drain gateway errors emitted before lifecycle listeners were attached.
-    if (drainPendingGatewayErrors() === "stop") {
+    if (drainPendingGatewayErrors("startup") === "stop") {
       return;
     }
 
     await reconnectController.ensureStartupReady();
 
-    if (drainPendingGatewayErrors() === "stop") {
+    if (drainPendingGatewayErrors("poll") === "stop") {
       return;
     }
 
@@ -122,7 +131,10 @@ export async function runDiscordGatewayLifecycle(params: {
       registerForceStop: reconnectController.registerForceStop,
     });
   } catch (err) {
-    if (!sawDisallowedIntents && !params.isDisallowedIntentsError(err)) {
+    // Reconnect exhaustion should stop the lifecycle gracefully, not crash
+    // the entire gateway process. The error has already been logged above.
+    const isReconnectExhausted = /Max reconnect attempts/i.test(String(err));
+    if (!isReconnectExhausted && !sawDisallowedIntents && !params.isDisallowedIntentsError(err)) {
       throw err;
     }
   } finally {
