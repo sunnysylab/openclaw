@@ -442,6 +442,8 @@ export async function runEmbeddedAttempt(
       ? []
       : createOpenClawCodingTools({
           agentId: sessionAgentId,
+          trigger: params.trigger,
+          memoryFlushWritePath: params.memoryFlushWritePath,
           exec: {
             ...params.execOverrides,
             elevated: params.bashElevated,
