@@ -32,11 +32,18 @@ function shouldTreatDeliveredTextAsVisible(params: {
   channel: string | undefined;
   kind: ReplyDispatchKind;
   text: string | undefined;
+  routed?: boolean;
 }): boolean {
   if (!params.text?.trim()) {
     return false;
   }
+  if (params.kind === "tool") {
+    return false;
+  }
   if (params.kind === "final") {
+    return true;
+  }
+  if (params.routed) {
     return true;
   }
   return normalizeDeliveryChannel(params.channel) === "telegram";
@@ -213,6 +220,7 @@ export function createAcpDispatchDeliveryCoordinator(params: {
         channel: routedChannel,
         kind,
         text: ttsPayload.text,
+        routed: true,
       });
       const result = await routeReply({
         payload: ttsPayload,
@@ -255,6 +263,7 @@ export function createAcpDispatchDeliveryCoordinator(params: {
       channel: directChannel,
       kind,
       text: ttsPayload.text,
+      routed: false,
     });
     const delivered =
       kind === "tool"
