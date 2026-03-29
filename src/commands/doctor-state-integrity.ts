@@ -115,9 +115,10 @@ function countJsonlLines(filePath: string): number {
 }
 
 function findOtherStateDirs(stateDir: string): string[] {
-  const resolvedState = path.resolve(stateDir);
-  const roots =
-    process.platform === "darwin" ? ["/Users"] : process.platform === "linux" ? ["/home"] : [];
+  const resolvedState = canonicalizePathForComparison(stateDir);
+  const currentHome = resolveRequiredHomeDir(process.env, os.homedir);
+  const homeParent = path.dirname(path.resolve(currentHome));
+  const roots = process.platform === "darwin" || process.platform === "linux" ? [homeParent] : [];
   const found: string[] = [];
   for (const root of roots) {
     let entries: fs.Dirent[] = [];
@@ -135,7 +136,7 @@ function findOtherStateDirs(stateDir: string): string[] {
       }
       const candidates = [".openclaw"].map((dir) => path.resolve(root, entry.name, dir));
       for (const candidate of candidates) {
-        if (candidate === resolvedState) {
+        if (canonicalizePathForComparison(candidate) === resolvedState) {
           continue;
         }
         if (existsDir(candidate)) {
@@ -158,6 +159,15 @@ function isPathUnderRoot(targetPath: string, rootPath: string): boolean {
     normalizedTarget === normalizedRoot ||
     normalizedTarget.startsWith(`${normalizedRoot}${path.sep}`)
   );
+}
+
+function canonicalizePathForComparison(targetPath: string): string {
+  const resolved = path.resolve(targetPath);
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
 }
 
 function tryResolveRealPath(targetPath: string): string | null {
@@ -687,7 +697,7 @@ export async function noteStateIntegrity(
   }
 
   const extraStateDirs = new Set<string>();
-  if (path.resolve(stateDir) !== path.resolve(defaultStateDir)) {
+  if (canonicalizePathForComparison(stateDir) !== canonicalizePathForComparison(defaultStateDir)) {
     if (existsDir(defaultStateDir)) {
       extraStateDirs.add(defaultStateDir);
     }

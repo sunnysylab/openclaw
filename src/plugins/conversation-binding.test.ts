@@ -13,6 +13,8 @@ import type { PluginRegistry } from "./registry.js";
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-plugin-binding-"));
 const approvalsPath = path.join(tempRoot, "plugin-binding-approvals.json");
 
+process.env.OPENCLAW_STATE_DIR = tempRoot;
+
 const sessionBindingState = vi.hoisted(() => {
   const records = new Map<string, SessionBindingRecord>();
   let nextId = 1;
@@ -90,19 +92,6 @@ const pluginRuntimeState = vi.hoisted(
       registry: null as unknown as PluginRegistry,
     }) satisfies { registry: PluginRegistry },
 );
-
-vi.mock("../infra/home-dir.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../infra/home-dir.js")>();
-  return {
-    ...actual,
-    expandHomePrefix: (value: string) => {
-      if (value === "~/.openclaw/plugin-binding-approvals.json") {
-        return approvalsPath;
-      }
-      return actual.expandHomePrefix(value);
-    },
-  };
-});
 
 vi.mock("./runtime.js", () => ({
   getActivePluginRegistry: () => pluginRuntimeState.registry,
@@ -378,18 +367,6 @@ async function expectResolutionDoesNotWait(params: {
 describe("plugin conversation binding approvals", () => {
   beforeEach(async () => {
     vi.resetModules();
-    vi.doMock("../infra/home-dir.js", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("../infra/home-dir.js")>();
-      return {
-        ...actual,
-        expandHomePrefix: (value: string) => {
-          if (value === "~/.openclaw/plugin-binding-approvals.json") {
-            return approvalsPath;
-          }
-          return actual.expandHomePrefix(value);
-        },
-      };
-    });
     vi.doMock("./runtime.js", () => ({
       getActivePluginRegistry: () => pluginRuntimeState.registry,
       setActivePluginRegistry: (registry: PluginRegistry) => {
