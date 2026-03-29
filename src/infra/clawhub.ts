@@ -356,9 +356,10 @@ function buildUrl(params: Pick<ClawHubRequestParams, "baseUrl" | "path" | "searc
 
 async function clawhubRequest(
   params: ClawHubRequestParams,
-): Promise<{ response: Response; url: URL }> {
+): Promise<{ response: Response; url: URL; authenticated: boolean }> {
   const url = buildUrl(params);
   const token = params.token?.trim() || (await resolveClawHubAuthToken());
+  const authenticated = Boolean(token);
   const controller = new AbortController();
   const timeout = setTimeout(
     () =>
@@ -374,7 +375,7 @@ async function clawhubRequest(
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       signal: controller.signal,
     });
-    return { response, url };
+    return { response, url, authenticated };
   } finally {
     clearTimeout(timeout);
   }
@@ -389,13 +390,24 @@ async function readErrorBody(response: Response): Promise<string> {
   }
 }
 
+export const RATE_LIMIT_LOGIN_HINT =
+  "Tip: You are not logged in to ClawHub. Run `npx clawhub login` to authenticate and get a higher rate limit.";
+
+function appendRateLimitHint(body: string, status: number, authenticated: boolean): string {
+  if (status !== 429 || authenticated) {
+    return body;
+  }
+  return `${body}\n\n${RATE_LIMIT_LOGIN_HINT}`;
+}
+
 async function fetchJson<T>(params: ClawHubRequestParams): Promise<T> {
-  const { response, url } = await clawhubRequest(params);
+  const { response, url, authenticated } = await clawhubRequest(params);
   if (!response.ok) {
+    const body = await readErrorBody(response);
     throw new ClawHubRequestError({
       path: url.pathname,
       status: response.status,
-      body: await readErrorBody(response),
+      body: appendRateLimitHint(body, response.status, authenticated),
     });
   }
   return (await response.json()) as T;
@@ -563,7 +575,7 @@ export async function downloadClawHubPackageArchive(params: {
     : params.tag
       ? { tag: params.tag }
       : undefined;
-  const { response, url } = await clawhubRequest({
+  const { response, url, authenticated } = await clawhubRequest({
     baseUrl: params.baseUrl,
     path: `/api/v1/packages/${encodeURIComponent(params.name)}/download`,
     search,
@@ -572,10 +584,11 @@ export async function downloadClawHubPackageArchive(params: {
     fetchImpl: params.fetchImpl,
   });
   if (!response.ok) {
+    const body = await readErrorBody(response);
     throw new ClawHubRequestError({
       path: url.pathname,
       status: response.status,
-      body: await readErrorBody(response),
+      body: appendRateLimitHint(body, response.status, authenticated),
     });
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -597,7 +610,7 @@ export async function downloadClawHubSkillArchive(params: {
   timeoutMs?: number;
   fetchImpl?: FetchLike;
 }): Promise<ClawHubDownloadResult> {
-  const { response, url } = await clawhubRequest({
+  const { response, url, authenticated } = await clawhubRequest({
     baseUrl: params.baseUrl,
     path: "/api/v1/download",
     token: params.token,
@@ -610,10 +623,11 @@ export async function downloadClawHubSkillArchive(params: {
     },
   });
   if (!response.ok) {
+    const body = await readErrorBody(response);
     throw new ClawHubRequestError({
       path: url.pathname,
       status: response.status,
-      body: await readErrorBody(response),
+      body: appendRateLimitHint(body, response.status, authenticated),
     });
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
