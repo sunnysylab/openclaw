@@ -1,11 +1,19 @@
 import type { ProgressReporter } from "../../cli/progress.js";
 import { formatConfigIssueLine } from "../../config/issue-format.js";
 import { resolveGatewayLogPaths } from "../../daemon/launchd.js";
-import { formatPortDiagnostics } from "../../infra/ports.js";
+import {
+  formatPortDiagnostics,
+  isDualStackLoopbackGatewayListeners,
+  type PortUsage,
+} from "../../infra/ports.js";
 import {
   type RestartSentinelPayload,
   summarizeRestartSentinel,
 } from "../../infra/restart-sentinel.js";
+import {
+  formatPluginCompatibilityNotice,
+  type PluginCompatibilityNotice,
+} from "../../plugins/status.js";
 import { formatTimeAgo, redactSecrets } from "./format.js";
 import { readFileTailLines, summarizeLogTail } from "./gateway.js";
 
@@ -18,7 +26,7 @@ type ConfigSnapshotLike = {
   issues?: ConfigIssueLike[] | null;
 };
 
-type PortUsageLike = { listeners: unknown[] };
+type PortUsageLike = Pick<PortUsage, "listeners" | "port" | "status" | "hints">;
 
 type TailscaleStatusLike = {
   backendState: string | null;
@@ -50,6 +58,7 @@ export async function appendStatusAllDiagnosis(params: {
   connectionDetailsForReport: string;
   snap: ConfigSnapshotLike | null;
   remoteUrlMissing: boolean;
+  secretDiagnostics: string[];
   sentinel: { payload?: RestartSentinelPayload | null } | null;
   lastErr: string | null;
   port: number;
@@ -58,6 +67,7 @@ export async function appendStatusAllDiagnosis(params: {
   tailscale: TailscaleStatusLike;
   tailscaleHttpsUrl: string | null;
   skillStatus: SkillStatusLike | null;
+  pluginCompatibility: PluginCompatibilityNotice[];
   channelsStatus: unknown;
   channelIssues: ChannelIssueLike[];
   gatewayReachable: boolean;
@@ -104,6 +114,17 @@ export async function appendStatusAllDiagnosis(params: {
     lines.push(`  ${muted("Fix: set gateway.remote.url, or set gateway.mode=local.")}`);
   }
 
+  emitCheck(
+    `Secret diagnostics (${params.secretDiagnostics.length})`,
+    params.secretDiagnostics.length === 0 ? "ok" : "warn",
+  );
+  for (const diagnostic of params.secretDiagnostics.slice(0, 10)) {
+    lines.push(`  - ${muted(redactSecrets(diagnostic))}`);
+  }
+  if (params.secretDiagnostics.length > 10) {
+    lines.push(`  ${muted(`… +${params.secretDiagnostics.length - 10} more`)}`);
+  }
+
   if (params.sentinel?.payload) {
     emitCheck("Restart sentinel present", "warn");
     lines.push(
@@ -122,12 +143,20 @@ export async function appendStatusAllDiagnosis(params: {
   }
 
   if (params.portUsage) {
-    const portOk = params.portUsage.listeners.length === 0;
+    const benignDualStackLoopback = isDualStackLoopbackGatewayListeners(
+      params.portUsage.listeners,
+      params.port,
+    );
+    const portOk = params.portUsage.listeners.length === 0 || benignDualStackLoopback;
     emitCheck(`Port ${params.port}`, portOk ? "ok" : "warn");
     if (!portOk) {
-      for (const line of formatPortDiagnostics(params.portUsage as never)) {
+      for (const line of formatPortDiagnostics(params.portUsage)) {
         lines.push(`  ${muted(line)}`);
       }
+    } else if (benignDualStackLoopback) {
+      lines.push(
+        `  ${muted("Detected dual-stack loopback listeners (127.0.0.1 + ::1) for one gateway process.")}`,
+      );
     }
   }
 
@@ -162,6 +191,18 @@ export async function appendStatusAllDiagnosis(params: {
       `Skills: ${eligible} eligible · ${missing} missing · ${params.skillStatus.workspaceDir}`,
       missing === 0 ? "ok" : "warn",
     );
+  }
+
+  emitCheck(
+    `Plugin compatibility (${params.pluginCompatibility.length || "none"})`,
+    params.pluginCompatibility.length === 0 ? "ok" : "warn",
+  );
+  for (const notice of params.pluginCompatibility.slice(0, 12)) {
+    const severity = notice.severity === "warn" ? "warn" : "info";
+    lines.push(`  - [${severity}] ${formatPluginCompatibilityNotice(notice)}`);
+  }
+  if (params.pluginCompatibility.length > 12) {
+    lines.push(`  ${muted(`… +${params.pluginCompatibility.length - 12} more`)}`);
   }
 
   params.progress.setLabel("Reading logs…");
