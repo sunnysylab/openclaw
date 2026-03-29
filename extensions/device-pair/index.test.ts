@@ -25,8 +25,18 @@ const pluginApiMocks = vi.hoisted(() => ({
 vi.mock("./api.js", () => {
   return {
     PAIRING_SETUP_BOOTSTRAP_PROFILE: {
-      roles: ["node"],
-      scopes: [],
+      roles: ["node", "operator"],
+      scopes: [
+        "node.camera",
+        "node.display",
+        "node.exec",
+        "node.voice",
+        "operator.approvals",
+        "operator.pairing",
+        "operator.read",
+        "operator.talk.secrets",
+        "operator.write",
+      ],
     },
     approveDevicePairing: vi.fn(),
     clearDeviceBootstrapTokens: pluginApiMocks.clearDeviceBootstrapTokens,
