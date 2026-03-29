@@ -14,7 +14,8 @@ import {
   type ClawHubPackageDetail,
   type ClawHubPackageFamily,
 } from "../infra/clawhub.js";
-import { resolveCompatibilityHostVersion } from "../version.js";
+import type { InstallCodeSafetyMode } from "../infra/install-code-safety-mode.js";
+import { resolveRuntimeServiceVersion } from "../version.js";
 import { installPluginFromArchive, type InstallPluginResult } from "./install.js";
 
 export const CLAWHUB_INSTALL_ERROR_CODE = {
@@ -233,6 +234,7 @@ export async function installPluginFromClawHub(params: {
   mode?: "install" | "update";
   dryRun?: boolean;
   expectedPluginId?: string;
+  codeSafetyMode?: InstallCodeSafetyMode;
 }): Promise<
   | ({
       ok: true;
@@ -307,6 +309,7 @@ export async function installPluginFromClawHub(params: {
     );
     const installResult = await installPluginFromArchive({
       archivePath: archive.archivePath,
+      codeSafetyMode: params.codeSafetyMode,
       logger: params.logger,
       mode: params.mode,
       dryRun: params.dryRun,
