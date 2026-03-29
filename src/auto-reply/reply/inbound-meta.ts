@@ -163,22 +163,30 @@ export function buildInboundUserContextPrefix(
   }
 
   if (ctx.ReplyToBody) {
-    blocks.push(
-      [
-        "Replied message (untrusted, for context):",
-        "```json",
-        JSON.stringify(
-          {
-            sender_label: safeTrim(ctx.ReplyToSender),
-            is_quote: ctx.ReplyToIsQuote === true ? true : undefined,
-            body: ctx.ReplyToBody,
-          },
-          null,
-          2,
-        ),
-        "```",
-      ].join("\n"),
-    );
+    // Place the [media attached:] marker *outside* the JSON block so
+    // path characters are never escaped by JSON.stringify and the image
+    // detection regex (`detectAndLoadPromptImages`) picks it up reliably.
+    const replyMediaNote = ctx.ReplyToMediaPath?.trim()
+      ? `[media attached: ${ctx.ReplyToMediaPath.trim()}${ctx.ReplyToMediaType?.trim() ? ` (${ctx.ReplyToMediaType.trim()})` : ""}]`
+      : undefined;
+    const lines = [
+      "Replied message (untrusted, for context):",
+      "```json",
+      JSON.stringify(
+        {
+          sender_label: safeTrim(ctx.ReplyToSender),
+          is_quote: ctx.ReplyToIsQuote === true ? true : undefined,
+          body: ctx.ReplyToBody,
+        },
+        null,
+        2,
+      ),
+      "```",
+    ];
+    if (replyMediaNote) {
+      lines.push(replyMediaNote);
+    }
+    blocks.push(lines.join("\n"));
   }
 
   if (ctx.ForwardedFrom) {
@@ -210,11 +218,26 @@ export function buildInboundUserContextPrefix(
         "Chat history since last reply (untrusted, for context):",
         "```json",
         JSON.stringify(
-          ctx.InboundHistory.map((entry) => ({
-            sender: entry.sender,
-            timestamp_ms: entry.timestamp,
-            body: entry.body,
-          })),
+          ctx.InboundHistory.map((entry) => {
+            const base = {
+              sender: entry.sender,
+              timestamp_ms: entry.timestamp,
+              body: entry.body,
+            };
+            // When a media placeholder is the entire body and a local file is available,
+            // replace the placeholder with a readable path reference so the ACP agent
+            // can resolve the image instead of seeing a raw tag.
+            if (
+              entry.mediaPath &&
+              /^<media:(image|video|audio|document|sticker)>$/.test(entry.body.trim())
+            ) {
+              return {
+                ...base,
+                body: `[media attached: ${entry.mediaPath}${entry.mediaType ? ` (${entry.mediaType})` : ""}]`,
+              };
+            }
+            return base;
+          }),
           null,
           2,
         ),

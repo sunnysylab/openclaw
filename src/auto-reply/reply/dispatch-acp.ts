@@ -22,6 +22,8 @@ import {
   normalizeAttachmentPath,
   normalizeAttachments,
 } from "../../media-understanding/attachments.normalize.js";
+import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
+import type { PluginHookAgentContext } from "../../plugins/types.js";
 import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { maybeApplyTtsToPayload, resolveTtsConfig } from "../../tts/tts.js";
 import {
@@ -35,6 +37,7 @@ import {
   createAcpDispatchDeliveryCoordinator,
   type AcpDispatchDeliveryCoordinator,
 } from "./dispatch-acp-delivery.js";
+import { buildInboundUserContextPrefix } from "./inbound-meta.js";
 import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
 
 type DispatchProcessedRecorder = (
@@ -58,29 +61,48 @@ function resolveFirstContextText(
   return "";
 }
 
-function resolveAcpPromptText(ctx: FinalizedMsgContext): string {
-  return resolveFirstContextText(ctx, [
+function buildAcpPromptText(ctx: FinalizedMsgContext): string {
+  const bodyText = resolveFirstContextText(ctx, [
     "BodyForAgent",
     "BodyForCommands",
     "CommandBody",
     "RawBody",
     "Body",
   ]).trim();
+  // Prepend group chat history (non-mentioned messages stored for context)
+  // so the ACP session sees the same conversation window as the embedded path.
+  // Strip ThreadStarterBody: ACP sessions are long-lived and manage their own
+  // context window, so repeating the thread starter on every turn creates noise.
+  const inboundContext = buildInboundUserContextPrefix({
+    ...ctx,
+    ThreadStarterBody: undefined,
+  }).trim();
+  return [inboundContext, bodyText].filter(Boolean).join("\n\n");
+}
+
+function buildAcpHookContext(params: {
+  ctx: FinalizedMsgContext;
+  sessionKey: string;
+  agentId: string;
+}): PluginHookAgentContext {
+  return {
+    runId: generateSecureUuid(),
+    agentId: params.agentId,
+    sessionKey: params.sessionKey,
+    messageProvider: params.ctx.Surface ?? params.ctx.Provider ?? undefined,
+    trigger: "user",
+    channelId: params.ctx.Surface ?? params.ctx.Provider ?? undefined,
+  };
 }
 
 const ACP_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
 async function resolveAcpAttachments(ctx: FinalizedMsgContext): Promise<AcpTurnAttachment[]> {
-  const mediaAttachments = normalizeAttachments(ctx);
   const results: AcpTurnAttachment[] = [];
-  for (const attachment of mediaAttachments) {
-    const mediaType = attachment.mime ?? "application/octet-stream";
+
+  async function tryAddImageFile(filePath: string, mediaType: string): Promise<void> {
     if (!mediaType.startsWith("image/")) {
-      continue;
-    }
-    const filePath = normalizeAttachmentPath(attachment.path);
-    if (!filePath) {
-      continue;
+      return;
     }
     try {
       const stat = await fs.stat(filePath);
@@ -88,17 +110,36 @@ async function resolveAcpAttachments(ctx: FinalizedMsgContext): Promise<AcpTurnA
         logVerbose(
           `dispatch-acp: skipping attachment ${filePath} (${stat.size} bytes exceeds ${ACP_ATTACHMENT_MAX_BYTES} byte limit)`,
         );
-        continue;
+        return;
       }
       const buf = await fs.readFile(filePath);
-      results.push({
-        mediaType,
-        data: buf.toString("base64"),
-      });
+      results.push({ mediaType, data: buf.toString("base64") });
     } catch {
       // Skip unreadable files. Text content should still be delivered.
     }
   }
+
+  // Current message attachments
+  const mediaAttachments = normalizeAttachments(ctx);
+  for (const attachment of mediaAttachments) {
+    const mediaType = attachment.mime ?? "application/octet-stream";
+    const filePath = normalizeAttachmentPath(attachment.path);
+    if (filePath) {
+      await tryAddImageFile(filePath, mediaType);
+    }
+  }
+
+  // Group history images — include downloaded media from recent history entries so the
+  // ACP session can see images shared by other participants before the trigger message.
+  if (Array.isArray(ctx.InboundHistory)) {
+    for (const entry of ctx.InboundHistory) {
+      const filePath = normalizeAttachmentPath(entry.mediaPath);
+      if (filePath && entry.mediaType) {
+        await tryAddImageFile(filePath, entry.mediaType);
+      }
+    }
+  }
+
   return results;
 }
 
@@ -187,41 +228,6 @@ export type AcpDispatchAttemptResult = {
   queuedFinal: boolean;
   counts: Record<ReplyDispatchKind, number>;
 };
-
-const ACP_STALE_BINDING_UNBIND_REASON = "acp-session-init-failed";
-
-function isStaleSessionInitError(params: { code: string; message: string }): boolean {
-  if (params.code !== "ACP_SESSION_INIT_FAILED") {
-    return false;
-  }
-  return /(ACP (session )?metadata is missing|missing ACP metadata|Session is not ACP-enabled|Resource not found)/i.test(
-    params.message,
-  );
-}
-
-async function maybeUnbindStaleBoundConversations(params: {
-  targetSessionKey: string;
-  error: { code: string; message: string };
-}): Promise<void> {
-  if (!isStaleSessionInitError(params.error)) {
-    return;
-  }
-  try {
-    const removed = await getSessionBindingService().unbind({
-      targetSessionKey: params.targetSessionKey,
-      reason: ACP_STALE_BINDING_UNBIND_REASON,
-    });
-    if (removed.length > 0) {
-      logVerbose(
-        `dispatch-acp: removed ${removed.length} stale bound conversation(s) for ${params.targetSessionKey} after ${params.error.code}: ${params.error.message}`,
-      );
-    }
-  } catch (error) {
-    logVerbose(
-      `dispatch-acp: failed to unbind stale bound conversations for ${params.targetSessionKey}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
 
 async function finalizeAcpTurnOutput(params: {
   cfg: OpenClawConfig;
@@ -338,7 +344,6 @@ export async function tryDispatchAcpReply(params: {
   if (acpResolution.kind === "none") {
     return null;
   }
-  const canonicalSessionKey = acpResolution.sessionKey;
 
   let queuedFinal = false;
   const delivery = createAcpDispatchDeliveryCoordinator({
@@ -363,7 +368,7 @@ export async function tryDispatchAcpReply(params: {
     identityPendingBeforeTurn &&
     (Boolean(params.ctx.MessageThreadId != null && String(params.ctx.MessageThreadId).trim()) ||
       hasBoundConversationForSession({
-        sessionKey: canonicalSessionKey,
+        sessionKey,
         channelRaw: params.ctx.OriginatingChannel ?? params.ctx.Surface ?? params.ctx.Provider,
         accountIdRaw: params.ctx.AccountId,
       }));
@@ -373,9 +378,9 @@ export async function tryDispatchAcpReply(params: {
       ? (
           acpResolution.meta.agent?.trim() ||
           params.cfg.acp?.defaultAgent?.trim() ||
-          resolveAgentIdFromSessionKey(canonicalSessionKey)
+          resolveAgentIdFromSessionKey(sessionKey)
         ).trim()
-      : resolveAgentIdFromSessionKey(canonicalSessionKey);
+      : resolveAgentIdFromSessionKey(sessionKey);
   const projector = createAcpReplyProjector({
     cfg: params.cfg,
     shouldSendToolSummaries: params.shouldSendToolSummaries,
@@ -385,31 +390,20 @@ export async function tryDispatchAcpReply(params: {
   });
 
   const acpDispatchStartedAt = Date.now();
+  const hookRunner = getGlobalHookRunner();
+  const hookCtx = buildAcpHookContext({
+    ctx: params.ctx,
+    sessionKey,
+    agentId: resolvedAcpAgent,
+  });
+  let promptText = "";
   try {
     const dispatchPolicyError = resolveAcpDispatchPolicyError(params.cfg);
     if (dispatchPolicyError) {
       throw dispatchPolicyError;
     }
     if (acpResolution.kind === "stale") {
-      await maybeUnbindStaleBoundConversations({
-        targetSessionKey: canonicalSessionKey,
-        error: acpResolution.error,
-      });
-      const delivered = await delivery.deliver("final", {
-        text: formatAcpRuntimeErrorText(acpResolution.error),
-        isError: true,
-      });
-      const counts = params.dispatcher.getQueuedCounts();
-      delivery.applyRoutedCounts(counts);
-      const acpStats = acpManager.getObservabilitySnapshot(params.cfg);
-      logVerbose(
-        `acp-dispatch: session=${sessionKey} outcome=error code=${acpResolution.error.code} latencyMs=${Date.now() - acpDispatchStartedAt} queueDepth=${acpStats.turns.queueDepth} activeRuntimes=${acpStats.runtimeCache.activeSessions}`,
-      );
-      params.recordProcessed("completed", {
-        reason: `acp_error:${acpResolution.error.code.toLowerCase()}`,
-      });
-      params.markIdle("message_completed");
-      return { queuedFinal: delivered, counts };
+      throw acpResolution.error;
     }
     const agentPolicyError = resolveAcpAgentPolicyError(params.cfg, resolvedAcpAgent);
     if (agentPolicyError) {
@@ -428,7 +422,7 @@ export async function tryDispatchAcpReply(params: {
       }
     }
 
-    const promptText = resolveAcpPromptText(params.ctx);
+    promptText = buildAcpPromptText(params.ctx);
     const attachments = await resolveAcpAttachments(params.ctx);
     if (!promptText && attachments.length === 0) {
       const counts = params.dispatcher.getQueuedCounts();
@@ -436,6 +430,34 @@ export async function tryDispatchAcpReply(params: {
       params.recordProcessed("completed", { reason: "acp_empty_prompt" });
       params.markIdle("message_completed");
       return { queuedFinal: false, counts };
+    }
+
+    // Run before_prompt_build / before_agent_start hooks for memory auto-recall.
+    // memory-lancedb-pro uses before_prompt_build; legacy memory-lancedb uses before_agent_start.
+    if (hookRunner?.hasHooks("before_prompt_build")) {
+      try {
+        // ACP session history is managed internally by acpManager and is not
+        // available at prompt-build time, so messages is always empty here.
+        const hookResult = await hookRunner.runBeforePromptBuild({ prompt: promptText, messages: [] }, hookCtx);
+        if (hookResult?.prependContext) {
+          promptText = `${hookResult.prependContext}\n\n${promptText}`;
+        }
+      } catch (hookErr) {
+        logVerbose(
+          `dispatch-acp: before_prompt_build hook failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+        );
+      }
+    } else if (hookRunner?.hasHooks("before_agent_start")) {
+      try {
+        const hookResult = await hookRunner.runBeforeAgentStart({ prompt: promptText }, hookCtx);
+        if (hookResult?.prependContext) {
+          promptText = `${hookResult.prependContext}\n\n${promptText}`;
+        }
+      } catch (hookErr) {
+        logVerbose(
+          `dispatch-acp: before_agent_start hook failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+        );
+      }
     }
 
     try {
@@ -448,7 +470,7 @@ export async function tryDispatchAcpReply(params: {
 
     await acpManager.runTurn({
       cfg: params.cfg,
-      sessionKey: canonicalSessionKey,
+      sessionKey,
       text: promptText,
       attachments: attachments.length > 0 ? attachments : undefined,
       mode: "prompt",
@@ -461,13 +483,35 @@ export async function tryDispatchAcpReply(params: {
     queuedFinal =
       (await finalizeAcpTurnOutput({
         cfg: params.cfg,
-        sessionKey: canonicalSessionKey,
+        sessionKey,
         delivery,
         inboundAudio: params.inboundAudio,
         sessionTtsAuto: params.sessionTtsAuto,
         ttsChannel: params.ttsChannel,
         shouldEmitResolvedIdentityNotice,
       })) || queuedFinal;
+
+    // Run agent_end hooks (fire-and-forget, e.g. memory-lancedb auto-capture)
+    if (hookRunner?.hasHooks("agent_end")) {
+      const responseText = delivery.getAccumulatedBlockText();
+      hookRunner
+        .runAgentEnd(
+          {
+            messages: [
+              { role: "user", content: promptText },
+              ...(responseText.trim() ? [{ role: "assistant", content: responseText }] : []),
+            ],
+            success: true,
+            durationMs: Date.now() - acpDispatchStartedAt,
+          },
+          hookCtx,
+        )
+        .catch((hookErr) => {
+          logVerbose(
+            `dispatch-acp: agent_end hook failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+          );
+        });
+    }
 
     const counts = params.dispatcher.getQueuedCounts();
     delivery.applyRoutedCounts(counts);
@@ -497,15 +541,31 @@ export async function tryDispatchAcpReply(params: {
       fallbackCode: "ACP_TURN_FAILED",
       fallbackMessage: "ACP turn failed before completion.",
     });
-    await maybeUnbindStaleBoundConversations({
-      targetSessionKey: canonicalSessionKey,
-      error: acpError,
-    });
     const delivered = await delivery.deliver("final", {
       text: formatAcpRuntimeErrorText(acpError),
       isError: true,
     });
     queuedFinal = queuedFinal || delivered;
+
+    // Run agent_end hooks on error path too (fire-and-forget)
+    if (hookRunner?.hasHooks("agent_end")) {
+      hookRunner
+        .runAgentEnd(
+          {
+            messages: [{ role: "user", content: promptText }],
+            success: false,
+            error: acpError.message,
+            durationMs: Date.now() - acpDispatchStartedAt,
+          },
+          hookCtx,
+        )
+        .catch((hookErr) => {
+          logVerbose(
+            `dispatch-acp: agent_end hook failed: ${hookErr instanceof Error ? hookErr.message : String(hookErr)}`,
+          );
+        });
+    }
+
     const counts = params.dispatcher.getQueuedCounts();
     delivery.applyRoutedCounts(counts);
     const acpStats = acpManager.getObservabilitySnapshot(params.cfg);
