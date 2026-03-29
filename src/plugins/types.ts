@@ -2216,6 +2216,10 @@ export type PluginHookSessionStartEvent = {
 };
 
 // session_end hook
+// Fires when a session ends. Triggered by:
+//   - session reset/replace (a new session displaces an existing one)
+//   - subagent spawn failure (failed-spawn path fires alongside subagent_ended)
+//   - cron isolated agent session end (runCronIsolatedAgentTurn)
 export type PluginHookSessionEndEvent = {
   sessionId: string;
   sessionKey?: string;

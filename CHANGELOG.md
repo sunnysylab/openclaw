@@ -4,6 +4,10 @@ Docs: https://docs.openclaw.ai
 
 ## Unreleased
 
+### Changes
+
+- Plugins/hooks: extend `session_end` to fire when a subagent spawn fails and when a cron isolated agent session completes, so plugins can react to task completion without polling. The `subagent_ended` hook continues to fire alongside `session_end` for backward compatibility. (#10142)
+
 ### Fixes
 
 - Memory/QMD: resolve slugified `memory_search` file hints back to the indexed filesystem path before returning search hits, so `memory_get` works again for mixed-case and spaced paths. (#50313) Thanks @erra9x.
