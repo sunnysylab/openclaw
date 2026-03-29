@@ -666,6 +666,23 @@ describe("matchAllowlist with argPattern", () => {
     expect(matchAllowlist(entries, resolution, ["python3", "b.py"])).toBeTruthy();
     expect(matchAllowlist(entries, resolution, ["python3", "c.py"])).toBeNull();
   });
+
+  it("distinguishes zero-arg pattern from one-empty-string-arg pattern", () => {
+    // buildArgPatternFromArgv encodes [] as "^\x00\x00$" (double sentinel) and
+    // [""] as "^\x00$" (single sentinel) so the two cannot cross-match.
+    const zeroArgEntries: ExecAllowlistEntry[] = [
+      { pattern: "/usr/bin/python3", argPattern: "^\x00\x00$" },
+    ];
+    const emptyArgEntries: ExecAllowlistEntry[] = [
+      { pattern: "/usr/bin/python3", argPattern: "^\x00$" },
+    ];
+    // Zero-arg command must match zero-arg pattern but not empty-string-arg pattern.
+    expect(matchAllowlist(zeroArgEntries, resolution, ["python3"])).toBeTruthy();
+    expect(matchAllowlist(emptyArgEntries, resolution, ["python3"])).toBeNull();
+    // One-empty-string-arg command must match empty-string-arg pattern but not zero-arg pattern.
+    expect(matchAllowlist(emptyArgEntries, resolution, ["python3", ""])).toBeTruthy();
+    expect(matchAllowlist(zeroArgEntries, resolution, ["python3", ""])).toBeNull();
+  });
 });
 
 describe("Windows rebuildShellCommandFromSource", () => {

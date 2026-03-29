@@ -266,17 +266,23 @@ function stripTrailingRedirections(value: string): string {
 function matchArgPattern(argPattern: string, argv: string[], platform?: string | null): boolean {
   // Patterns built by buildArgPatternFromArgv use \x00 as the argument separator and
   // always include a trailing \x00 sentinel so that every auto-generated pattern
-  // (including zero-arg "^\x00$" and single-arg "^hello world\x00$") contains at
+  // (including zero-arg "^\x00\x00$" and single-arg "^hello world\x00$") contains at
   // least one \x00.  This lets matchArgPattern detect the join style unambiguously
   // via .includes("\x00") without misidentifying anchored hand-authored patterns.
   // Legacy hand-authored patterns use a plain space and contain no \x00.
   // When \x00 style is active, a trailing \x00 is appended to the joined args string
   // to match the sentinel embedded in the pattern.
+  //
+  // Zero args use a double sentinel "\x00\x00" to distinguish [] from [""] — both
+  // join to "" but must match different patterns ("^\x00\x00$" vs "^\x00$").
   const sep = argPattern.includes("\x00") ? "\x00" : " ";
+  const argsSlice = argv.slice(1);
   const argsString =
     sep === "\x00"
-      ? argv.slice(1).join(sep) + sep // trailing sentinel to match pattern format
-      : argv.slice(1).join(sep);
+      ? argsSlice.length === 0
+        ? "\x00\x00" // zero args: double sentinel matches "^\x00\x00$" pattern
+        : argsSlice.join(sep) + sep // trailing sentinel to match pattern format
+      : argsSlice.join(sep);
   try {
     const regex = new RegExp(argPattern);
     if (regex.test(argsString)) {

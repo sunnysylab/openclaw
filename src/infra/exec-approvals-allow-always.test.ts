@@ -754,7 +754,7 @@ $0 \\"$1\\"" touch {marker}`,
     });
     expect(patterns).toHaveLength(1);
     expect(patterns[0].pattern).toBe(exe);
-    expect(patterns[0].argPattern).toBe("^\x00$"); // trailing \x00 sentinel, zero args
+    expect(patterns[0].argPattern).toBe("^\x00\x00$"); // double sentinel: zero args distinct from [""]
   });
 
   it("escapes regex special characters in argPattern", () => {

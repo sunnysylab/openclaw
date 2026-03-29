@@ -590,6 +590,12 @@ function buildScriptArgPatternFromArgv(
   // (or zero). Without the sentinel, a single-arg pattern like ^hello world$ would
   // be misidentified as a legacy space-joined pattern and allow a split-arg bypass.
   const normalized = scriptArgs.map((a) => a.replace(/\//g, "\\"));
+  // Mirror the zero-args double-sentinel from buildArgPatternFromArgv so that
+  // a script invocation with no trailing args (scriptArgs = []) is distinct from
+  // one that passes a single explicit empty-string arg (scriptArgs = [""]).
+  if (normalized.length === 0) {
+    return "^\x00\x00$";
+  }
   return `^${normalized.map(escapeRegExpLiteral).join("\x00")}\x00$`;
 }
 
@@ -606,7 +612,16 @@ function buildArgPatternFromArgv(argv: string[]): string | undefined {
   // A trailing \x00 sentinel is always appended so that matchArgPattern can detect
   // auto-generated patterns by .includes("\x00") regardless of argument count —
   // including the zero-arg and single-arg cases where the body contains no separator.
+  //
+  // Zero args use a double sentinel "^\x00\x00$" to distinguish [] from [""].
+  // Both would otherwise join to "" and produce the identical "^\x00$", allowing
+  // a zero-arg allow-always entry to incorrectly match a command that passes an
+  // explicit empty-string argument.  matchArgPattern mirrors this: zero-arg argv
+  // emits "\x00\x00" while one-empty-arg argv emits "\x00".
   const normalized = args.map((a) => a.replace(/\//g, "\\"));
+  if (normalized.length === 0) {
+    return "^\x00\x00$";
+  }
   const joined = normalized.join("\x00");
   return `^${escapeRegExpLiteral(joined)}\x00$`;
 }
