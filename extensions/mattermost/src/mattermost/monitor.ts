@@ -125,10 +125,15 @@ function normalizeInteractionSourceIps(values?: string[]): string[] {
   return (values ?? []).map((value) => value.trim()).filter(Boolean);
 }
 
-const recentInboundMessages = createDedupeCache({
-  ttlMs: RECENT_MATTERMOST_MESSAGE_TTL_MS,
-  maxSize: RECENT_MATTERMOST_MESSAGE_MAX,
-});
+let recentInboundMessages: ReturnType<typeof createDedupeCache> | undefined;
+
+function getRecentInboundMessages(): ReturnType<typeof createDedupeCache> {
+  recentInboundMessages ??= createDedupeCache({
+    ttlMs: RECENT_MATTERMOST_MESSAGE_TTL_MS,
+    maxSize: RECENT_MATTERMOST_MESSAGE_MAX,
+  });
+  return recentInboundMessages;
+}
 
 function resolveRuntime(opts: MonitorMattermostOpts): RuntimeEnv {
   return (
@@ -1005,7 +1010,7 @@ export async function monitorMattermostProvider(opts: MonitorMattermostOpts = {}
       return;
     }
     const dedupeEntries = allMessageIds.map((id) =>
-      recentInboundMessages.check(`${account.accountId}:${id}`),
+      getRecentInboundMessages().check(`${account.accountId}:${id}`),
     );
     if (dedupeEntries.length > 0 && dedupeEntries.every(Boolean)) {
       logVerboseMessage(
