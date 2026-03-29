@@ -283,8 +283,28 @@
         "reason": "This fs-safe suite mutates HOME and OPENCLAW_HOME while exercising tilde expansion and rooted file guards; keep it in its own forked lane so shared unit-fast workers do not inherit transient auth-storage paths."
       },
       {
+        "file": "src/process/command-queue.test.ts",
+        "reason": "This command-queue suite shares module-global lane state with other unit files that import the real queue; keep it isolated so shared unit-fast workers cannot leave active lane state behind before its ordering assertions run."
+      },
+      {
         "file": "src/media/local-roots.test.ts",
         "reason": "This local-roots suite stubs OPENCLAW_STATE_DIR while deriving agent and outbound media roots; keep it in its own forked lane so shared unit-fast workers do not inherit transient auth/state lookup paths."
+      },
+      {
+        "file": "src/agents/pi-tools.multi-root-guard.test.ts",
+        "reason": "This multi-root guard suite stubs HOME and OPENCLAW_HOME while exercising canonical host-path matching; keep it isolated so shared unit-fast workers do not inherit rewritten auth and home directories."
+      },
+      {
+        "file": "src/agents/pi-tools.workspace-only-false.test.ts",
+        "reason": "This workspaceOnly=false suite hoists pi-ai runtime mocks to exercise host-root tool wiring; keep it isolated so shared unit-fast workers do not inherit mocked provider modules."
+      },
+      {
+        "file": "src/flows/search-setup.test.ts",
+        "reason": "This search-setup suite hoists a runtime web-search provider stub to exercise provider-owned Grok setup; keep it isolated so shared unit-fast workers do not inherit mocked provider registries."
+      },
+      {
+        "file": "src/commands/onboard-search.test.ts",
+        "reason": "This onboarding suite hoists bundled search-provider mocks and mutates search API-key env vars; keep it isolated so shared unit-fast workers stay deterministic."
       }
     ],
     "threadPinned": []
