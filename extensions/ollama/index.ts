@@ -11,6 +11,7 @@ import {
   DEFAULT_OLLAMA_EMBEDDING_MODEL,
   createOllamaEmbeddingProvider,
 } from "./src/embedding-provider.js";
+import { readProviderBaseUrl } from "./src/provider-base-url.js";
 import { resolveOllamaApiBase } from "./src/provider-models.js";
 import {
   createConfiguredOllamaCompatStreamWrapper,
@@ -90,10 +91,7 @@ export default definePluginEntry({
             return {
               provider: {
                 ...explicit,
-                baseUrl:
-                  typeof explicit.baseUrl === "string" && explicit.baseUrl.trim()
-                    ? resolveOllamaApiBase(explicit.baseUrl)
-                    : OLLAMA_DEFAULT_BASE_URL,
+                baseUrl: resolveOllamaApiBase(readProviderBaseUrl(explicit)),
                 api: explicit.api ?? "ollama",
                 apiKey: ollamaKey ?? explicit.apiKey ?? DEFAULT_API_KEY,
               },
@@ -104,7 +102,7 @@ export default definePluginEntry({
           }
 
           const providerSetup = await loadProviderSetup();
-          const provider = await providerSetup.buildOllamaProvider(explicit?.baseUrl, {
+          const provider = await providerSetup.buildOllamaProvider(readProviderBaseUrl(explicit), {
             quiet: !ollamaKey && !explicit,
           });
           if (provider.models.length === 0 && !ollamaKey && !explicit?.apiKey) {
@@ -148,7 +146,7 @@ export default definePluginEntry({
       createStreamFn: ({ config, model }) => {
         return createConfiguredOllamaStreamFn({
           model,
-          providerBaseUrl: config?.models?.providers?.ollama?.baseUrl,
+          providerBaseUrl: readProviderBaseUrl(config?.models?.providers?.ollama),
         });
       },
       wrapStreamFn: (ctx) => {
@@ -168,7 +166,7 @@ export default definePluginEntry({
       resolveSyntheticAuth: ({ providerConfig }) => {
         const hasApiConfig =
           Boolean(providerConfig?.api?.trim()) ||
-          Boolean(providerConfig?.baseUrl?.trim()) ||
+          Boolean(readProviderBaseUrl(providerConfig)) ||
           (Array.isArray(providerConfig?.models) && providerConfig.models.length > 0);
         if (!hasApiConfig) {
           return undefined;

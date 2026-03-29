@@ -4,6 +4,7 @@ import { applyAgentDefaultModelPrimary } from "openclaw/plugin-sdk/provider-onbo
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime";
 import { WizardCancelledError, type WizardPrompter } from "openclaw/plugin-sdk/setup";
 import { OLLAMA_DEFAULT_BASE_URL, OLLAMA_DEFAULT_MODEL } from "./defaults.js";
+import { readProviderBaseUrl } from "./provider-base-url.js";
 import {
   buildOllamaModelDefinition,
   enrichOllamaModelsWithContext,
@@ -486,7 +487,8 @@ export async function ensureOllamaModelPulled(params: {
   if (!params.model.startsWith("ollama/")) {
     return;
   }
-  const baseUrl = params.config.models?.providers?.ollama?.baseUrl ?? OLLAMA_DEFAULT_BASE_URL;
+  const baseUrl =
+    readProviderBaseUrl(params.config.models?.providers?.ollama) ?? OLLAMA_DEFAULT_BASE_URL;
   const modelName = params.model.slice("ollama/".length);
   if (isOllamaCloudModel(modelName)) {
     return;
