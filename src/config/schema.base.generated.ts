@@ -2738,6 +2738,22 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                   isolatedSession: {
                     type: "boolean",
                   },
+                  preHook: {
+                    type: "object",
+                    properties: {
+                      command: {
+                        type: "string",
+                        minLength: 1,
+                      },
+                      timeoutSeconds: {
+                        type: "integer",
+                        minimum: 1,
+                        maximum: 300,
+                      },
+                    },
+                    required: ["command"],
+                    additionalProperties: false,
+                  },
                 },
                 additionalProperties: false,
               },
@@ -3891,6 +3907,22 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                     },
                     isolatedSession: {
                       type: "boolean",
+                    },
+                    preHook: {
+                      type: "object",
+                      properties: {
+                        command: {
+                          type: "string",
+                          minLength: 1,
+                        },
+                        timeoutSeconds: {
+                          type: "integer",
+                          minimum: 1,
+                          maximum: 300,
+                        },
+                      },
+                      required: ["command"],
+                      additionalProperties: false,
                     },
                   },
                   additionalProperties: false,
