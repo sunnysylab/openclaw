@@ -1,7 +1,7 @@
 import type { ModelCompatConfig } from "../config/types.models.js";
 import { stripUnsupportedSchemaKeywords } from "../plugin-sdk/provider-tools.js";
 import { resolveUnsupportedToolSchemaKeywords } from "../plugins/provider-model-compat.js";
-import { copyPluginToolMeta } from "../plugins/tools.js";
+import { preservePluginToolMeta } from "../plugins/tools.js";
 import { copyChannelAgentToolMeta } from "./channel-tools.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import { cleanSchemaForGemini } from "./schema/clean-for-gemini.js";
@@ -71,11 +71,6 @@ export function normalizeToolParameters(
   tool: AnyAgentTool,
   options?: { modelProvider?: string; modelId?: string; modelCompat?: ModelCompatConfig },
 ): AnyAgentTool {
-  function preserveToolMeta(target: AnyAgentTool): AnyAgentTool {
-    copyPluginToolMeta(tool, target);
-    copyChannelAgentToolMeta(tool as never, target as never);
-    return target;
-  }
   const schema =
     tool.parameters && typeof tool.parameters === "object"
       ? (tool.parameters as Record<string, unknown>)
@@ -98,6 +93,12 @@ export function normalizeToolParameters(
     options?.modelProvider?.toLowerCase().includes("gemini");
   const isAnthropicProvider = options?.modelProvider?.toLowerCase().includes("anthropic");
   const unsupportedToolSchemaKeywords = resolveUnsupportedToolSchemaKeywords(options?.modelCompat);
+
+  function preserveToolMeta(target: AnyAgentTool): AnyAgentTool {
+    preservePluginToolMeta(tool, target);
+    copyChannelAgentToolMeta(tool as never, target as never);
+    return target;
+  }
 
   function applyProviderCleaning(s: unknown): unknown {
     if (isGeminiProvider && !isAnthropicProvider) {

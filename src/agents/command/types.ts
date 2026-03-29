@@ -88,6 +88,8 @@ export type AgentCommandOpts = {
   streamParams?: AgentStreamParams;
   /** Explicit workspace directory override (for subagents to inherit parent workspace). */
   workspaceDir?: SpawnedRunMetadata["workspaceDir"];
+  /** Invoked after deterministic tool preflight checks succeed for an attempt. */
+  onPreflightPassed?: () => void | Promise<void>;
 };
 
 export type AgentCommandIngressOpts = Omit<

@@ -32,6 +32,11 @@ export function copyPluginToolMeta(source: AnyAgentTool, target: AnyAgentTool): 
   }
 }
 
+export function preservePluginToolMeta<T extends AnyAgentTool>(source: AnyAgentTool, target: T): T {
+  copyPluginToolMeta(source, target);
+  return target;
+}
+
 function normalizeAllowlist(list?: string[]) {
   return new Set((list ?? []).map(normalizeToolName).filter(Boolean));
 }

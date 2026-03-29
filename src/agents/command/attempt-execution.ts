@@ -469,6 +469,7 @@ export function runAgentAttempt(params: {
     extraSystemPrompt: params.opts.extraSystemPrompt,
     inputProvenance: params.opts.inputProvenance,
     streamParams: params.opts.streamParams,
+    onPreflightPassed: params.opts.onPreflightPassed,
     agentDir: params.agentDir,
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
     onAgentEvent: params.onAgentEvent,

@@ -500,6 +500,7 @@ export async function runEmbeddedPiAgent(
             images: params.images,
             clientTools: params.clientTools,
             disableTools: params.disableTools,
+            onPreflightPassed: params.onPreflightPassed,
             provider,
             modelId,
             model: applyLocalNoAuthHeaderOverride(effectiveModel, apiKeyInfo),
