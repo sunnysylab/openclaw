@@ -20,12 +20,13 @@ let resolvePluginProviders: typeof import("./providers.runtime.js").resolvePlugi
 function createManifestProviderPlugin(params: {
   id: string;
   providerIds: string[];
+  cliBackendIds?: string[];
   origin?: "bundled" | "workspace";
 }): PluginManifestRecord {
   return {
     id: params.id,
     channels: [],
-    cliBackends: [],
+    cliBackends: params.cliBackendIds ?? [],
     providers: params.providerIds,
     skills: [],
     hooks: [],
@@ -211,6 +212,16 @@ describe("resolvePluginProviders", () => {
       createManifestProviderPlugin({ id: "moonshot", providerIds: ["moonshot"] }),
       createManifestProviderPlugin({ id: "google-gemini-cli-auth", providerIds: [] }),
       createManifestProviderPlugin({
+        id: "anthropic",
+        providerIds: ["anthropic"],
+        cliBackendIds: ["claude-cli"],
+      }),
+      createManifestProviderPlugin({
+        id: "openai",
+        providerIds: ["openai", "openai-codex"],
+        cliBackendIds: ["codex-cli"],
+      }),
+      createManifestProviderPlugin({
         id: "workspace-provider",
         providerIds: ["workspace-provider"],
         origin: "workspace",
@@ -237,6 +248,11 @@ describe("resolvePluginProviders", () => {
         activate: false,
       }),
     );
+  });
+
+  it("resolves owning plugins for CLI backend ids declared in plugin manifests", () => {
+    expectOwningPluginIds("claude-cli", ["anthropic"]);
+    expectOwningPluginIds("codex-cli", ["openai"]);
   });
 
   it.each([
@@ -369,7 +385,7 @@ describe("resolvePluginProviders", () => {
     });
 
     expectLastLoadPluginsCall({
-      onlyPluginIds: ["google", "kilocode", "moonshot"],
+      onlyPluginIds: ["anthropic", "google", "kilocode", "moonshot", "openai"],
     });
   });
 
