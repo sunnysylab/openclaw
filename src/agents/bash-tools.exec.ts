@@ -480,6 +480,7 @@ export function createExecTool(
           warnings,
           notifySessionKey,
           trustedSafeBinDirs,
+          maxCommandChars: defaults?.maxCommandChars,
         });
       }
 
@@ -510,6 +511,7 @@ export function createExecTool(
           maxOutput,
           pendingMaxOutput,
           trustedSafeBinDirs,
+          maxCommandChars: defaults?.maxCommandChars,
         });
         if (gatewayResult.pendingResult) {
           return gatewayResult.pendingResult;
