@@ -364,6 +364,45 @@ describe("chat view", () => {
     expect(container.textContent).not.toContain("190k / 200k");
   });
 
+  it("caps rendered history by message count", () => {
+    const messages = Array.from({ length: 205 }, (_, index) => ({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `message-${index}`,
+      timestamp: index + 1,
+    }));
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages,
+        }),
+      ),
+      container,
+    );
+
+    expect(container.textContent).toContain("Showing last 200 messages (5 hidden).");
+  });
+
+  it("caps rendered history by total render char budget", () => {
+    const large = "x".repeat(100_000);
+    const messages = Array.from({ length: 6 }, (_, index) => ({
+      role: index % 2 === 0 ? "assistant" : "user",
+      content: `${large}-${index}`,
+      timestamp: index + 1,
+    }));
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          messages,
+        }),
+      ),
+      container,
+    );
+
+    expect(container.textContent).toContain("Showing last 2 messages (4 hidden).");
+  });
+
   it("uses the assistant avatar URL for the welcome state when the identity avatar is only initials", () => {
     const container = document.createElement("div");
     render(

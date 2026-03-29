@@ -1405,6 +1405,43 @@ export function renderChat(props: ChatProps) {
 }
 
 const CHAT_HISTORY_RENDER_LIMIT = 200;
+const CHAT_HISTORY_RENDER_CHAR_BUDGET = 240_000;
+
+function estimateMessageRenderChars(message: unknown): number {
+  const normalized = normalizeMessage(message);
+  let chars = 0;
+  for (const item of normalized.content) {
+    if (typeof item.text === "string") {
+      chars += item.text.length;
+    }
+    if (typeof item.args === "string") {
+      chars += item.args.length;
+    } else if (item.args && typeof item.args === "object") {
+      try {
+        chars += JSON.stringify(item.args).length;
+      } catch {
+        // Ignore non-serializable tool args; text length is still counted.
+      }
+    }
+  }
+  return Math.max(chars, 1);
+}
+
+function resolveHistoryStartIndex(history: unknown[]): number {
+  let start = history.length;
+  let count = 0;
+  let chars = 0;
+  while (start > 0 && count < CHAT_HISTORY_RENDER_LIMIT) {
+    const nextChars = chars + estimateMessageRenderChars(history[start - 1]);
+    if (count > 0 && nextChars > CHAT_HISTORY_RENDER_CHAR_BUDGET) {
+      break;
+    }
+    chars = nextChars;
+    start--;
+    count++;
+  }
+  return start;
+}
 
 function groupMessages(items: ChatItem[]): Array<ChatItem | MessageGroup> {
   const result: Array<ChatItem | MessageGroup> = [];
@@ -1457,14 +1494,15 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
   const items: ChatItem[] = [];
   const history = Array.isArray(props.messages) ? props.messages : [];
   const tools = Array.isArray(props.toolMessages) ? props.toolMessages : [];
-  const historyStart = Math.max(0, history.length - CHAT_HISTORY_RENDER_LIMIT);
+  const historyStart = resolveHistoryStartIndex(history);
   if (historyStart > 0) {
+    const visibleCount = history.length - historyStart;
     items.push({
       kind: "message",
       key: "chat:history:notice",
       message: {
         role: "system",
-        content: `Showing last ${CHAT_HISTORY_RENDER_LIMIT} messages (${historyStart} hidden).`,
+        content: `Showing last ${visibleCount} messages (${historyStart} hidden).`,
         timestamp: Date.now(),
       },
     });
