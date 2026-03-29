@@ -454,9 +454,13 @@ async function sendSubagentAnnounceDirectly(params: {
   try {
     const completionDirectOrigin = normalizeDeliveryContext(params.completionDirectOrigin);
     const directOrigin = normalizeDeliveryContext(params.directOrigin);
+    // Merge completionDirectOrigin with directOrigin so that missing fields
+    // (channel, to, accountId) fall back to the originating session's
+    // lastChannel / lastTo. Without this, a completion origin that carries a
+    // channel but not a `to` would prevent external delivery.
     const effectiveDirectOrigin =
       params.expectsCompletionMessage && completionDirectOrigin
-        ? completionDirectOrigin
+        ? mergeDeliveryContext(completionDirectOrigin, directOrigin)
         : directOrigin;
     const directChannel =
       typeof effectiveDirectOrigin?.channel === "string"
