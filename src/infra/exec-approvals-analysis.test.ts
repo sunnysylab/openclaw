@@ -443,6 +443,27 @@ describe("exec approvals shell analysis", () => {
         expect(res.segments[0]?.argv[0]).toBe("node");
       }
     });
+
+    it("unwraps powershell -c alias and --command alias", () => {
+      // stripWindowsShellWrapperOnce previously only matched -Command, so
+      // `pwsh -c "inner"` was left as-is.  The allow-always path persists the
+      // inner executable via extractShellWrapperInlineCommand (which treats -c
+      // as a command flag), but later evaluations would see `pwsh` as the
+      // executable, causing repeated approval prompts for the same command.
+      const cases = [
+        ['pwsh -c "node a.js"', "node"],
+        ['pwsh -NoLogo -c "node a.js"', "node"],
+        ['powershell -c "node a.js"', "node"],
+        ['pwsh --command "node a.js"', "node"],
+        ["pwsh -c 'node a.js'", "node"],
+        ["pwsh -c node a.js", "node"],
+      ];
+      for (const [command, expected] of cases) {
+        const res = analyzeShellCommand({ command, platform: "win32" });
+        expect(res.ok).toBe(true);
+        expect(res.segments[0]?.argv[0]).toBe(expected);
+      }
+    });
   });
 
   describe("shell allowlist (chained commands)", () => {

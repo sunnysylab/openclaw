@@ -496,22 +496,30 @@ function stripWindowsShellWrapperOnce(command: string): string {
     return psCallMatch[1];
   }
 
-  // PowerShell invocation: powershell[.exe] [-flags] -Command "inner"
-  // Also handles pwsh[.exe].
+  // PowerShell invocation: powershell[.exe] [-flags] -Command|-c|--command "inner"
+  // Also handles pwsh[.exe] and the common -c / --command abbreviations of -Command.
   // Flags before -Command may be bare (-NoProfile) or take a single value
   // (-ExecutionPolicy Bypass, -WindowStyle Hidden).  The lookahead (?!-)
   // prevents a flag value from consuming the next flag name.
-  // psFlags matches zero or more PowerShell flags before -Command.
+  // psFlags matches zero or more PowerShell flags before the command-introducing flag.
   // Each flag is either bare (-NoProfile) or takes a single value.
   // Flag values may be unquoted (-ExecutionPolicy Bypass) or quoted with
   // double-quotes (-WorkingDirectory "C:\Users\Jane Doe\proj") or single-
   // quotes (-WorkingDirectory 'C:\Users\Jane Doe\proj').  \S+ alone cannot
   // match quoted values that contain spaces, so we try double-quoted and
   // single-quoted patterns first, then fall back to \S+ for unquoted values.
-  const psFlags = /(?:-\w+(?:\s+(?!-)(?:"[^"]*(?:""[^"]*)*"|'[^']*(?:''[^']*)*'|\S+))?\s+)*/i
-    .source;
+  //
+  // The negative lookahead (?!c(?:ommand)?\b|-command\b) prevents psFlags from
+  // consuming -c or -command as an ordinary flag before the command-introducing
+  // flag is matched.  Without it, -c "inner" would be swallowed as a value-taking
+  // flag and the outer pattern would never see -c to match against psCommandFlag.
+  const psFlags =
+    /(?:-(?!c(?:ommand)?\b|-command\b)\w+(?:\s+(?!-)(?:"[^"]*(?:""[^"]*)*"|'[^']*(?:''[^']*)*'|\S+))?\s+)*/i
+      .source;
+  // Matches -Command, its abbreviation -c, and the --command double-dash alias.
+  const psCommandFlag = `(?:-command|-c|--command)`;
   const psInvokeMatch = command.match(
-    new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+"(.+)"$`, "is"),
+    new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}${psCommandFlag}\\s+"(.+)"$`, "is"),
   );
   if (psInvokeMatch) {
     // Within a double-quoted -Command argument, "" is the escape sequence for a
@@ -520,9 +528,9 @@ function stripWindowsShellWrapperOnce(command: string): string {
     // single argv token "hello world" rather than splitting on the space.
     return psInvokeMatch[1].replace(/""/g, '"');
   }
-  // PowerShell -Command with single-quoted payload: powershell -Command 'node a.js'
+  // PowerShell -Command (or -c/--command) with single-quoted payload
   const psInvokeSingleQuote = command.match(
-    new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+'(.+)'$`, "is"),
+    new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}${psCommandFlag}\\s+'(.+)'$`, "is"),
   );
   if (psInvokeSingleQuote) {
     // Inside a PowerShell single-quoted string '' encodes a literal apostrophe.
@@ -530,9 +538,9 @@ function stripWindowsShellWrapperOnce(command: string): string {
     // yields the single argv token "hello world".
     return psInvokeSingleQuote[1].replace(/''/g, "'");
   }
-  // PowerShell -Command without quotes (bare unquoted payload)
+  // PowerShell -Command (or -c/--command) without quotes (bare unquoted payload)
   const psInvokeNoQuote = command.match(
-    new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}-Command\\s+(.+)$`, "is"),
+    new RegExp(`^(?:powershell|pwsh)(?:\\.exe)?\\s+${psFlags}${psCommandFlag}\\s+(.+)$`, "is"),
   );
   if (psInvokeNoQuote) {
     return psInvokeNoQuote[1];
