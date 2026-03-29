@@ -179,6 +179,7 @@ export async function runCronIsolatedAgentTurn(params: {
   agentId?: string;
   lane?: string;
   deliveryContract?: IsolatedDeliveryContract;
+  onExecutionStart?: () => void;
 }): Promise<RunCronAgentTurnResult> {
   const abortSignal = params.abortSignal ?? params.signal;
   const isAborted = () => abortSignal?.aborted === true;
@@ -542,7 +543,10 @@ export async function runCronIsolatedAgentTurn(params: {
             abortSignal,
             bootstrapPromptWarningSignaturesSeen,
             bootstrapPromptWarningSignature,
+            onLaneAcquired: params.onExecutionStart,
           });
+          // Clear after first call so retry iterations don't re-fire the timer.
+          params.onExecutionStart = undefined;
           bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
             result.meta?.systemPromptReport,
           );
