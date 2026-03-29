@@ -201,7 +201,12 @@ export async function runBeforeToolCallHook(args: {
       toolContext,
     );
 
-    if (hookResult?.block) {
+    const normalizedBlockMode = hookResult?.blockMode === "soft" ? "soft" : "hard";
+    const shouldRequestApproval = Boolean(
+      hookResult?.requireApproval && hookResult.block && normalizedBlockMode === "soft",
+    );
+
+    if (hookResult?.block && !shouldRequestApproval) {
       return {
         blocked: true,
         reason: hookResult.blockReason || "Tool call blocked by plugin hook",
