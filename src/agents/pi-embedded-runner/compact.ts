@@ -537,6 +537,17 @@ export async function compactEmbeddedPiSessionDirect(
         }
       }
     }
+    // Slack: enable inline buttons by default (Block Kit is always available)
+    if (runtimeChannel === "slack") {
+      if (!runtimeCapabilities) {
+        runtimeCapabilities = [];
+      }
+      if (
+        !runtimeCapabilities.some((cap) => String(cap).trim().toLowerCase() === "inlinebuttons")
+      ) {
+        runtimeCapabilities.push("inlineButtons");
+      }
+    }
     const reactionGuidance =
       runtimeChannel && params.config
         ? (() => {
