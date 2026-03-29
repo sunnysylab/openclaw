@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildChromeMcpArgs,
   ensureChromeMcpAvailable,
@@ -81,6 +81,11 @@ function createFakeSession(): ChromeMcpSession {
 describe("chrome MCP page parsing", () => {
   beforeEach(async () => {
     await resetChromeMcpSessionsForTest();
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("parses list_pages text responses when structuredContent is missing", async () => {
@@ -373,5 +378,35 @@ describe("chrome MCP page parsing", () => {
     const tabs = await listChromeMcpTabs("chrome-live");
     expect(factoryCalls).toBe(2);
     expect(tabs).toHaveLength(2);
+  });
+
+  it("honors timeoutMs for ephemeral availability probes", async () => {
+    vi.useFakeTimers();
+    const closeMock = vi.fn().mockResolvedValue(undefined);
+    const factory: ChromeMcpSessionFactory = async () =>
+      ({
+        client: {
+          callTool: vi.fn(),
+          listTools: vi.fn(),
+          close: closeMock,
+          connect: vi.fn(),
+        },
+        transport: {
+          pid: 123,
+        },
+        ready: new Promise<void>(() => {}),
+      }) as unknown as ChromeMcpSession;
+    setChromeMcpSessionFactoryForTest(factory);
+
+    const promise = ensureChromeMcpAvailable("chrome-live", undefined, {
+      ephemeral: true,
+      timeoutMs: 50,
+    });
+    const expectation = expect(promise).rejects.toThrow(/timed out after 50ms/i);
+
+    await vi.advanceTimersByTimeAsync(50);
+
+    await expectation;
+    expect(closeMock).toHaveBeenCalledTimes(1);
   });
 });

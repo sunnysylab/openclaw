@@ -28,6 +28,7 @@ type ChromeMcpSession = {
 
 type ChromeMcpCallOptions = {
   ephemeral?: boolean;
+  timeoutMs?: number;
 };
 
 type ChromeMcpSessionLease = {
@@ -274,7 +275,11 @@ async function createRealSession(
   };
 }
 
-async function getSession(profileName: string, userDataDir?: string): Promise<ChromeMcpSession> {
+async function getSession(
+  profileName: string,
+  userDataDir?: string,
+  timeoutMs?: number,
+): Promise<ChromeMcpSession> {
   const cacheKey = buildChromeMcpSessionCacheKey(profileName, userDataDir);
   await closeChromeMcpSessionsForProfile(profileName, cacheKey);
 
@@ -306,7 +311,7 @@ async function getSession(profileName: string, userDataDir?: string): Promise<Ch
     }
   }
   try {
-    await session.ready;
+    await waitForChromeMcpReady(session, profileName, timeoutMs);
     return session;
   } catch (err) {
     const current = sessions.get(cacheKey);
@@ -317,7 +322,11 @@ async function getSession(profileName: string, userDataDir?: string): Promise<Ch
   }
 }
 
-async function getExistingSession(cacheKey: string): Promise<ChromeMcpSession | null> {
+async function getExistingSession(
+  cacheKey: string,
+  profileName: string,
+  timeoutMs?: number,
+): Promise<ChromeMcpSession | null> {
   let session = sessions.get(cacheKey);
   if (session && session.transport.pid === null) {
     sessions.delete(cacheKey);
@@ -325,7 +334,7 @@ async function getExistingSession(cacheKey: string): Promise<ChromeMcpSession | 
   }
   if (session) {
     try {
-      await session.ready;
+      await waitForChromeMcpReady(session, profileName, timeoutMs);
       return session;
     } catch (err) {
       const current = sessions.get(cacheKey);
@@ -343,7 +352,7 @@ async function getExistingSession(cacheKey: string): Promise<ChromeMcpSession | 
 
   session = await pending;
   try {
-    await session.ready;
+    await waitForChromeMcpReady(session, profileName, timeoutMs);
     return session;
   } catch (err) {
     const current = sessions.get(cacheKey);
@@ -354,13 +363,45 @@ async function getExistingSession(cacheKey: string): Promise<ChromeMcpSession | 
   }
 }
 
+async function waitForChromeMcpReady(
+  session: ChromeMcpSession,
+  profileName: string,
+  timeoutMs?: number,
+): Promise<void> {
+  if (!timeoutMs || timeoutMs <= 0) {
+    await session.ready;
+    return;
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      session.ready,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new BrowserProfileUnavailableError(
+              `Chrome MCP existing-session attach for profile "${profileName}" timed out after ${timeoutMs}ms.`,
+            ),
+          );
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 async function createEphemeralSession(
   profileName: string,
   userDataDir?: string,
+  timeoutMs?: number,
 ): Promise<ChromeMcpSession> {
   const session = await (sessionFactory ?? createRealSession)(profileName, userDataDir);
   try {
-    await session.ready;
+    await waitForChromeMcpReady(session, profileName, timeoutMs);
     return session;
   } catch (err) {
     await session.client.close().catch(() => {});
@@ -376,7 +417,7 @@ async function leaseSession(
   const cacheKey = buildChromeMcpSessionCacheKey(profileName, userDataDir);
   if (!options.ephemeral) {
     return {
-      session: await getSession(profileName, userDataDir),
+      session: await getSession(profileName, userDataDir, options.timeoutMs),
       cacheKey,
       temporary: false,
     };
@@ -384,7 +425,7 @@ async function leaseSession(
 
   // Status probes should avoid seeding the shared attach session cache, but they can safely
   // reuse a real cached session if one already exists.
-  const existingSession = await getExistingSession(cacheKey);
+  const existingSession = await getExistingSession(cacheKey, profileName, options.timeoutMs);
   if (existingSession) {
     return {
       session: existingSession,
@@ -394,7 +435,7 @@ async function leaseSession(
   }
 
   return {
-    session: await createEphemeralSession(profileName, userDataDir),
+    session: await createEphemeralSession(profileName, userDataDir, options.timeoutMs),
     cacheKey,
     temporary: true,
   };
