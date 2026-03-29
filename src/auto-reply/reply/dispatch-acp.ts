@@ -431,6 +431,8 @@ export async function tryDispatchAcpReply(params: {
     // memory-lancedb-pro uses before_prompt_build; legacy memory-lancedb uses before_agent_start.
     if (hookRunner?.hasHooks("before_prompt_build")) {
       try {
+        // ACP session history is managed internally by acpManager and is not
+        // available at prompt-build time, so messages is always empty here.
         const hookResult = await hookRunner.runBeforePromptBuild({ prompt: promptText, messages: [] }, hookCtx);
         if (hookResult?.prependContext) {
           promptText = `${hookResult.prependContext}\n\n${promptText}`;
