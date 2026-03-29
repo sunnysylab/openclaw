@@ -366,6 +366,8 @@ export function runAgentAttempt(params: {
           nextCliSessionId === cliSessionBinding?.sessionId ? cliSessionBinding : undefined,
         authProfileId,
         bootstrapPromptWarningSignaturesSeen,
+    subagentWorkspaceScope: params.opts.subagentWorkspaceScope,
+    subagentWorkspaceFiles: params.opts.subagentWorkspaceFiles,
         bootstrapPromptWarningSignature,
         images: params.isFallbackRetry ? undefined : params.opts.images,
         streamParams: params.opts.streamParams,
@@ -473,6 +475,8 @@ export function runAgentAttempt(params: {
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
     onAgentEvent: params.onAgentEvent,
     bootstrapPromptWarningSignaturesSeen,
+    subagentWorkspaceScope: params.opts.subagentWorkspaceScope,
+    subagentWorkspaceFiles: params.opts.subagentWorkspaceFiles,
     bootstrapPromptWarningSignature,
   });
 }

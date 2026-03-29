@@ -88,6 +88,18 @@ Full setup walkthrough (28m) by VelvetShark.
 
 <CardGroup cols={2}>
 
+<Card title="Zhihu Publisher Skill" icon="newspaper" href="https://github.com/delankesita/zhihu-publisher">
+  **@delankesita** • `publishing` `zhihu` `automation` `pip`
+
+Auto-publish articles to Zhihu with trending topics fetch, AI writing, and image upload. Install via `pip install zhihu-publisher`. Full workflow from hotspots → writing → publishing.
+</Card>
+
+<Card title="OpenClaw Skills Collection" icon="code" href="https://github.com/delankesita/openclaw-skills">
+  **@delankesita** • `skills` `collection` `publishing` `analysis`
+
+12+ skills for content creation, data analysis, and automation: WeWrite (WeChat MP), stock analysis, hot tracker, feed grabber, and more.
+</Card>
+
 <Card title="PR Review → Telegram Feedback" icon="code-pull-request" href="https://x.com/i/status/2010878524543131691">
   **@bangnokia** • `review` `github` `telegram`
 

@@ -374,6 +374,8 @@ export async function runEmbeddedAttempt(
         warn: makeBootstrapWarn({ sessionLabel, warn: (message) => log.warn(message) }),
         contextMode: params.bootstrapContextMode,
         runKind: params.bootstrapContextRunKind,
+        subagentWorkspaceScope: params.subagentWorkspaceScope,
+        subagentWorkspaceFiles: params.subagentWorkspaceFiles,
       });
     const bootstrapMaxChars = resolveBootstrapMaxChars(params.config);
     const bootstrapTotalMaxChars = resolveBootstrapTotalMaxChars(params.config);

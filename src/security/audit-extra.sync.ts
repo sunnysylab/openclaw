@@ -388,6 +388,60 @@ function listGroupPolicyOpen(cfg: OpenClawConfig): string[] {
 }
 
 function hasConfiguredGroupTargets(section: Record<string, unknown>): boolean {
+
+function listDmPolicyOpen(cfg: OpenClawConfig): string[] {
+  const out: string[] = [];
+  const channels = cfg.channels as Record<string, unknown> | undefined;
+  if (!channels || typeof channels !== "object") {
+    return out;
+  }
+  for (const [channelId, value] of Object.entries(channels)) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+    const section = value as Record<string, unknown>;
+    
+    // Check direct dmPolicy field
+    if (section.dmPolicy === "open") {
+      out.push(`channels.${channelId}.dmPolicy`);
+    }
+    
+    // Check legacy nested dm.policy field (e.g., googlechat)
+    const dm = section.dm;
+    if (dm && typeof dm === "object") {
+      const dmConfig = dm as Record<string, unknown>;
+      if (dmConfig.policy === "open") {
+        out.push(`channels.${channelId}.dm.policy`);
+      }
+    }
+    
+    // Check accounts level
+    const accounts = section.accounts;
+    if (accounts && typeof accounts === "object") {
+      for (const [accountId, accountVal] of Object.entries(accounts)) {
+        if (!accountVal || typeof accountVal !== "object") {
+          continue;
+        }
+        const acc = accountVal as Record<string, unknown>;
+        
+        // Check direct dmPolicy field
+        if (acc.dmPolicy === "open") {
+          out.push(`channels.${channelId}.accounts.${accountId}.dmPolicy`);
+        }
+        
+        // Check legacy nested dm.policy field
+        const accDm = acc.dm;
+        if (accDm && typeof accDm === "object") {
+          const accDmConfig = accDm as Record<string, unknown>;
+          if (accDmConfig.policy === "open") {
+            out.push(`channels.${channelId}.accounts.${accountId}.dm.policy`);
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
   const groupKeys = ["groups", "guilds", "channels", "rooms"];
   return groupKeys.some((key) => {
     const value = section[key];
@@ -1290,12 +1344,16 @@ export function collectSmallModelRiskFindings(params: {
 export function collectExposureMatrixFindings(cfg: OpenClawConfig): SecurityAuditFinding[] {
   const findings: SecurityAuditFinding[] = [];
   const openGroups = listGroupPolicyOpen(cfg);
-  if (openGroups.length === 0) {
+  const openDms = listDmPolicyOpen(cfg);
+
+  if (openGroups.length === 0 && openDms.length === 0) {
     return findings;
   }
 
   const elevatedEnabled = cfg.tools?.elevated?.enabled !== false;
-  if (elevatedEnabled) {
+
+  // Check open groups with elevated tools
+  if (openGroups.length > 0 && elevatedEnabled) {
     findings.push({
       checkId: "security.exposure.open_groups_with_elevated",
       severity: "critical",
@@ -1307,9 +1365,23 @@ export function collectExposureMatrixFindings(cfg: OpenClawConfig): SecurityAudi
     });
   }
 
+  // Check open DMs with elevated tools
+  if (openDms.length > 0 && elevatedEnabled) {
+    findings.push({
+      checkId: "security.exposure.open_dms_with_elevated",
+      severity: "critical",
+      title: "Open dmPolicy with elevated tools enabled",
+      detail:
+        `Found dmPolicy="open" at:\n${openDms.map((p) => `- ${p}`).join("\n")}\n` +
+        "With tools.elevated enabled, a prompt injection in open DMs can become a high-impact incident.",
+      remediation: `Set dmPolicy="allowlist" or dmPolicy="restricted" and keep elevated allowlists extremely tight.`,
+    });
+  }
+
   const { riskyContexts, hasRuntimeRisk } = collectRiskyToolExposureContexts(cfg);
 
-  if (riskyContexts.length > 0) {
+  // Check open groups with runtime/fs tools
+  if (openGroups.length > 0 && riskyContexts.length > 0) {
     findings.push({
       checkId: "security.exposure.open_groups_with_runtime_or_fs",
       severity: hasRuntimeRisk ? "critical" : "warn",
@@ -1320,6 +1392,21 @@ export function collectExposureMatrixFindings(cfg: OpenClawConfig): SecurityAudi
         "Prompt injection in open groups can trigger command/file actions in these contexts.",
       remediation:
         'For open groups, prefer tools.profile="messaging" (or deny group:runtime/group:fs), set tools.fs.workspaceOnly=true, and use agents.defaults.sandbox.mode="all" for exposed agents.',
+    });
+  }
+
+  // Check open DMs with runtime/fs tools
+  if (openDms.length > 0 && riskyContexts.length > 0) {
+    findings.push({
+      checkId: "security.exposure.open_dms_with_runtime_or_fs",
+      severity: hasRuntimeRisk ? "critical" : "warn",
+      title: "Open dmPolicy with runtime/filesystem tools exposed",
+      detail:
+        `Found dmPolicy="open" at:\n${openDms.map((p) => `- ${p}`).join("\n")}\n` +
+        `Risky tool exposure contexts:\n${riskyContexts.map((line) => `- ${line}`).join("\n")}\n` +
+        "Prompt injection in open DMs can trigger command/file actions in these contexts.",
+      remediation:
+        'For open DMs, prefer tools.profile="messaging" (or deny group:runtime/group:fs), set tools.fs.workspaceOnly=true, and use agents.defaults.sandbox.mode="all" for exposed agents.',
     });
   }
 
@@ -1355,5 +1442,67 @@ export function collectLikelyMultiUserSetupFindings(cfg: OpenClawConfig): Securi
       'If users may be mutually untrusted, split trust boundaries (separate gateways + credentials, ideally separate OS users/hosts). If you intentionally run shared-user access, set agents.defaults.sandbox.mode="all", keep tools.fs.workspaceOnly=true, deny runtime/fs/web tools unless required, and keep personal/private identities + credentials off that runtime.',
   });
 
+  return findings;
+}
+
+export function collectDmScopeFindings(cfg: OpenClawConfig): SecurityAuditFinding[] {
+  const findings: SecurityAuditFinding[] = [];
+  
+  // Check if session.dmScope is "main" (default or explicit)
+  const session = cfg.session as Record<string, unknown> | undefined;
+  const dmScope = session?.dmScope;
+  const isDmScopeMain = dmScope === "main" || dmScope === undefined;
+  
+  if (!isDmScopeMain) {
+    return findings;
+  }
+  
+  // Check for open DMs
+  const openDms = listDmPolicyOpen(cfg);
+  const hasOpenDms = openDms.length > 0;
+  
+  // Check for multi-user signals
+  const multiUserSignals = listPotentialMultiUserSignals(cfg);
+  const hasMultiUserSignals = multiUserSignals.length > 0;
+  
+  // Determine severity based on context
+  let severity: "critical" | "warn" | "info" = "warn";
+  let detail = "";
+  
+  if (hasOpenDms) {
+    // CRITICAL: Open DMs + dmScope="main" = anyone can access shared context
+    severity = "critical";
+    detail = 
+      `session.dmScope="main" (default) causes all DM conversations to share a single session.\n` +
+      `Found dmPolicy="open" at:\n${openDms.map((p) => `- ${p}`).join("\n")}\n` +
+      "Any user sending a DM can access the conversation history and context of all other DM users.\n" +
+      "This is a serious privacy and security risk in multi-user scenarios.";
+  } else if (hasMultiUserSignals) {
+    // WARN: Multi-user signals detected + dmScope="main"
+    severity = "warn";
+    detail = 
+      `session.dmScope="main" (default) causes all DM conversations to share a single session.\n` +
+      "Multi-user signals detected:\n" +
+      multiUserSignals.map((s) => `- ${s}`).join("\n") + "\n" +
+      "If different users can send DMs to this gateway, they will share conversation history and context.";
+  } else {
+    // INFO: Just dmScope="main" without other risk factors
+    severity = "info";
+    detail = 
+      `session.dmScope="main" (default) causes all DM conversations to share a single session.\n` +
+      "This is intended for single-user personal assistant setups.\n" +
+      "If this gateway may receive DMs from multiple users, consider using dmScope=\"per-peer\" or stricter.";
+  }
+  
+  findings.push({
+    checkId: "security.session.dm_scope_main",
+    severity,
+    title: "session.dmScope=\"main\" shares DM context across all users",
+    detail,
+    remediation: 
+      'Set session.dmScope="per-peer" (isolates each DM sender) or "per-channel-peer" / "per-account-channel-peer" for finer control. ' +
+      'Alternatively, set dmPolicy="allowlist" or dmPolicy="restricted" to limit who can send DMs.',
+  });
+  
   return findings;
 }
