@@ -54,10 +54,27 @@ type TaskRegistryDatabase = {
   statements: TaskRegistryStatements;
 };
 
-let cachedDatabase: TaskRegistryDatabase | null = null;
+type TaskRegistrySqliteRuntime = {
+  cachedDatabase: TaskRegistryDatabase | null;
+};
+
+const TASK_REGISTRY_SQLITE_RUNTIME_KEY = Symbol.for("openclaw.taskRegistry.sqlite.runtime");
 const TASK_REGISTRY_DIR_MODE = 0o700;
 const TASK_REGISTRY_FILE_MODE = 0o600;
 const TASK_REGISTRY_SIDEcar_SUFFIXES = ["", "-shm", "-wal"] as const;
+
+function getTaskRegistrySqliteRuntime(): TaskRegistrySqliteRuntime {
+  const globalStore = globalThis as Record<PropertyKey, unknown>;
+  const existing = globalStore[TASK_REGISTRY_SQLITE_RUNTIME_KEY];
+  if (existing) {
+    return existing as TaskRegistrySqliteRuntime;
+  }
+  const created: TaskRegistrySqliteRuntime = {
+    cachedDatabase: null,
+  };
+  globalStore[TASK_REGISTRY_SQLITE_RUNTIME_KEY] = created;
+  return created;
+}
 
 function normalizeNumber(value: number | bigint | null): number | undefined {
   if (typeof value === "bigint") {
@@ -341,13 +358,14 @@ function ensureTaskRegistryPermissions(pathname: string) {
 }
 
 function openTaskRegistryDatabase(): TaskRegistryDatabase {
+  const runtime = getTaskRegistrySqliteRuntime();
   const pathname = resolveTaskRegistrySqlitePath(process.env);
-  if (cachedDatabase && cachedDatabase.path === pathname) {
-    return cachedDatabase;
+  if (runtime.cachedDatabase && runtime.cachedDatabase.path === pathname) {
+    return runtime.cachedDatabase;
   }
-  if (cachedDatabase) {
-    cachedDatabase.db.close();
-    cachedDatabase = null;
+  if (runtime.cachedDatabase) {
+    runtime.cachedDatabase.db.close();
+    runtime.cachedDatabase = null;
   }
   ensureTaskRegistryPermissions(pathname);
   const { DatabaseSync } = requireNodeSqlite();
@@ -357,12 +375,12 @@ function openTaskRegistryDatabase(): TaskRegistryDatabase {
   db.exec(`PRAGMA busy_timeout = 5000;`);
   ensureSchema(db);
   ensureTaskRegistryPermissions(pathname);
-  cachedDatabase = {
+  runtime.cachedDatabase = {
     db,
     path: pathname,
     statements: createStatements(db),
   };
-  return cachedDatabase;
+  return runtime.cachedDatabase;
 }
 
 function withWriteTransaction(write: (statements: TaskRegistryStatements) => void) {
@@ -427,9 +445,10 @@ export function deleteTaskDeliveryStateFromSqlite(taskId: string) {
 }
 
 export function closeTaskRegistrySqliteStore() {
-  if (!cachedDatabase) {
+  const runtime = getTaskRegistrySqliteRuntime();
+  if (!runtime.cachedDatabase) {
     return;
   }
-  cachedDatabase.db.close();
-  cachedDatabase = null;
+  runtime.cachedDatabase.db.close();
+  runtime.cachedDatabase = null;
 }
