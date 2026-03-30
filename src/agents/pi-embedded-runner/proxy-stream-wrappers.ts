@@ -69,21 +69,39 @@ export function createOpenRouterSystemCacheWrapper(baseStreamFn: StreamFn | unde
 
     return streamWithPayloadPatch(underlying, model, context, options, (payloadObj) => {
       const messages = payloadObj.messages;
-      if (Array.isArray(messages)) {
-        for (const msg of messages as Array<{ role?: string; content?: unknown }>) {
-          if (msg.role !== "system" && msg.role !== "developer") {
-            continue;
+      if (!Array.isArray(messages)) {
+        return;
+      }
+      const typedMessages = messages as Array<{ role?: string; content?: unknown }>;
+      for (const msg of typedMessages) {
+        if (msg.role !== "system" && msg.role !== "developer") {
+          continue;
+        }
+        if (typeof msg.content === "string") {
+          msg.content = [
+            { type: "text", text: msg.content, cache_control: { type: "ephemeral" } },
+          ];
+        } else if (Array.isArray(msg.content) && msg.content.length > 0) {
+          const last = msg.content[msg.content.length - 1];
+          if (last && typeof last === "object") {
+            (last as Record<string, unknown>).cache_control = { type: "ephemeral" };
           }
-          if (typeof msg.content === "string") {
-            msg.content = [
-              { type: "text", text: msg.content, cache_control: { type: "ephemeral" } },
-            ];
-          } else if (Array.isArray(msg.content) && msg.content.length > 0) {
-            const last = msg.content[msg.content.length - 1];
-            if (last && typeof last === "object") {
-              (last as Record<string, unknown>).cache_control = { type: "ephemeral" };
-            }
+        }
+      }
+      // Cache the conversation history prefix by marking the last user message.
+      // This mirrors what pi-ai does for direct Anthropic: each turn only pays
+      // full price for new tokens; prior history is served from cache at ~0.1x.
+      const lastMsg = typedMessages[typedMessages.length - 1];
+      if (lastMsg?.role === "user") {
+        if (Array.isArray(lastMsg.content) && lastMsg.content.length > 0) {
+          const lastBlock = lastMsg.content[lastMsg.content.length - 1];
+          if (lastBlock && typeof lastBlock === "object") {
+            (lastBlock as Record<string, unknown>).cache_control = { type: "ephemeral" };
           }
+        } else if (typeof lastMsg.content === "string") {
+          lastMsg.content = [
+            { type: "text", text: lastMsg.content, cache_control: { type: "ephemeral" } },
+          ];
         }
       }
     });
