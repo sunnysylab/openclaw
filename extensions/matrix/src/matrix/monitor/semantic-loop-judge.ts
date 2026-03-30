@@ -221,6 +221,9 @@ export async function runMatrixSemanticLoopJudge(params: {
         ...capture.replyOptions,
         disableBlockStreaming: true,
       },
+      // Deny all tools so the judge call is side-effect free — it must only
+      // classify the conversation, not invoke MCP servers or built-in tools.
+      configOverride: { tools: { deny: ["*"] } },
     });
   } catch {
     return DEFAULT_RESULT;

@@ -765,6 +765,10 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         // mention/command gates and resolves into a usable inbound body.
         clearBotChainStatesForRoomRoute(roomId, _route.sessionKey);
       }
+      // Holds the inbound-turn snapshot to commit only after successful dispatch.
+      // Written here to pass to the judge; flushed to activeBotChainState on the
+      // success path so a failed/retried dispatch cannot pre-populate turn history.
+      let pendingBotChainTurns: MatrixSemanticLoopTurn[] | undefined;
       if (isRoom && isConfiguredBotSender && activeBotChainState) {
         const nextTurns = [...activeBotChainState.turns, {
           senderId,
@@ -780,7 +784,6 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           roomId,
           turns: nextTurns,
         });
-        activeBotChainState.turns = nextTurns;
         if (semanticDecision.decision === "stop_loop") {
           activeBotChainState.terminated = true;
           activeBotChainState.reasonCode = semanticDecision.reasonCode;
@@ -790,6 +793,8 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           await commitInboundEventIfClaimed();
           return;
         }
+        // Judge approved; stage the inbound turn for post-dispatch commit.
+        pendingBotChainTurns = nextTurns;
       }
       const senderName = await getSenderName();
       const roomInfo = isRoom ? await getRoomInfo(roomId) : undefined;
@@ -1270,12 +1275,18 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
       logVerboseMessage(
         `matrix: delivered ${finalCount} reply${finalCount === 1 ? "" : "ies"} to ${replyTarget}`,
       );
-      if (isRoom && isConfiguredBotSender && activeBotChainState && semanticFinalText.trim()) {
-        activeBotChainState.turns = [...activeBotChainState.turns, {
-          senderId: `agent:${_route.agentId}`,
-          text: semanticFinalText.trim(),
-          timestampMs: Date.now(),
-        }].slice(-MAX_BOT_CHAIN_TURNS);
+      if (isRoom && isConfiguredBotSender && activeBotChainState && pendingBotChainTurns) {
+        // Commit the staged inbound turn now that dispatch succeeded, then
+        // append the agent's own reply turn if one was produced.
+        const botReply = semanticFinalText.trim();
+        const withReply = botReply
+          ? [...pendingBotChainTurns, {
+              senderId: `agent:${_route.agentId}`,
+              text: botReply,
+              timestampMs: Date.now(),
+            }]
+          : pendingBotChainTurns;
+        activeBotChainState.turns = withReply.slice(-MAX_BOT_CHAIN_TURNS);
       }
       await commitInboundEventIfClaimed();
     } catch (err) {
