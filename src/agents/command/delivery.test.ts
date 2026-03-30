@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { slackOutbound } from "../../../test/channel-outbounds.js";
 import * as channelPluginsModule from "../../channels/plugins/index.js";
 import type { CliDeps } from "../../cli/outbound-send-deps.js";
@@ -200,6 +200,10 @@ const deliveryPlanSpy = vi.spyOn(agentDeliveryModule, "resolveAgentDeliveryPlan"
 const outboundTargetSpy = vi.spyOn(agentDeliveryModule, "resolveAgentOutboundTarget");
 const channelPluginSpy = vi.spyOn(channelPluginsModule, "getChannelPlugin");
 const isInternalSpy = vi.spyOn(messageChannelModule, "isInternalMessageChannel");
+
+afterAll(() => {
+  vi.restoreAllMocks();
+});
 
 // ---------------------------------------------------------------------------
 // Helpers

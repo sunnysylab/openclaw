@@ -327,7 +327,7 @@ export async function deliverAgentCommandResult(params: {
   // failures caused by stale delivery context (e.g., after model fallback or
   // error recovery) where the response is written to the session transcript
   // but never actually sent to the external channel.
-  if (deliver && payloads.length > 0 && !deliverySucceeded) {
+  if (deliver && payloads.length > 0 && !deliverySucceeded && !opts.json) {
     const reason = !deliveryChannel
       ? "no delivery channel resolved"
       : isInternalMessageChannel(deliveryChannel)
