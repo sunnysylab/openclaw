@@ -24,13 +24,13 @@ outbound traffic through an L7 HTTPS CONNECT proxy.
 
 ## Prerequisites
 
-| Requirement       | Minimum        | Notes                                  |
-| ----------------- | -------------- | -------------------------------------- |
-| macOS             | 13+ (Ventura)  | Apple Silicon (arm64)                  |
-| Docker Desktop    | 4.x            | Must be installed; script auto-starts  |
-| Node.js           | 22.16+         | `node --version` to check              |
-| uv                | Latest          | Python package manager for OpenShell   |
-| npm               | Bundled w/ Node | For building OpenClaw bundle           |
+| Requirement    | Minimum         | Notes                                 |
+| -------------- | --------------- | ------------------------------------- |
+| macOS          | 13+ (Ventura)   | Apple Silicon (arm64)                 |
+| Docker Desktop | 4.x             | Must be installed; script auto-starts |
+| Node.js        | 22.16+          | `node --version` to check             |
+| uv             | Latest          | Python package manager for OpenShell  |
+| npm            | Bundled w/ Node | For building OpenClaw bundle          |
 
 ## Quick start
 
@@ -232,7 +232,7 @@ filesystem_policy:
   read_write: [/sandbox, /tmp]
 
 network_policies:
-  slack:              # REST API — slack.com, api.slack.com, etc.
+  slack: # REST API — slack.com, api.slack.com, etc.
     endpoints:
       - host: api.slack.com
         port: 443
@@ -240,7 +240,7 @@ network_policies:
     binaries:
       - { path: /usr/bin/node }
 
-  slack_websocket:    # WebSocket — separate policy, tls: skip
+  slack_websocket: # WebSocket — separate policy, tls: skip
     endpoints:
       - host: wss-primary.slack.com
         port: 443
@@ -264,10 +264,10 @@ Key points:
 Slack uses different hosts for REST API calls and WebSocket (Socket Mode)
 connections:
 
-| Traffic     | Hosts                                        | Policy key        |
-| ----------- | -------------------------------------------- | ----------------- |
-| REST API    | `slack.com`, `api.slack.com`, `files.slack.com`, `hooks.slack.com`, `edgeapi.slack.com` | `slack` |
-| WebSocket   | `wss-primary.slack.com`, `wss-backup.slack.com` | `slack_websocket` |
+| Traffic   | Hosts                                                                                   | Policy key        |
+| --------- | --------------------------------------------------------------------------------------- | ----------------- |
+| REST API  | `slack.com`, `api.slack.com`, `files.slack.com`, `hooks.slack.com`, `edgeapi.slack.com` | `slack`           |
+| WebSocket | `wss-primary.slack.com`, `wss-backup.slack.com`                                         | `slack_websocket` |
 
 The WebSocket policy **must** use `tls: skip` to force raw TCP passthrough. Without
 it, the L7 proxy intercepts the WebSocket upgrade handshake and breaks the frame
@@ -341,6 +341,7 @@ openshell logs agent --level warn --since 5m
 **Symptom:** `[slack] socket mode connected` never appears.
 
 Check:
+
 1. `[ws-proxy-patch] Slack WebSocket proxy active` appears at startup
 2. No `*.slack.com` wildcard in policy
 3. `slack_websocket` policy has `tls: skip` on both `wss-primary.slack.com` and
@@ -349,6 +350,7 @@ Check:
 ### Bot connects but ignores DMs
 
 Check your Slack app:
+
 1. `message.im` event is subscribed
 2. App Home → Messages Tab is enabled
 3. App was **reinstalled** after adding scopes or events
