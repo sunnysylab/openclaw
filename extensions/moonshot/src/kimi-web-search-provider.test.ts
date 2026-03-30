@@ -1,3 +1,4 @@
+import type { OpenClawConfig } from "openclaw/plugin-sdk/provider-onboard";
 import { describe, expect, it } from "vitest";
 import { withEnv } from "../../../test/helpers/plugins/env.js";
 import { __testing } from "./kimi-web-search-provider.js";
@@ -11,6 +12,33 @@ describe("kimi web search provider", () => {
     expect(__testing.resolveKimiBaseUrl()).toBe("https://api.moonshot.ai/v1");
     expect(__testing.resolveKimiBaseUrl({ baseUrl: "https://kimi.example/v1" })).toBe(
       "https://kimi.example/v1",
+    );
+  });
+
+  it("inherits native Moonshot chat baseUrl when kimi baseUrl is unset", () => {
+    const cnOnly = {
+      models: { providers: { moonshot: { baseUrl: "https://api.moonshot.cn/v1" } } },
+    } as unknown as OpenClawConfig;
+    expect(__testing.resolveKimiBaseUrl(undefined, cnOnly)).toBe("https://api.moonshot.cn/v1");
+    const cnTrailing = {
+      models: { providers: { moonshot: { baseUrl: "https://api.moonshot.cn/v1/" } } },
+    } as unknown as OpenClawConfig;
+    expect(__testing.resolveKimiBaseUrl(undefined, cnTrailing)).toBe("https://api.moonshot.cn/v1");
+  });
+
+  it("does not inherit non-native Moonshot baseUrl for web search", () => {
+    const proxy = {
+      models: { providers: { moonshot: { baseUrl: "https://proxy.example/v1" } } },
+    } as unknown as OpenClawConfig;
+    expect(__testing.resolveKimiBaseUrl(undefined, proxy)).toBe("https://api.moonshot.ai/v1");
+  });
+
+  it("keeps explicit kimi baseUrl over models.providers.moonshot.baseUrl", () => {
+    const cfg = {
+      models: { providers: { moonshot: { baseUrl: "https://api.moonshot.cn/v1" } } },
+    } as unknown as OpenClawConfig;
+    expect(__testing.resolveKimiBaseUrl({ baseUrl: "https://api.moonshot.ai/v1" }, cfg)).toBe(
+      "https://api.moonshot.ai/v1",
     );
   });
 

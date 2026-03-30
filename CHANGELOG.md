@@ -103,6 +103,7 @@ Docs: https://docs.openclaw.ai
 - Agents/MCP: dispose bundled MCP runtimes after one-shot `openclaw agent --local` runs finish, while preserving bundled MCP state across in-run retries so local JSON runs exit cleanly without restarting stateful MCP tools mid-run.
 - Gateway/OpenAI HTTP: restore default operator scopes for bearer-authenticated requests that omit `x-openclaw-scopes`, so headless `/v1/chat/completions` and session-history callers work again after the recent method-scope hardening. (#57596) Thanks @openperf.
 - Gateway/attachments: offload large inbound images without leaking `media://` markers into text-only runs, preserve mixed attachment order for model input/transcripts, and fail closed when model image capability cannot be resolved. (#55513) Thanks @Syysean.
+- Tools/web_search (Kimi): when `tools.web.search.kimi.baseUrl` is unset, reuse a native Moonshot chat `baseUrl` from `models.providers.moonshot` (`.ai` / `.cn`) so China console keys authenticate the same way as chat completions instead of defaulting to `api.moonshot.ai` and returning HTTP 401. (#44851)
 
 ## 2026.3.28
 
