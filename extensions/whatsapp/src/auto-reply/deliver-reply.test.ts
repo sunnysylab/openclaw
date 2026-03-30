@@ -13,6 +13,10 @@ vi.mock("openclaw/plugin-sdk/runtime-env", async (importOriginal) => {
   };
 });
 
+vi.mock("../media.js", () => ({
+  loadWebMedia: vi.fn(),
+}));
+
 vi.mock("openclaw/plugin-sdk/text-runtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("openclaw/plugin-sdk/text-runtime")>();
   return {
@@ -20,10 +24,6 @@ vi.mock("openclaw/plugin-sdk/text-runtime", async (importOriginal) => {
     sleep: vi.fn(async () => {}),
   };
 });
-
-vi.mock("../media.js", () => ({
-  loadWebMedia: vi.fn(),
-}));
 
 let deliverWebReply: typeof import("./deliver-reply.js").deliverWebReply;
 
