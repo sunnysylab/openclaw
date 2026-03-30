@@ -87,6 +87,7 @@ export type SpawnAcpContext = {
   agentAccountId?: string;
   agentTo?: string;
   agentThreadId?: string | number;
+  requesterAgentIdOverride?: string;
   sandboxed?: boolean;
 };
 
@@ -187,11 +188,14 @@ function resolveAcpSessionMode(mode: SpawnAcpMode): AcpRuntimeSessionMode {
 function isHeartbeatEnabledForSessionAgent(params: {
   cfg: OpenClawConfig;
   sessionKey?: string;
+  requesterAgentIdOverride?: string;
 }): boolean {
   if (!areHeartbeatsEnabled()) {
     return false;
   }
-  const requesterAgentId = parseAgentSessionKey(params.sessionKey)?.agentId;
+  const requesterAgentId =
+    normalizeOptionalAgentId(params.requesterAgentIdOverride) ??
+    parseAgentSessionKey(params.sessionKey)?.agentId;
   if (!requesterAgentId) {
     return true;
   }
@@ -486,7 +490,9 @@ function resolveAcpSpawnRequesterState(params: {
     typeof params.ctx.agentThreadId === "string"
       ? params.ctx.agentThreadId.trim().length > 0
       : params.ctx.agentThreadId != null;
-  const requesterAgentId = requesterParsedSession?.agentId;
+  const requesterAgentId =
+    normalizeOptionalAgentId(params.ctx.requesterAgentIdOverride) ??
+    requesterParsedSession?.agentId;
 
   return {
     parentSessionKey: params.parentSessionKey,
@@ -496,6 +502,7 @@ function resolveAcpSpawnRequesterState(params: {
     heartbeatEnabled: isHeartbeatEnabledForSessionAgent({
       cfg: params.cfg,
       sessionKey: params.parentSessionKey,
+      requesterAgentIdOverride: params.ctx.requesterAgentIdOverride,
     }),
     heartbeatRelayRouteUsable:
       params.parentSessionKey && requesterAgentId
