@@ -84,9 +84,9 @@ function isHeartbeatNoiseEvent(evt: string): boolean {
 }
 
 // Pre-compiled regex for exec completion matching (called on every system event).
-// Start-anchored to avoid false positives on free-form cron text like
-// "Nightly backup exec failed (see logs)".
-const EXEC_COMPLETION_RE = /^exec (?:completed|failed|killed) \(/;
+// Start-anchored + 8-char hex UUID to avoid false positives on free-form text.
+// Machine format: "Exec completed (a1b2c3d4, code 0) :: output"
+const EXEC_COMPLETION_RE = /^exec (?:completed|failed|killed) \([0-9a-f]{8}, /;
 
 export function isExecCompletionEvent(evt: string): boolean {
   const lower = evt.toLowerCase();
