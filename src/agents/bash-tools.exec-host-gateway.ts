@@ -8,7 +8,7 @@ import {
   recordAllowlistUse,
   resolveApprovalAuditCandidatePath,
   requiresExecApproval,
-  resolveAllowAlwaysPatterns,
+  resolveAllowAlwaysPatternsAsync,
 } from "../infra/exec-approvals.js";
 import {
   describeInterpreterInlineEval,
@@ -244,6 +244,7 @@ export async function processGatewayAllowlist(
       });
       let approvedByAsk = initialApprovedByAsk;
       let deniedReason = initialDeniedReason;
+      let unresolvedWarning = "";
 
       if (baseDecision.timedOut && askFallback === "allowlist") {
         if (!analysisOk || !allowlistSatisfied) {
@@ -267,6 +268,11 @@ export async function processGatewayAllowlist(
               addAllowlistEntry(approvals.file, params.agentId, pattern);
             }
           }
+          if (unresolved.length > 0) {
+            const joined = unresolved.join(", ");
+            logInfo(`exec: failed to resolve absolute paths for “Always Allow”: ${joined}`);
+            unresolvedWarning = `⚠️ Could not resolve absolute path for command(s): ${joined}. "Always Allow" failed to persist.\n`;
+          }
         }
       }
 
@@ -275,9 +281,10 @@ export async function processGatewayAllowlist(
       }
 
       if (deniedReason) {
+        const denyMessage = `Exec denied (gateway id=${approvalId}, ${deniedReason}): ${params.command}`;
         await sendExecApprovalFollowupResult(
           followupTarget,
-          `Exec denied (gateway id=${approvalId}, ${deniedReason}): ${params.command}`,
+          unresolvedWarning ? unresolvedWarning + denyMessage : denyMessage,
         );
         return;
       }

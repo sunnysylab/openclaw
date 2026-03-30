@@ -5,6 +5,7 @@ import type { GatewayClient } from "../gateway/client.js";
 import {
   addAllowlistEntry,
   recordAllowlistUse,
+  resolveAllowAlwaysPatternsAsync,
   resolveApprovalAuditCandidatePath,
   resolveAllowAlwaysPatterns,
   resolveExecApprovals,
@@ -544,13 +545,15 @@ async function executeSystemRunPhase(
     }
   }
 
+  let runtimeWarning = "";
+
   if (
     phase.policy.approvalDecision === "allow-always" &&
     phase.security === "allowlist" &&
     phase.inlineEvalHit === null
   ) {
     if (phase.policy.analysisOk) {
-      const patterns = resolveAllowAlwaysPatterns({
+      const { patterns, unresolved } = await resolveAllowAlwaysPatternsAsync({
         segments: phase.segments,
         cwd: phase.cwd,
         env: phase.env,
@@ -560,6 +563,11 @@ async function executeSystemRunPhase(
         if (pattern) {
           addAllowlistEntry(phase.approvals.file, phase.agentId, pattern);
         }
+      }
+      if (unresolved.length > 0) {
+        const joined = unresolved.join(", ");
+        logWarn(`exec: failed to resolve absolute paths for “Always Allow”: ${joined}`);
+        runtimeWarning = `⚠️ Could not resolve absolute path for command(s): ${joined}. "Always Allow" failed to persist.\n`;
       }
     }
   }
@@ -600,6 +608,9 @@ async function executeSystemRunPhase(
   });
 
   const result = await opts.runCommand(execArgv, phase.cwd, phase.env, phase.timeoutMs);
+  if (runtimeWarning) {
+    result.stderr = runtimeWarning + (result.stderr ? "\n" + result.stderr : "");
+  }
   applyOutputTruncation(result);
   await sendSystemRunCompleted(
     opts,
