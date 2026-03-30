@@ -532,10 +532,12 @@ export async function runEmbeddedPiAgent(
             shouldEmitToolOutput: params.shouldEmitToolOutput,
             onPartialReply: params.onPartialReply,
             onAssistantMessageStart: params.onAssistantMessageStart,
+            onCommentaryReply: params.onCommentaryReply,
             onBlockReply: params.onBlockReply,
             onBlockReplyFlush: params.onBlockReplyFlush,
             blockReplyBreak: params.blockReplyBreak,
             blockReplyChunking: params.blockReplyChunking,
+            blockReplyTimeoutMs: params.blockReplyTimeoutMs,
             onReasoningStream: params.onReasoningStream,
             onReasoningEnd: params.onReasoningEnd,
             onToolResult: params.onToolResult,
@@ -1261,6 +1263,9 @@ export async function runEmbeddedPiAgent(
 
           const payloads = buildEmbeddedRunPayloads({
             assistantTexts: attempt.assistantTexts,
+            assistantOutputs: attempt.assistantOutputs,
+            deliveredCommentarySegmentIds: attempt.deliveredCommentarySegmentIds,
+            deliveredCommentarySegmentTexts: attempt.deliveredCommentarySegmentTexts,
             toolMetas: attempt.toolMetas,
             lastAssistant: attempt.lastAssistant,
             lastToolError: attempt.lastToolError,
