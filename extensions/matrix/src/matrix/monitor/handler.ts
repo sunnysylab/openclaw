@@ -599,11 +599,6 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
       });
       const botChainKey = `${roomId}|${_route.sessionKey}|${senderId}`;
       let activeBotChainState: MatrixBotChainState | undefined;
-      if (isRoom && !isConfiguredBotSender) {
-        // A new non-bot turn is treated as new context and re-opens any
-        // previously terminated bot-to-bot chains for this room/session.
-        clearBotChainStatesForRoomRoute(roomId, _route.sessionKey);
-      }
       if (isRoom && isConfiguredBotSender) {
         activeBotChainState = upsertBotChainState(botChainKey);
         if (activeBotChainState.terminated) {
@@ -764,6 +759,11 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
       if (!bodyText) {
         await commitInboundEventIfClaimed();
         return;
+      }
+      if (isRoom && !isConfiguredBotSender) {
+        // Re-open terminated bot chains only after this turn survives
+        // mention/command gates and resolves into a usable inbound body.
+        clearBotChainStatesForRoomRoute(roomId, _route.sessionKey);
       }
       if (isRoom && isConfiguredBotSender && activeBotChainState) {
         const nextTurns = [...activeBotChainState.turns, {
