@@ -43,6 +43,9 @@ describe("Dockerfile", () => {
     const extDepsCopyIndex = dockerfile.indexOf(
       "COPY --from=ext-deps /out/ ./${OPENCLAW_BUNDLED_PLUGIN_DIR}/",
     );
+    const prodPostinstallScriptCopyIndex = dockerfile.indexOf(
+      "COPY scripts/postinstall-bundled-plugins.mjs ./scripts/postinstall-bundled-plugins.mjs",
+    );
     const prodInstallIndex = dockerfile.indexOf("pnpm install --frozen-lockfile --prod");
     const fullCopyIndex = dockerfile.indexOf("COPY . .");
     const runtimeExtensionsCopyIndex = dockerfile.indexOf(
@@ -54,9 +57,11 @@ describe("Dockerfile", () => {
 
     expect(dockerfile).toContain("FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS prod-deps");
     expect(extDepsCopyIndex).toBeGreaterThan(-1);
+    expect(prodPostinstallScriptCopyIndex).toBeGreaterThan(-1);
     expect(prodInstallIndex).toBeGreaterThan(-1);
     expect(fullCopyIndex).toBeGreaterThan(-1);
     expect(extDepsCopyIndex).toBeLessThan(prodInstallIndex);
+    expect(prodPostinstallScriptCopyIndex).toBeLessThan(prodInstallIndex);
     expect(fullCopyIndex).toBeGreaterThan(prodInstallIndex);
     expect(dockerfile).toContain("FROM build AS runtime-assets");
     expect(dockerfile).not.toContain(
