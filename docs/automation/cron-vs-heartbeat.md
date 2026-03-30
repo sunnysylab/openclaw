@@ -229,7 +229,7 @@ See [Lobster](/tools/lobster) for full usage and examples.
 
 Both heartbeat and cron can interact with the main session, but differently:
 
-|                            | Heartbeat                       | Cron (main)              | Cron (isolated)                                 |
+| Aspect                     | Heartbeat                       | Cron (main)              | Cron (isolated)                                 |
 | -------------------------- | ------------------------------- | ------------------------ | ----------------------------------------------- |
 | Session                    | Main                            | Main (via system event)  | `cron:<jobId>` or custom session                |
 | History                    | Shared                          | Shared                   | Fresh each run (isolated) / Persistent (custom) |
