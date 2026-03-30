@@ -1,11 +1,9 @@
-import { resolveQueueSettings } from "../auto-reply/reply/queue.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import { loadConfig } from "../config/config.js";
 import {
   loadSessionStore,
   resolveAgentIdFromSessionKey,
-  resolveMainSessionKey,
   resolveStorePath,
 } from "../config/sessions.js";
 import { callGateway } from "../gateway/call.js";
@@ -13,49 +11,47 @@ import { createBoundDeliveryRouter } from "../infra/outbound/bound-delivery-rout
 import { resolveConversationIdFromTargets } from "../infra/outbound/conversation-id.js";
 import type { ConversationRef } from "../infra/outbound/session-binding-service.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
-import { normalizeAccountId, normalizeMainKey } from "../routing/session-key.js";
+import { normalizeAccountId } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
 import { extractTextFromChatContent } from "../shared/chat-content.js";
 import { resolveTotalTokens } from "../shared/subagents-format.js";
 import {
   type DeliveryContext,
-  deliveryContextFromSession,
   mergeDeliveryContext,
   normalizeDeliveryContext,
   resolveConversationDeliveryTarget,
 } from "../utils/delivery-context.js";
-import {
-  INTERNAL_MESSAGE_CHANNEL,
-  isDeliverableMessageChannel,
-  isInternalMessageChannel,
-} from "../utils/message-channel.js";
+import { INTERNAL_MESSAGE_CHANNEL, isDeliverableMessageChannel } from "../utils/message-channel.js";
 import {
   buildAnnounceIdFromChildRun,
   buildAnnounceIdempotencyKey,
-  resolveQueueAnnounceId,
 } from "./announce-idempotency.js";
 import { formatAgentInternalEventsForPrompt, type AgentInternalEvent } from "./internal-events.js";
+import { isEmbeddedPiRunActive, waitForEmbeddedPiRunEnd } from "./pi-embedded.js";
 import {
-  isEmbeddedPiRunActive,
-  queueEmbeddedPiMessage,
-  waitForEmbeddedPiRunEnd,
-} from "./pi-embedded.js";
+  deliverSubagentAnnouncement,
+  loadRequesterSessionEntry,
+  loadSessionEntryByKey,
+  resolveAnnounceOrigin,
+  runAnnounceDeliveryWithRetry,
+  resolveSubagentAnnounceTimeoutMs,
+  resolveSubagentCompletionOrigin,
+} from "./subagent-announce-delivery.js";
 import {
-  runSubagentAnnounceDispatch,
-  type SubagentAnnounceDeliveryResult,
-} from "./subagent-announce-dispatch.js";
-import { type AnnounceQueueItem, enqueueAnnounce } from "./subagent-announce-queue.js";
+  applySubagentWaitOutcome,
+  buildChildCompletionFindings,
+  buildCompactAnnounceStatsLine,
+  dedupeLatestChildCompletionRows,
+  filterCurrentDirectChildCompletionRows,
+  readLatestSubagentOutputWithRetry,
+  readSubagentOutput,
+  type SubagentRunOutcome,
+  waitForSubagentRunOutcome,
+} from "./subagent-announce-output.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
 import type { SpawnSubagentMode } from "./subagent-spawn.js";
-import { readLatestAssistantReply } from "./tools/agent-step.js";
-import { sanitizeTextContent, extractAssistantText } from "./tools/sessions-helpers.js";
 import { isAnnounceSkip } from "./tools/sessions-send-helpers.js";
-
-const FAST_TEST_MODE = process.env.OPENCLAW_TEST_FAST === "1";
-const FAST_TEST_RETRY_INTERVAL_MS = 8;
-const DEFAULT_SUBAGENT_ANNOUNCE_TIMEOUT_MS = 90_000;
-const MAX_TIMER_SAFE_TIMEOUT_MS = 2_147_000_000;
 let subagentRegistryRuntimePromise: Promise<
   typeof import("./subagent-registry-runtime.js")
 > | null = null;
@@ -64,6 +60,8 @@ function loadSubagentRegistryRuntime() {
   subagentRegistryRuntimePromise ??= import("./subagent-registry-runtime.js");
   return subagentRegistryRuntimePromise;
 }
+
+const FAST_TEST_MODE = process.env.OPENCLAW_TEST_FAST === "1";
 
 const DIRECT_ANNOUNCE_TRANSIENT_RETRY_DELAYS_MS = FAST_TEST_MODE
   ? ([8, 16, 32] as const)
@@ -88,18 +86,6 @@ type AgentWaitResult = {
   endedAt?: number;
   error?: string;
 };
-
-function resolveSubagentAnnounceTimeoutMs(cfg: ReturnType<typeof loadConfig>): number {
-  const configured = cfg.agents?.defaults?.subagents?.announceTimeoutMs;
-  if (typeof configured !== "number" || !Number.isFinite(configured)) {
-    return DEFAULT_SUBAGENT_ANNOUNCE_TIMEOUT_MS;
-  }
-  return Math.min(Math.max(1, Math.floor(configured)), MAX_TIMER_SAFE_TIMEOUT_MS);
-}
-
-function isInternalAnnounceRequesterSession(sessionKey: string | undefined): boolean {
-  return getSubagentDepthFromSessionStore(sessionKey) >= 1 || isCronSessionKey(sessionKey);
-}
 
 function summarizeDeliveryError(error: unknown): string {
   if (error instanceof Error) {
@@ -470,9 +456,7 @@ function applySubagentWaitOutcome(params: {
   return next;
 }
 
-export async function captureSubagentCompletionReply(
-  sessionKey: string,
-): Promise<string | undefined> {
+async function captureSubagentCompletionReply(sessionKey: string): Promise<string | undefined> {
   const immediate = await readSubagentOutput(sessionKey);
   if (immediate?.trim()) {
     return immediate;
@@ -682,43 +666,6 @@ async function buildCompactAnnounceStatsLine(params: {
   return `Stats: ${parts.join(" • ")}`;
 }
 
-type DeliveryContextSource = Parameters<typeof deliveryContextFromSession>[0];
-
-function resolveAnnounceOrigin(
-  entry?: DeliveryContextSource,
-  requesterOrigin?: DeliveryContext,
-): DeliveryContext | undefined {
-  const normalizedRequester = normalizeDeliveryContext(requesterOrigin);
-  const normalizedEntry = deliveryContextFromSession(entry);
-  if (normalizedRequester?.channel && isInternalMessageChannel(normalizedRequester.channel)) {
-    // Ignore internal channel hints (webchat) so a valid persisted route
-    // can still be used for outbound delivery. Non-standard channels that
-    // are not in the deliverable list should NOT be stripped here — doing
-    // so causes the session entry's stale lastChannel (often WhatsApp) to
-    // override the actual requester origin, leading to delivery failures.
-    return mergeDeliveryContext(
-      {
-        accountId: normalizedRequester.accountId,
-        threadId: normalizedRequester.threadId,
-      },
-      normalizedEntry,
-    );
-  }
-  // requesterOrigin (captured at spawn time) reflects the channel the user is
-  // actually on and must take priority over the session entry, which may carry
-  // stale lastChannel / lastTo values from a previous channel interaction.
-  const entryForMerge =
-    normalizedRequester?.to &&
-    normalizedRequester.threadId == null &&
-    normalizedEntry?.threadId != null
-      ? (() => {
-          const { threadId: _ignore, ...rest } = normalizedEntry;
-          return rest;
-        })()
-      : normalizedEntry;
-  return mergeDeliveryContext(normalizedRequester, entryForMerge);
-}
-
 async function resolveSubagentCompletionOrigin(params: {
   childSessionKey: string;
   requesterSessionKey: string;
@@ -836,38 +783,6 @@ async function sendAnnounce(item: AnnounceQueueItem) {
     },
     timeoutMs: announceTimeoutMs,
   });
-}
-
-function resolveRequesterStoreKey(
-  cfg: ReturnType<typeof loadConfig>,
-  requesterSessionKey: string,
-): string {
-  const raw = (requesterSessionKey ?? "").trim();
-  if (!raw) {
-    return raw;
-  }
-  if (raw === "global" || raw === "unknown") {
-    return raw;
-  }
-  if (raw.startsWith("agent:")) {
-    return raw;
-  }
-  const mainKey = normalizeMainKey(cfg.session?.mainKey);
-  if (raw === "main" || raw === mainKey) {
-    return resolveMainSessionKey(cfg);
-  }
-  const agentId = resolveAgentIdFromSessionKey(raw);
-  return `agent:${agentId}:${raw}`;
-}
-
-function loadRequesterSessionEntry(requesterSessionKey: string) {
-  const cfg = loadConfig();
-  const canonicalKey = resolveRequesterStoreKey(cfg, requesterSessionKey);
-  const agentId = resolveAgentIdFromSessionKey(canonicalKey);
-  const storePath = resolveStorePath(cfg.session?.store, { agentId });
-  const store = loadSessionStore(storePath);
-  const entry = store[canonicalKey];
-  return { cfg, entry, canonicalKey };
 }
 
 function buildAnnounceQueueKey(sessionKey: string, origin?: DeliveryContext): string {
@@ -1103,15 +1018,6 @@ async function deliverSubagentAnnouncement(params: {
       }),
   });
 }
-
-function loadSessionEntryByKey(sessionKey: string) {
-  const cfg = loadConfig();
-  const agentId = resolveAgentIdFromSessionKey(sessionKey);
-  const storePath = resolveStorePath(cfg.session?.store, { agentId });
-  const store = loadSessionStore(storePath);
-  return store[sessionKey];
-}
-
 export function buildSubagentSystemPrompt(params: {
   requesterSessionKey?: string;
   requesterOrigin?: DeliveryContext;
@@ -1222,10 +1128,8 @@ export function buildSubagentSystemPrompt(params: {
   return lines.join("\n");
 }
 
-export type SubagentRunOutcome = {
-  status: "ok" | "error" | "timeout" | "unknown";
-  error?: string;
-};
+export { captureSubagentCompletionReply } from "./subagent-announce-output.js";
+export type { SubagentRunOutcome } from "./subagent-announce-output.js";
 
 export type SubagentAnnounceType = "subagent task" | "cron job";
 

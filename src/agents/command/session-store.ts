@@ -6,7 +6,7 @@ import {
   updateSessionStore,
 } from "../../config/sessions.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
-import { setCliSessionId } from "../cli-session.js";
+import { setCliSessionBinding, setCliSessionId } from "../cli-session.js";
 import { resolveContextTokensForModel } from "../context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
 import { isCliProvider } from "../model-selection.js";
@@ -93,9 +93,14 @@ export async function updateSessionStoreAfterAgentRun(params: {
   }
 
   if (isCliProvider(providerUsed, cfg)) {
-    const cliSessionId = result.meta.agentMeta?.sessionId?.trim();
-    if (cliSessionId) {
-      setCliSessionId(next, providerUsed, cliSessionId);
+    const cliSessionBinding = result.meta.agentMeta?.cliSessionBinding;
+    if (cliSessionBinding?.sessionId?.trim()) {
+      setCliSessionBinding(next, providerUsed, cliSessionBinding);
+    } else {
+      const cliSessionId = result.meta.agentMeta?.sessionId?.trim();
+      if (cliSessionId) {
+        setCliSessionId(next, providerUsed, cliSessionId);
+      }
     }
   }
   next.abortedLastRun = result.meta.aborted ?? false;
@@ -106,7 +111,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
     const input = usage?.input;
     const output = usage?.output;
     const totalTokens = deriveSessionTotalTokens({
-      usage,
+      usage: promptTokens ? undefined : usage,
       contextTokens,
       promptTokens,
     });
@@ -137,7 +142,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
     const hasFreshContextSnapshot =
       hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens > 0);
 
-    if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
+    if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
       next.totalTokens = totalTokens;
       next.totalTokensFresh = totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
 
@@ -154,9 +159,6 @@ export async function updateSessionStoreAfterAgentRun(params: {
           }
         }
       }
-    } else {
-      next.totalTokens = undefined;
-      next.totalTokensFresh = false;
     }
     next.cacheRead = usage?.cacheRead ?? (useFallback ? entry.cacheRead : undefined);
     next.cacheWrite = usage?.cacheWrite ?? (useFallback ? entry.cacheWrite : undefined);
@@ -165,19 +167,14 @@ export async function updateSessionStoreAfterAgentRun(params: {
         (resolveNonNegativeNumber(entry.estimatedCostUsd) ?? 0) + runEstimatedCostUsd;
     }
   } else {
-    next.inputTokens = undefined;
-    next.outputTokens = undefined;
-    next.totalTokens = undefined;
-    next.totalTokensFresh = false;
-    next.cacheRead = undefined;
-    next.cacheWrite = undefined;
-
     if (modelChanged) {
+      next.inputTokens = undefined;
+      next.outputTokens = undefined;
+      next.totalTokens = undefined;
+      next.totalTokensFresh = false;
+      next.cacheRead = undefined;
+      next.cacheWrite = undefined;
       next.totalTokensEstimate = undefined;
-    } else if (entry.totalTokensEstimate !== undefined) {
-      next.totalTokensEstimate = entry.totalTokensEstimate;
-    } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
-      next.totalTokensEstimate = entry.totalTokens;
     }
   }
   if (compactionsThisRun > 0) {

@@ -691,7 +691,7 @@ export async function runCronIsolatedAgentTurn(params: {
 
       const lastCallUsage = finalRunResult.meta?.agentMeta?.lastCallUsage;
       const hasFreshContextSnapshot =
-        hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens > 0);
+        hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
 
       if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
@@ -701,7 +701,7 @@ export async function runCronIsolatedAgentTurn(params: {
         if (modelChanged) {
           cronSession.sessionEntry.totalTokensEstimate = undefined;
         } else {
-          if (totalTokens > 0) {
+          if (totalTokens > 0 || (totalTokens === 0 && cronSession.sessionEntry.totalTokensFresh)) {
             cronSession.sessionEntry.totalTokensEstimate = totalTokens;
           }
           if (totalTokens === 0 && !cronSession.sessionEntry.totalTokensFresh) {
@@ -712,9 +712,6 @@ export async function runCronIsolatedAgentTurn(params: {
           }
         }
         telemetryUsage.total_tokens = totalTokens;
-      } else {
-        cronSession.sessionEntry.totalTokens = undefined;
-        cronSession.sessionEntry.totalTokensFresh = false;
       }
       cronSession.sessionEntry.cacheRead =
         usage?.cacheRead ?? (useFallback ? cronSession.sessionEntry.cacheRead : undefined);
@@ -732,17 +729,14 @@ export async function runCronIsolatedAgentTurn(params: {
         usage: telemetryUsage,
       };
     } else {
-      cronSession.sessionEntry.inputTokens = undefined;
-      cronSession.sessionEntry.outputTokens = undefined;
-      cronSession.sessionEntry.totalTokens = undefined;
-      cronSession.sessionEntry.totalTokensFresh = false;
-      cronSession.sessionEntry.cacheRead = undefined;
-      cronSession.sessionEntry.cacheWrite = undefined;
-
       if (modelChanged) {
+        cronSession.sessionEntry.inputTokens = undefined;
+        cronSession.sessionEntry.outputTokens = undefined;
+        cronSession.sessionEntry.totalTokens = undefined;
+        cronSession.sessionEntry.totalTokensFresh = false;
+        cronSession.sessionEntry.cacheRead = undefined;
+        cronSession.sessionEntry.cacheWrite = undefined;
         cronSession.sessionEntry.totalTokensEstimate = undefined;
-      } else if (cronSession.sessionEntry.totalTokensEstimate !== undefined) {
-        // preserve
       }
 
       telemetry = {

@@ -6,7 +6,10 @@ import type { ModelProviderAuthMode, ModelProviderConfig } from "../config/types
 import { coerceSecretRef } from "../config/types.secrets.js";
 import { getShellEnvAppliedKeys } from "../infra/shell-env.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { buildProviderMissingAuthMessageWithPlugin } from "../plugins/provider-runtime.js";
+import {
+  buildProviderMissingAuthMessageWithPlugin,
+  resolveProviderSyntheticAuthWithPlugin,
+} from "../plugins/provider-runtime.js";
 import { resolveOwningPluginIdsForProvider } from "../plugins/providers.js";
 import {
   normalizeOptionalSecretInput,
@@ -25,7 +28,6 @@ import {
   CUSTOM_LOCAL_AUTH_MARKER,
   isKnownEnvApiKeyMarker,
   isNonSecretApiKeyMarker,
-  OLLAMA_LOCAL_AUTH_MARKER,
 } from "./model-auth-markers.js";
 import { normalizeProviderId } from "./model-selection.js";
 
@@ -128,6 +130,7 @@ function isLocalBaseUrl(baseUrl: string): boolean {
     return (
       host === "localhost" ||
       host === "127.0.0.1" ||
+      host === "10.0.0.54" ||
       host === "0.0.0.0" ||
       host === "[::1]" ||
       host === "[::ffff:7f00:1]" ||
@@ -173,13 +176,17 @@ function resolveSyntheticLocalProviderAuth(params: {
     return null;
   }
 
-  const normalizedProvider = normalizeProviderId(params.provider);
-  if (normalizedProvider === "ollama") {
-    return {
-      apiKey: OLLAMA_LOCAL_AUTH_MARKER,
-      source: "models.providers.ollama (synthetic local key)",
-      mode: "api-key",
-    };
+  const pluginSyntheticAuth = resolveProviderSyntheticAuthWithPlugin({
+    provider: params.provider,
+    config: params.cfg,
+    context: {
+      config: params.cfg,
+      provider: params.provider,
+      providerConfig,
+    },
+  });
+  if (pluginSyntheticAuth) {
+    return pluginSyntheticAuth;
   }
 
   const authOverride = resolveProviderAuthOverride(params.cfg, params.provider);

@@ -8,6 +8,7 @@ import {
   resolveExplicitGatewayAuth,
 } from "../gateway/call.js";
 import { GatewayClient } from "../gateway/client.js";
+import { isLoopbackHost } from "../gateway/net.js";
 import { GATEWAY_CLIENT_CAPS } from "../gateway/protocol/client-info.js";
 import {
   type HelloOk,
@@ -46,6 +47,7 @@ type ResolvedGatewayConnection = {
   url: string;
   token?: string;
   password?: string;
+  allowInsecureLocalOperatorUi?: boolean;
 };
 
 function trimToUndefined(value: unknown): string | undefined {
@@ -153,11 +155,12 @@ export class GatewayChatClient {
       url: connection.url,
       token: connection.token,
       password: connection.password,
-      clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
+      clientName: GATEWAY_CLIENT_NAMES.TUI,
       clientDisplayName: "openclaw-tui",
       clientVersion: VERSION,
       platform: process.platform,
       mode: GATEWAY_CLIENT_MODES.UI,
+      deviceIdentity: connection.allowInsecureLocalOperatorUi ? null : undefined,
       caps: [GATEWAY_CLIENT_CAPS.TOOL_EVENTS],
       instanceId: randomUUID(),
       minProtocol: PROTOCOL_VERSION,
@@ -292,12 +295,23 @@ export async function resolveGatewayConnection(
     config,
     ...(urlOverride ? { url: urlOverride } : {}),
   }).url;
+  const allowInsecureLocalOperatorUi = (() => {
+    if (config.gateway?.controlUi?.allowInsecureAuth !== true) {
+      return false;
+    }
+    try {
+      return isLoopbackHost(new URL(url).hostname);
+    } catch {
+      return false;
+    }
+  })();
 
   if (urlOverride) {
     return {
       url,
       token: explicitAuth.token,
       password: explicitAuth.password,
+      allowInsecureLocalOperatorUi,
     };
   }
 
@@ -329,7 +343,7 @@ export async function resolveGatewayConnection(
           "Missing gateway auth credentials.",
       );
     }
-    return { url, token, password };
+    return { url, token, password, allowInsecureLocalOperatorUi: false };
   }
 
   if (gatewayAuthMode === "none" || gatewayAuthMode === "trusted-proxy") {
@@ -337,6 +351,7 @@ export async function resolveGatewayConnection(
       url,
       token: explicitAuth.token ?? envToken,
       password: explicitAuth.password ?? envPassword,
+      allowInsecureLocalOperatorUi,
     };
   }
 
@@ -369,6 +384,7 @@ export async function resolveGatewayConnection(
       url,
       token: explicitAuth.token ?? envToken,
       password,
+      allowInsecureLocalOperatorUi,
     };
   }
 
@@ -396,6 +412,7 @@ export async function resolveGatewayConnection(
       url,
       token,
       password: explicitAuth.password ?? envPassword,
+      allowInsecureLocalOperatorUi,
     };
   }
 
@@ -422,6 +439,7 @@ export async function resolveGatewayConnection(
       url,
       token: explicitAuth.token ?? envToken,
       password,
+      allowInsecureLocalOperatorUi,
     };
   }
 
@@ -430,5 +448,6 @@ export async function resolveGatewayConnection(
     url,
     token,
     password: explicitAuth.password ?? envPassword,
+    allowInsecureLocalOperatorUi,
   };
 }

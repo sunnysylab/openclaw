@@ -1,4 +1,4 @@
-import { setCliSessionId } from "../../agents/cli-session.js";
+import { setCliSessionBinding, setCliSessionId } from "../../agents/cli-session.js";
 import {
   deriveSessionTotalTokens,
   hasNonzeroUsage,
@@ -18,17 +18,29 @@ function applyCliSessionIdToSessionPatch(
   params: {
     providerUsed?: string;
     cliSessionId?: string;
+    cliSessionBinding?: import("../../config/sessions.js").CliSessionBinding;
   },
   entry: SessionEntry,
   patch: Partial<SessionEntry>,
 ): Partial<SessionEntry> {
   const cliProvider = params.providerUsed ?? entry.modelProvider;
+  if (params.cliSessionBinding && cliProvider) {
+    const nextEntry = { ...entry, ...patch };
+    setCliSessionBinding(nextEntry, cliProvider, params.cliSessionBinding);
+    return {
+      ...patch,
+      cliSessionIds: nextEntry.cliSessionIds,
+      cliSessionBindings: nextEntry.cliSessionBindings,
+      claudeCliSessionId: nextEntry.claudeCliSessionId,
+    };
+  }
   if (params.cliSessionId && cliProvider) {
     const nextEntry = { ...entry, ...patch };
     setCliSessionId(nextEntry, cliProvider, params.cliSessionId);
     return {
       ...patch,
       cliSessionIds: nextEntry.cliSessionIds,
+      cliSessionBindings: nextEntry.cliSessionBindings,
       claudeCliSessionId: nextEntry.claudeCliSessionId,
     };
   }
@@ -72,8 +84,10 @@ export async function persistSessionUsageUpdate(params: {
   providerUsed?: string;
   contextTokensUsed?: number;
   promptTokens?: number;
+  usageIsContextSnapshot?: boolean;
   systemPromptReport?: SessionSystemPromptReport;
   cliSessionId?: string;
+  cliSessionBinding?: import("../../config/sessions.js").CliSessionBinding;
   logLabel?: string;
 }): Promise<void> {
   const { storePath, sessionKey } = params;
@@ -84,14 +98,16 @@ export async function persistSessionUsageUpdate(params: {
   const label = params.logLabel ? `${params.logLabel} ` : "";
   const cfg = params.cfg ?? loadConfig();
   const hasUsage = hasNonzeroUsage(params.usage);
+  const hasPromptTokens =
+    typeof params.promptTokens === "number" &&
+    Number.isFinite(params.promptTokens) &&
+    params.promptTokens >= 0;
   const hasFreshContextSnapshot =
     hasNonzeroUsage(params.lastCallUsage) ||
-    (typeof params.promptTokens === "number" && params.promptTokens > 0);
-  if (
-    hasUsage ||
-    hasFreshContextSnapshot ||
-    (typeof params.promptTokens === "number" && params.promptTokens >= 0)
-  ) {
+    hasPromptTokens ||
+    params.usageIsContextSnapshot === true;
+
+  if (hasUsage || hasFreshContextSnapshot) {
     try {
       await updateSessionStoreEntry({
         storePath,
@@ -102,7 +118,9 @@ export async function persistSessionUsageUpdate(params: {
           // `usage.input` sums input tokens from every API call in the run
           // (tool-use loops, compaction retries), overstating actual context.
           // `lastCallUsage` reflects only the final API call — the true context.
-          const usageForContext = params.lastCallUsage ?? (hasUsage ? params.usage : undefined);
+          const usageForContext =
+            params.lastCallUsage ??
+            (params.usageIsContextSnapshot === true ? params.usage : undefined);
           const totalTokens = hasFreshContextSnapshot
             ? deriveSessionTotalTokens({
                 usage: usageForContext,

@@ -143,14 +143,10 @@ export function derivePromptTokens(usage?: {
   if (!usage) {
     return undefined;
   }
-  if (
-    usage.input === undefined &&
-    usage.cacheRead === undefined &&
-    usage.cacheWrite === undefined
-  ) {
+  if (usage.input === undefined) {
     return undefined;
   }
-  const input = usage.input ?? 0;
+  const input = usage.input;
   const cacheRead = usage.cacheRead ?? 0;
   const cacheWrite = usage.cacheWrite ?? 0;
   const sum = input + cacheRead + cacheWrite;
@@ -191,7 +187,7 @@ export function deriveSessionTotalTokens(params: {
         : undefined));
 
   if (!(typeof promptTokens === "number") || !Number.isFinite(promptTokens) || promptTokens < 0) {
-    return undefined;
+    return params.contextTokens;
   }
 
   // Keep this value unclamped; display layers are responsible for capping
