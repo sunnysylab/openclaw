@@ -4,7 +4,15 @@ import {
   createAccountScopedAllowlistNameResolver,
   createNestedAllowlistOverrideResolver,
 } from "openclaw/plugin-sdk/allowlist-config-edit";
-import { createApproverRestrictedNativeApprovalAdapter } from "openclaw/plugin-sdk/approval-runtime";
+import {
+  buildPluginApprovalPendingReplyPayload,
+  createApproverRestrictedNativeApprovalAdapter,
+  buildPluginApprovalRequestMessage,
+  buildPluginApprovalResolvedMessage,
+  buildPluginApprovalResolvedReplyPayload,
+  type PluginApprovalRequest,
+  type PluginApprovalResolved,
+} from "openclaw/plugin-sdk/approval-runtime";
 import { createScopedDmSecurityResolver } from "openclaw/plugin-sdk/channel-config-helpers";
 import { createPairingPrefixStripper } from "openclaw/plugin-sdk/channel-pairing";
 import { createOpenProviderConfiguredRouteWarningCollector } from "openclaw/plugin-sdk/channel-policy";
@@ -344,9 +352,60 @@ export const discordPlugin: ChannelPlugin<ResolvedDiscordAccount, DiscordProbe> 
           hint: "<channelId|user:ID|channel:ID>",
         },
       },
-      auth: discordNativeApprovalAdapter.auth,
-      approvals: {
-        delivery: discordNativeApprovalAdapter.delivery,
+      execApprovals: {
+        auth: discordNativeApprovalAdapter.auth,
+        delivery: {
+          ...discordNativeApprovalAdapter.delivery,
+          shouldSuppressLocalPrompt: ({ cfg, accountId, payload }) =>
+            shouldSuppressLocalDiscordExecApprovalPrompt({
+              cfg,
+              accountId,
+              payload,
+            }),
+        },
+        render: {
+          plugin: {
+            buildPendingPayload: ({ cfg, request, target, nowMs }) => {
+              const normalizedChannel = normalizeMessageChannel(target.channel) ?? target.channel;
+              const interactiveEnabled =
+                normalizedChannel === "discord" &&
+                isDiscordExecApprovalClientEnabled({ cfg, accountId: target.accountId });
+              return buildPluginApprovalPendingReplyPayload({
+                request,
+                nowMs,
+                text: formatDiscordApprovalPreview(
+                  buildPluginApprovalRequestMessage(request, nowMs),
+                  10_000,
+                ),
+                approvalSlug: request.id.slice(0, 8),
+                channelData: interactiveEnabled
+                  ? {
+                      discord: {
+                        components: buildDiscordPluginPendingComponentSpec({ request }),
+                      },
+                    }
+                  : undefined,
+              });
+            },
+            buildResolvedPayload: ({ resolved }) => {
+              const componentSpec = buildDiscordPluginResolvedComponentSpec({ resolved });
+              return buildPluginApprovalResolvedReplyPayload({
+                resolved,
+                text: formatDiscordApprovalPreview(
+                  buildPluginApprovalResolvedMessage(resolved),
+                  10_000,
+                ),
+                channelData: componentSpec
+                  ? {
+                      discord: {
+                        components: componentSpec,
+                      },
+                    }
+                  : undefined,
+              });
+            },
+          },
+        },
       },
       directory: createChannelDirectoryAdapter({
         listPeers: async (params) => listDiscordDirectoryPeersFromConfig(params),

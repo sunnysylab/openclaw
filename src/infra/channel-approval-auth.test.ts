@@ -26,6 +26,13 @@ describe("resolveApprovalCommandAuthorization", () => {
 
   it("delegates to the channel approval override when present", () => {
     getChannelPluginMock.mockReturnValue({
+      execApprovals: {
+        auth: {
+          authorizeCommand: ({ kind }: { kind: "exec" | "plugin" }) =>
+            kind === "plugin"
+              ? { authorized: false, reason: "plugin denied" }
+              : { authorized: true },
+        },
       auth: {
         authorizeActorAction: ({
           approvalKind,

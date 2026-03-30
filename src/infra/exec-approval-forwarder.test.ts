@@ -124,15 +124,15 @@ const telegramApprovalPlugin: Pick<
   "id" | "meta" | "capabilities" | "config" | "approvals"
 > = {
   ...createChannelTestPluginBase({ id: "telegram" }),
-  approvals: {
+  execApprovals: {
     delivery: {
       shouldSuppressForwardingFallback: (params) =>
-        shouldSuppressTelegramExecApprovalForwardingFallbackForTest(params),
+        shouldSuppressTelegramExecApprovalForwardingFallback(params),
     },
     render: {
       exec: {
-        buildPendingPayload: ({ request }) =>
-          buildTelegramExecApprovalPendingPayloadForTest({ request }),
+        buildPendingPayload: ({ request, nowMs }) =>
+          buildTelegramExecApprovalPendingPayload({ request, nowMs }),
       },
     },
   },
@@ -142,6 +142,7 @@ const discordApprovalPlugin: Pick<
   "id" | "meta" | "capabilities" | "config" | "approvals"
 > = {
   ...createChannelTestPluginBase({ id: "discord" }),
+  execApprovals: {
   approvals: {
     delivery: {
       shouldSuppressForwardingFallback: ({ cfg, target }) =>

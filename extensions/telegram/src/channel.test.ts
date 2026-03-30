@@ -546,6 +546,34 @@ describe("telegramPlugin duplicate token guard", () => {
     expect(result).toMatchObject({ channel: "telegram", messageId: "tg-4" });
   });
 
+  it("builds plugin approval pending payload with callback ids that preserve allow-always", () => {
+    const request = createPluginApprovalRequest();
+    const payload = telegramPlugin.execApprovals?.render?.plugin?.buildPendingPayload?.({
+      cfg: createCfg(),
+      request,
+      target: { channel: "telegram", to: "12345" },
+      nowMs: 2_000,
+    });
+
+    expect(payload?.text).toContain("Plugin approval required");
+    const channelData = payload?.channelData as
+      | {
+          execApproval?: { approvalId?: string; approvalSlug?: string };
+          telegram?: { buttons?: Array<Array<{ text: string; callback_data: string }>> };
+        }
+      | undefined;
+    expect(channelData?.execApproval?.approvalId).toBe(request.id);
+    expect(channelData?.execApproval?.approvalSlug).toBe(request.id);
+    const buttons = channelData?.telegram?.buttons;
+    expect(buttons).toBeDefined();
+    expect(buttons?.[0]?.some((button) => button.text === "Allow Always")).toBe(true);
+    for (const row of buttons ?? []) {
+      for (const button of row) {
+        expect(Buffer.byteLength(button.callback_data, "utf8")).toBeLessThanOrEqual(64);
+      }
+    }
+  });
+
   it("ignores accounts with missing tokens during duplicate-token checks", async () => {
     const cfg = createCfg();
     cfg.channels!.telegram!.accounts!.ops = {} as never;

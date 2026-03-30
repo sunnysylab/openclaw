@@ -13,6 +13,10 @@ describe("createApproverRestrictedNativeApprovalAdapter", () => {
       isNativeDeliveryEnabled: () => true,
       resolveNativeDeliveryMode: () => "dm",
     });
+//     const authorizeCommand = adapter.auth.authorizeCommand;
+
+//     expect(
+//       authorizeCommand({
     const authorizeActorAction = adapter.auth.authorizeActorAction;
 
     expect(
@@ -26,6 +30,7 @@ describe("createApproverRestrictedNativeApprovalAdapter", () => {
     ).toEqual({ authorized: true });
 
     expect(
+//       authorizeCommand({
       authorizeActorAction({
         cfg: {} as never,
         accountId: "work",
@@ -36,6 +41,7 @@ describe("createApproverRestrictedNativeApprovalAdapter", () => {
     ).toEqual({ authorized: true });
 
     expect(
+//       authorizeCommand({
       authorizeActorAction({
         cfg: {} as never,
         accountId: "work",
@@ -60,23 +66,15 @@ describe("createApproverRestrictedNativeApprovalAdapter", () => {
       resolveNativeDeliveryMode: ({ accountId }) =>
         accountId === "channel-only" ? "channel" : "dm",
     });
-    const getActionAvailabilityState = adapter.auth.getActionAvailabilityState;
+    const getInitiatingSurfaceState = adapter.auth.getInitiatingSurfaceState;
     const hasConfiguredDmRoute = adapter.delivery.hasConfiguredDmRoute;
 
-    expect(
-      getActionAvailabilityState({
-        cfg: {} as never,
-        accountId: "dm-only",
-        action: "approve",
-      }),
-    ).toEqual({ kind: "enabled" });
-    expect(
-      getActionAvailabilityState({
-        cfg: {} as never,
-        accountId: "no-approvers",
-        action: "approve",
-      }),
-    ).toEqual({ kind: "disabled" });
+    expect(getInitiatingSurfaceState({ cfg: {} as never, accountId: "dm-only" })).toEqual({
+      kind: "enabled",
+    });
+    expect(getInitiatingSurfaceState({ cfg: {} as never, accountId: "no-approvers" })).toEqual({
+      kind: "disabled",
+    });
     expect(hasConfiguredDmRoute({ cfg: {} as never })).toBe(true);
   });
 

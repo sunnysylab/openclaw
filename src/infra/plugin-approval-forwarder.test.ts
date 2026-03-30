@@ -180,7 +180,7 @@ describe("plugin approval forwarding", () => {
         "id" | "meta" | "capabilities" | "config" | "approvals"
       > = {
         ...createChannelTestPluginBase({ id: "slack" as ChannelPlugin["id"] }),
-        approvals: {
+        execApprovals: {
           render: {
             plugin: {
               buildPendingPayload: vi.fn().mockReturnValue(mockPayload),

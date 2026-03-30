@@ -55,6 +55,10 @@ export function createApproverRestrictedNativeApprovalAdapter(params: {
           ? { authorized: true }
           : {
               authorized: false,
+              reason: `❌ You are not authorized to approve ${kind} requests on ${params.channelLabel}.`,
+            };
+      },
+      getInitiatingSurfaceState: ({
               reason: `❌ You are not authorized to approve ${approvalKind} requests on ${params.channelLabel}.`,
             };
       },

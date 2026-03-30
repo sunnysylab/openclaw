@@ -82,14 +82,18 @@ describe("resolveExecApprovalInitiatingSurfaceState", () => {
     getChannelPluginMock.mockImplementation((channel: string) =>
       channel === "telegram"
         ? {
-            auth: {
-              getActionAvailabilityState: () => ({ kind: "enabled" }),
+            execApprovals: {
+              auth: {
+                getInitiatingSurfaceState: () => ({ kind: "enabled" }),
+              },
             },
           }
         : channel === "discord"
           ? {
-              auth: {
-                getActionAvailabilityState: () => ({ kind: "disabled" }),
+              execApprovals: {
+                auth: {
+                  getInitiatingSurfaceState: () => ({ kind: "disabled" }),
+                },
               },
             }
           : undefined,
@@ -127,9 +131,11 @@ describe("resolveExecApprovalInitiatingSurfaceState", () => {
     getChannelPluginMock.mockImplementation((channel: string) =>
       channel === "telegram"
         ? {
-            auth: {
-              getActionAvailabilityState: () => ({ kind: "disabled" }),
-            },
+            execApprovals: {
+              auth: {
+                getInitiatingSurfaceState: () => ({ kind: "disabled" }),
+              },
+            }
           }
         : undefined,
     );
@@ -171,14 +177,14 @@ describe("hasConfiguredExecApprovalDmRoute", () => {
     {
       plugins: [
         {
-          approvals: {
+          execApprovals: {
             delivery: {
               hasConfiguredDmRoute: () => false,
             },
           },
         },
         {
-          approvals: {
+          execApprovals: {
             delivery: {
               hasConfiguredDmRoute: () => true,
             },

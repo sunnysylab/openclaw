@@ -56,6 +56,7 @@ describe("plugin-sdk/approval-renderers", () => {
       approvalSlug: "custom-slug",
       channelData: {
         telegram: {
+          buttons: [[{ text: "Allow Once", callback_data: "/approve id allow-once" }]],
           quoteText: "quoted",
         },
       },
@@ -91,11 +92,14 @@ describe("plugin-sdk/approval-renderers", () => {
         approvalId: "plugin-approval-123",
         approvalSlug: "custom-slug",
         allowedDecisions: ["allow-once", "allow-always", "deny"],
-        state: "pending",
       },
       telegram: {
-        quoteText: "quoted",
+        buttons: [[{ text: "Allow Once", callback_data: "/approve id allow-once" }]],
+        state: "pending",
       },
+//       telegram: {
+//         quoteText: "quoted",
+//       },
     });
   });
 

@@ -2,7 +2,11 @@ import {
   buildDmGroupAccountAllowlistAdapter,
   createNestedAllowlistOverrideResolver,
 } from "openclaw/plugin-sdk/allowlist-config-edit";
-import { createApproverRestrictedNativeApprovalAdapter } from "openclaw/plugin-sdk/approval-runtime";
+import {
+  buildPluginApprovalPendingReplyPayload,
+  buildPluginApprovalRequestMessage,
+  createApproverRestrictedNativeApprovalAdapter,
+} from "openclaw/plugin-sdk/approval-runtime";
 import { createPairingPrefixStripper } from "openclaw/plugin-sdk/channel-pairing";
 import { createAllowlistProviderRouteAllowlistWarningCollector } from "openclaw/plugin-sdk/channel-policy";
 import { attachChannelToResult } from "openclaw/plugin-sdk/channel-send-result";
@@ -441,6 +445,20 @@ const telegramNativeApprovalAdapter = createApproverRestrictedNativeApprovalAdap
     target.accountId?.trim() || request.request.turnSourceAccountId?.trim() || undefined,
 });
 
+const telegramMessageActions: ChannelMessageActionAdapter = {
+  describeMessageTool: (ctx) =>
+    getTelegramRuntime().channel.telegram.messageActions?.describeMessageTool?.(ctx) ?? null,
+  extractToolSend: (ctx) =>
+    getTelegramRuntime().channel.telegram.messageActions?.extractToolSend?.(ctx) ?? null,
+  handleAction: async (ctx) => {
+    const ma = getTelegramRuntime().channel.telegram.messageActions;
+    if (!ma?.handleAction) {
+      throw new Error("Telegram message actions not available");
+    }
+    return ma.handleAction(ctx);
+  },
+};
+
 const resolveTelegramAllowlistGroupOverrides = createNestedAllowlistOverrideResolver({
   resolveRecord: (account: ResolvedTelegramAccount) => account.config.groups,
   outerLabel: (groupId) => groupId,
@@ -592,6 +610,56 @@ export const telegramPlugin = createChatChannelPlugin({
         await deleteTelegramUpdateOffset({ accountId });
       },
     },
+    execApprovals: {
+      auth: telegramNativeApprovalAdapter.auth,
+      delivery: {
+        ...telegramNativeApprovalAdapter.delivery,
+        beforeDeliverPending: async ({ cfg, target, payload }) => {
+          const hasExecApprovalData =
+            payload.channelData &&
+            typeof payload.channelData === "object" &&
+            !Array.isArray(payload.channelData) &&
+            payload.channelData.execApproval;
+          if (!hasExecApprovalData) {
+            return;
+          }
+          const threadId =
+            typeof target.threadId === "number"
+              ? target.threadId
+              : typeof target.threadId === "string"
+                ? Number.parseInt(target.threadId, 10)
+                : undefined;
+          await sendTypingTelegram(target.to, {
+            cfg,
+            accountId: target.accountId ?? undefined,
+            ...(Number.isFinite(threadId) ? { messageThreadId: threadId } : {}),
+          }).catch(() => {});
+        },
+      },
+      render: {
+        exec: {
+          buildPendingPayload: ({ request, nowMs }) =>
+            buildTelegramExecApprovalPendingPayload({ request, nowMs }),
+        },
+        plugin: {
+          buildPendingPayload: ({ request, nowMs }) => {
+            const buttons = buildTelegramExecApprovalButtons(request.id);
+            return buildPluginApprovalPendingReplyPayload({
+              request,
+              nowMs,
+              text: buildPluginApprovalRequestMessage(request, nowMs),
+              approvalSlug: request.id,
+              channelData: buttons
+                ? {
+                    telegram: {
+                      buttons,
+                    },
+                  }
+                : undefined,
+            });
+          },
+        },
+      },
     auth: telegramNativeApprovalAdapter.auth,
     approvals: {
       delivery: telegramNativeApprovalAdapter.delivery,

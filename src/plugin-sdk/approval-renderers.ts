@@ -1,4 +1,5 @@
 import type { ReplyPayload } from "../auto-reply/types.js";
+import type { ExecApprovalReplyDecision } from "../infra/exec-approval-reply.js";
 import {
   buildApprovalInteractiveReply,
   type ExecApprovalReplyDecision,

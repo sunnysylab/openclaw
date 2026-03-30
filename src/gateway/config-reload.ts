@@ -96,6 +96,7 @@ export function startGatewayConfigReloader(opts: {
   let restartQueued = false;
   let missingConfigRetries = 0;
   let pendingInProcessConfig: OpenClawConfig | null = null;
+  let suppressedWatchEventsRemaining = 0;
   let lastAppliedWriteHash: string | null = null;
 
   const scheduleAfter = (wait: number) => {
@@ -242,6 +243,10 @@ export function startGatewayConfigReloader(opts: {
   });
 
   const scheduleFromWatcher = () => {
+    if (suppressedWatchEventsRemaining > 0) {
+      suppressedWatchEventsRemaining -= 1;
+      return;
+    }
     schedule();
   };
 
@@ -251,6 +256,7 @@ export function startGatewayConfigReloader(opts: {
         return;
       }
       pendingInProcessConfig = event.runtimeConfig;
+      suppressedWatchEventsRemaining = 2;
       lastAppliedWriteHash = event.persistedHash;
       scheduleAfter(0);
     }) ?? (() => {});

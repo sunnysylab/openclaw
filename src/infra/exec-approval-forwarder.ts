@@ -342,6 +342,12 @@ function buildExecPendingPayload(params: {
 }): ReplyPayload {
   const channel = normalizeMessageChannel(params.target.channel) ?? params.target.channel;
   const pluginPayload = channel
+    ? getChannelPlugin(channel)?.execApprovals?.render?.exec?.buildPendingPayload?.({
+        cfg,
+        request,
+        target,
+        nowMs: nowMsValue,
+      })
     ? resolveChannelApprovalAdapter(getChannelPlugin(channel))?.render?.exec?.buildPendingPayload?.(
         {
           cfg: params.cfg,
@@ -368,7 +374,12 @@ function buildExecResolvedPayload(params: {
 }): ReplyPayload {
   const channel = normalizeMessageChannel(params.target.channel) ?? params.target.channel;
   const pluginPayload = channel
-    ? resolveChannelApprovalAdapter(
+//     ? getChannelPlugin(channel)?.execApprovals?.render?.exec?.buildResolvedPayload?.({
+//         cfg,
+//         resolved,
+//         target,
+    ? 
+resolveChannelApprovalAdapter(
         getChannelPlugin(channel),
       )?.render?.exec?.buildResolvedPayload?.({
         cfg: params.cfg,
@@ -710,6 +721,21 @@ const pluginApprovalStrategy: ApprovalStrategy<PluginApprovalRequest, PluginAppr
   buildPendingPayload: ({ cfg, request, target, nowMs }) =>
     buildPluginPendingPayload({
       cfg,
+      targets,
+      buildPayload: (target) => {
+        const channel = normalizeMessageChannel(target.channel) ?? target.channel;
+        const adapterPayload = channel
+          ? getChannelPlugin(channel)?.execApprovals?.render?.plugin?.buildResolvedPayload?.({
+              cfg,
+              resolved,
+              target,
+            })
+          : null;
+        return adapterPayload ?? { text: buildPluginApprovalResolvedMessage(resolved) };
+      },
+      deliver,
+    });
+  };
       request,
       target,
       nowMs,

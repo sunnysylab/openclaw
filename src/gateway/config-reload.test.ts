@@ -450,6 +450,7 @@ describe("startGatewayConfigReloader", () => {
   });
 
   it("reuses in-process write notifications and dedupes watcher rereads by persisted hash", async () => {
+//     const readSnapshot = vi.fn<() => Promise<ConfigFileSnapshot>>();
     const readSnapshot = vi
       .fn<() => Promise<ConfigFileSnapshot>>()
       .mockResolvedValueOnce(

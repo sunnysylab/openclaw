@@ -16,6 +16,7 @@ import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { createCronTool } from "./tools/cron-tool.js";
+import { createContextManagementTool } from "./tools/context-management-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
 import { createImageGenerateTool } from "./tools/image-generate-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
@@ -31,6 +32,7 @@ import { createSessionsYieldTool } from "./tools/sessions-yield-tool.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
+import { createAgentPerformanceTool } from "./tools/agent-performance-tool.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 type OpenClawToolsDeps = {
@@ -254,6 +256,8 @@ export function createOpenClawTools(
       config: resolvedConfig,
       sandboxed: options?.sandboxed,
     }),
+    createContextManagementTool(options?.config),
+    createAgentPerformanceTool(options?.config),
     ...(webSearchTool ? [webSearchTool] : []),
     ...(webFetchTool ? [webFetchTool] : []),
     ...(imageTool ? [imageTool] : []),
