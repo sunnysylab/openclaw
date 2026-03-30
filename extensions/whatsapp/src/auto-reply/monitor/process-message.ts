@@ -14,7 +14,10 @@ import {
   buildHistoryContextFromEntries,
   type HistoryEntry,
 } from "openclaw/plugin-sdk/reply-history";
-import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
+import {
+  resolveSendableOutboundReplyParts,
+  resolveToolDeliveryPayload,
+} from "openclaw/plugin-sdk/reply-payload";
 import { resolveChunkMode, resolveTextChunkLimit } from "openclaw/plugin-sdk/reply-runtime";
 import type { getReplyFromConfig } from "openclaw/plugin-sdk/reply-runtime";
 import { finalizeInboundContext } from "openclaw/plugin-sdk/reply-runtime";
@@ -32,7 +35,6 @@ import {
   resolveDmGroupAccessWithCommandGate,
 } from "openclaw/plugin-sdk/security-runtime";
 import { jidToE164, normalizeE164 } from "openclaw/plugin-sdk/text-runtime";
-import { resolveToolDeliveryPayload } from "../../../../../src/auto-reply/reply/reply-payloads.js";
 import { resolveWhatsAppAccount } from "../../accounts.js";
 import {
   getPrimaryIdentityId,

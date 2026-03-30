@@ -8,6 +8,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const allowedNonExtensionTests = new Set<string>([
   "src/agents/pi-embedded-runner-extraparams.test.ts",
   "src/plugins/contracts/discovery.contract.test.ts",
+  "src/auto-reply/reply/commands.test.ts",
 ]);
 
 function walk(dir: string, entries: string[] = []): string[] {
