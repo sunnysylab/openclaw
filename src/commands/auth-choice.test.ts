@@ -323,6 +323,16 @@ function createDefaultProviderPlugins() {
       promptMessage: "Enter Anthropic API key",
     }),
     createApiKeyProvider({
+      providerId: "aimlapi",
+      label: "AI/ML API key",
+      choiceId: "aimlapi-api-key",
+      optionKey: "aimlapiApiKey",
+      flagName: "--aimlapi-api-key",
+      envVar: "AIMLAPI_API_KEY",
+      promptMessage: "Enter AI/ML API key",
+      defaultModel: "aimlapi/openai/gpt-5-nano-2025-08-07",
+    }),
+    createApiKeyProvider({
       providerId: "google",
       label: "Gemini API key",
       choiceId: "gemini-api-key",
@@ -591,6 +601,7 @@ describe("applyAuthChoice", () => {
     "SYNTHETIC_API_KEY",
     "SSH_TTY",
     "CHUTES_CLIENT_ID",
+    "AIMLAPI_API_KEY",
   ]);
   let activeStateDir: string | null = null;
   async function setupTempState() {
@@ -1696,6 +1707,74 @@ describe("applyAuthChoice", () => {
     });
   });
 
+  it("uses existing AIMLAPI_API_KEY when selecting aimlapi-api-key", async () => {
+    await setupTempState();
+    process.env.AIMLAPI_API_KEY = "aimlapi-test-key";
+
+    const text = vi.fn();
+    const confirm = vi.fn(async () => true);
+    const { prompter, runtime } = createApiKeyPromptHarness({ text, confirm });
+
+    const result = await applyAuthChoice({
+      authChoice: "aimlapi-api-key",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: true,
+    });
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("AIMLAPI_API_KEY"),
+      }),
+    );
+    expect(text).not.toHaveBeenCalled();
+
+    expect(result.config.auth?.profiles?.["aimlapi:default"]).toMatchObject({
+      provider: "aimlapi",
+      mode: "api_key",
+    });
+
+    expect(resolveAgentModelPrimaryValue(result.config.agents?.defaults?.model)).toBe(
+      "aimlapi/openai/gpt-5-nano-2025-08-07",
+    );
+
+    expect((await readAuthProfile("aimlapi:default"))?.key).toBe("aimlapi-test-key");
+
+    delete process.env.AIMLAPI_API_KEY;
+  });
+
+  it("prompts and writes AIMLAPI API key when no env var is set", async () => {
+    await setupTempState();
+    delete process.env.AIMLAPI_API_KEY;
+
+    const text = vi.fn().mockResolvedValue("sk-aimlapi-test");
+    const confirm = vi.fn(async () => false);
+    const { prompter, runtime } = createApiKeyPromptHarness({ text, confirm });
+
+    const result = await applyAuthChoice({
+      authChoice: "aimlapi-api-key",
+      config: {},
+      prompter,
+      runtime,
+      setDefaultModel: true,
+    });
+
+    expect(text).toHaveBeenCalledWith(expect.objectContaining({ message: "Enter AI/ML API key" }));
+    expect(confirm).not.toHaveBeenCalled();
+
+    expect(result.config.auth?.profiles?.["aimlapi:default"]).toMatchObject({
+      provider: "aimlapi",
+      mode: "api_key",
+    });
+
+    expect(resolveAgentModelPrimaryValue(result.config.agents?.defaults?.model)).toBe(
+      "aimlapi/openai/gpt-5-nano-2025-08-07",
+    );
+
+    expect((await readAuthProfile("aimlapi:default"))?.key).toBe("sk-aimlapi-test");
+  });
+
   it("configures cloudflare ai gateway via env key and explicit opts", async () => {
     const scenarios: Array<{
       envGatewayKey?: string;
@@ -1991,6 +2070,7 @@ describe("resolvePreferredProviderForAuthChoice", () => {
     const scenarios = [
       { authChoice: "github-copilot" as const, expectedProvider: "github-copilot" },
       { authChoice: "mistral-api-key" as const, expectedProvider: "mistral" },
+      { authChoice: "aimlapi-api-key" as const, expectedProvider: "aimlapi" },
       { authChoice: "ollama" as const, expectedProvider: "ollama" },
       { authChoice: "unknown" as AuthChoice, expectedProvider: undefined },
     ] as const;

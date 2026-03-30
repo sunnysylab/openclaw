@@ -15,6 +15,7 @@ export type BuiltInAuthChoice =
   | "openrouter-api-key"
   | "kilocode-api-key"
   | "litellm-api-key"
+  | "aimlapi-api-key"
   | "ai-gateway-api-key"
   | "cloudflare-ai-gateway-api-key"
   | "moonshot-api-key"
@@ -63,6 +64,7 @@ export type BuiltInAuthChoiceGroupId =
   | "copilot"
   | "openrouter"
   | "kilocode"
+  | "aimlapi"
   | "litellm"
   | "ai-gateway"
   | "cloudflare-ai-gateway"
@@ -121,6 +123,7 @@ export type OnboardOptions = {
   openrouterApiKey?: string;
   kilocodeApiKey?: string;
   litellmApiKey?: string;
+  aimlapiApiKey?: string;
   aiGatewayApiKey?: string;
   cloudflareAiGatewayAccountId?: string;
   cloudflareAiGatewayGatewayId?: string;

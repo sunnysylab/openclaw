@@ -1,9 +1,13 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { AuthProfileCredential, OAuthCredential } from "../agents/auth-profiles/types.js";
 import { normalizeProviderId } from "../agents/provider-id.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { ModelProviderConfig } from "../config/types.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   resolveCatalogHookProviderPluginIds,
+  resolveNonBundledProviderPluginIds,
   resolveOwningPluginIdsForProvider,
 } from "./providers.js";
 import { resolvePluginProviders } from "./providers.runtime.js";
@@ -36,6 +40,8 @@ import type {
   ProviderThinkingPolicyContext,
   ProviderWrapStreamFnContext,
 } from "./types.js";
+
+const log = createSubsystemLogger("plugins-provider-runtime");
 
 function matchesProviderId(provider: ProviderPlugin, providerId: string): boolean {
   const normalized = normalizeProviderId(providerId);
@@ -162,6 +168,62 @@ function resolveProviderPluginsForCatalogHooks(params: {
   return resolveProviderPluginsForHooks({
     ...params,
     onlyPluginIds,
+  });
+}
+
+async function resolveConfiguredModelProviderIds(agentDir?: string): Promise<string[]> {
+  if (!agentDir) {
+    return [];
+  }
+  try {
+    const raw = await fs.readFile(path.join(agentDir, "models.json"), "utf8");
+    const parsed = JSON.parse(raw) as {
+      providers?: Record<string, { models?: unknown }>;
+    };
+    return Object.entries(parsed.providers ?? {})
+      .filter(([, value]) => Array.isArray(value?.models) && value.models.length > 0)
+      .map(([provider]) => normalizeProviderId(provider))
+      .filter((provider): provider is string => Boolean(provider));
+  } catch (error) {
+    const code = (error as { code?: string } | undefined)?.code;
+    if (code === "ENOENT") {
+      return [];
+    }
+    log.warn(`Failed to read provider IDs from models.json: ${String(error)}`);
+    return [];
+  }
+}
+
+async function resolveProviderPluginsForAugmentHooks(params: {
+  config?: OpenClawConfig;
+  workspaceDir?: string;
+  env?: NodeJS.ProcessEnv;
+  context: ProviderAugmentModelCatalogContext;
+}): Promise<ProviderPlugin[]> {
+  const pluginIds = new Set(
+    resolveNonBundledProviderPluginIds({
+      config: params.config,
+      workspaceDir: params.workspaceDir,
+      env: params.env,
+    }),
+  );
+  for (const provider of await resolveConfiguredModelProviderIds(params.context.agentDir)) {
+    const owningPluginIds = resolveOwningPluginIdsForProvider({
+      provider,
+      config: params.config,
+      workspaceDir: params.workspaceDir,
+      env: params.env,
+    });
+    for (const pluginId of owningPluginIds ?? []) {
+      pluginIds.add(pluginId);
+    }
+  }
+  if (pluginIds.size === 0) {
+    return [];
+  }
+  return resolveProviderPluginsForHooks({
+    ...params,
+    onlyPluginIds: [...pluginIds].toSorted((left, right) => left.localeCompare(right)),
   });
 }
 
@@ -639,7 +701,7 @@ export async function augmentModelCatalogWithProviderPlugins(params: {
   context: ProviderAugmentModelCatalogContext;
 }) {
   const supplemental = [] as ProviderAugmentModelCatalogContext["entries"];
-  for (const plugin of resolveProviderPluginsForCatalogHooks(params)) {
+  for (const plugin of await resolveProviderPluginsForAugmentHooks(params)) {
     const next = await plugin.augmentModelCatalog?.(params.context);
     if (!next || next.length === 0) {
       continue;

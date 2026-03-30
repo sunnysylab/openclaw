@@ -32,6 +32,43 @@ export type NormalizedPluginsConfig = {
   >;
 };
 
+export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
+  "aimlapi",
+  "amazon-bedrock",
+  "anthropic",
+  "byteplus",
+  "cloudflare-ai-gateway",
+  "deepseek",
+  "device-pair",
+  "github-copilot",
+  "google",
+  "huggingface",
+  "kilocode",
+  "kimi",
+  "minimax",
+  "mistral",
+  "modelstudio",
+  "moonshot",
+  "nvidia",
+  "ollama",
+  "openai",
+  "opencode",
+  "opencode-go",
+  "openrouter",
+  "phone-control",
+  "qianfan",
+  "sglang",
+  "synthetic",
+  "talk-voice",
+  "together",
+  "venice",
+  "vercel-ai-gateway",
+  "vllm",
+  "volcengine",
+  "xai",
+  "xiaomi",
+  "zai",
+]);
 export function normalizePluginId(id: string): string {
   const trimmed = id.trim();
   return (

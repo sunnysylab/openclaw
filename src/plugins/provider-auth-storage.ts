@@ -150,6 +150,29 @@ export async function setMinimaxApiKey(
   upsertProviderApiKeyProfile({ provider, key, agentDir, options, profileId });
 }
 
+export const ZAI_DEFAULT_MODEL_REF = "zai/glm-5";
+export const XIAOMI_DEFAULT_MODEL_REF = "xiaomi/mimo-v2-flash";
+export const OPENROUTER_DEFAULT_MODEL_REF = "openrouter/auto";
+export const HUGGINGFACE_DEFAULT_MODEL_REF = "huggingface/deepseek-ai/DeepSeek-R1";
+export const TOGETHER_DEFAULT_MODEL_REF = "together/moonshotai/Kimi-K2.5";
+export const LITELLM_DEFAULT_MODEL_REF = "litellm/claude-opus-4-6";
+export const VERCEL_AI_GATEWAY_DEFAULT_MODEL_REF = "vercel-ai-gateway/anthropic/claude-opus-4.6";
+export const AIMLAPI_DEFAULT_MODEL_REF = "aimlapi/openai/gpt-5-nano-2025-08-07";
+
+export async function setAimlapiApiKey(
+  key: SecretInput,
+  agentDir?: string,
+  options?: ApiKeyStorageOptions,
+) {
+  // Never persist the literal "undefined" (e.g. when prompt returns undefined and caller used String(key)).
+  const safeKey = typeof key === "string" && key === "undefined" ? "" : key;
+  upsertAuthProfile({
+    profileId: "aimlapi:default",
+    credential: buildApiKeyCredential("aimlapi", safeKey, undefined, options),
+    agentDir: resolveAuthAgentDir(agentDir),
+  });
+}
+
 export async function setCloudflareAiGatewayConfig(
   accountId: string,
   gatewayId: string,
