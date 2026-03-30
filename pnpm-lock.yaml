@@ -630,7 +630,11 @@ importers:
 
   extensions/vercel-ai-gateway: {}
 
-  extensions/vllm: {}
+  extensions/vllm:
+    dependencies:
+      '@mariozechner/pi-ai':
+        specifier: 0.63.2
+        version: 0.63.2(@modelcontextprotocol/sdk@1.28.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
 
   extensions/voice-call:
     dependencies:
