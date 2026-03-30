@@ -15,7 +15,11 @@ import { registerApnsRegistration } from "../infra/push-apns.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";
 import { deleteMediaBuffer } from "../media/store.js";
-import { normalizeMainKey, scopedHeartbeatWakeOptions } from "../routing/session-key.js";
+import {
+  normalizeMainKey,
+  resolveEventSessionKey,
+  scopedHeartbeatWakeOptions,
+} from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
 import { parseMessageWithAttachments } from "./chat-attachments.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./server-methods/attachment-normalize.js";
@@ -631,7 +635,10 @@ export const handleNodeEvent = async (ctx: NodeEventContext, nodeId: string, evt
         }
       }
 
-      enqueueSystemEvent(text, { sessionKey, contextKey: runId ? `exec:${runId}` : "exec" });
+      enqueueSystemEvent(text, {
+        sessionKey: resolveEventSessionKey(sessionKey, cfg.session?.mainKey),
+        contextKey: runId ? `exec:${runId}` : "exec",
+      });
       // Scope wakes only for canonical agent sessions. Synthetic node-* fallback
       // keys should keep legacy unscoped behavior so enabled non-main heartbeat
       // agents still run when no explicit agent session is provided.

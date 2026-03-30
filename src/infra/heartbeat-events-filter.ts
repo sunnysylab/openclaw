@@ -83,8 +83,16 @@ function isHeartbeatNoiseEvent(evt: string): boolean {
   );
 }
 
+// Pre-compiled regex for exec completion matching (called on every system event).
+// Start-anchored + 8-char hex UUID to avoid false positives on free-form text.
+// Machine format: "Exec completed (a1b2c3d4, code 0) :: output"
+const EXEC_COMPLETION_RE = /^exec (?:completed|failed|killed) \([0-9a-f]{8}, /;
+
 export function isExecCompletionEvent(evt: string): boolean {
-  return evt.toLowerCase().includes("exec finished");
+  const lower = evt.toLowerCase();
+  // "exec finished" — emitExecSystemEvent (gateway/node approval path)
+  // "Exec completed/failed/killed (" — maybeNotifyOnExit (backgrounded allowlisted commands)
+  return lower.startsWith("exec finished") || EXEC_COMPLETION_RE.test(lower);
 }
 
 // Returns true when a system event should be treated as real cron reminder content.
