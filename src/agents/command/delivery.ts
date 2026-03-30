@@ -292,9 +292,10 @@ export async function deliverAgentCommandResult(params: {
     }
   }
   let deliveryAttempted = false;
-  let deliverySucceeded = false;
+  let deliverySucceeded: boolean | "partial" = false;
   let deliveryThrewError = false;
-  if (deliver && deliveryChannel && !isInternalMessageChannel(deliveryChannel)) {
+  let hadPartialFailure = false;
+  if (deliver && deliveryChannel && !isInternalMessageChannel(deliveryChannel) && deliveryPayloads.length > 0) {
     if (deliveryTarget) {
       deliveryAttempted = true;
       try {
@@ -308,11 +309,14 @@ export async function deliverAgentCommandResult(params: {
           replyToId: resolvedReplyToId ?? null,
           threadId: resolvedThreadTarget ?? null,
           bestEffort: bestEffortDeliver,
-          onError: (err) => logDeliveryError(err),
+          onError: (err) => {
+            hadPartialFailure = true;
+            logDeliveryError(err);
+          },
           onPayload: logPayload,
           deps: createOutboundSendDeps(deps),
         });
-        deliverySucceeded = results.length > 0;
+        deliverySucceeded = results.length > 0 ? (hadPartialFailure ? "partial" : true) : false;
       } catch (err) {
         if (!bestEffortDeliver) {
           throw err;
@@ -327,7 +331,7 @@ export async function deliverAgentCommandResult(params: {
   // failures caused by stale delivery context (e.g., after model fallback or
   // error recovery) where the response is written to the session transcript
   // but never actually sent to the external channel.
-  if (deliver && payloads.length > 0 && !deliverySucceeded && !opts.json) {
+  if (deliver && deliveryPayloads.length > 0 && !deliverySucceeded && !opts.json) {
     const reason = !deliveryChannel
       ? "no delivery channel resolved"
       : isInternalMessageChannel(deliveryChannel)
