@@ -6,9 +6,19 @@ import { resolveGatewayStartupPluginIds } from "../plugins/channel-plugin-ids.js
 import { normalizePluginsConfig } from "../plugins/config-state.js";
 import { loadOpenClawPlugins } from "../plugins/loader.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
+import {
+  clearGatewaySubagentRuntime,
+  getGatewaySubagentRuntime,
+  setGatewaySubagentRuntime,
+} from "../plugins/runtime/index.js";
+import {
+  clearSharedPluginRuntimeOptions,
+  getSharedPluginRuntimeOptions,
+  setSharedPluginRuntimeOptions,
+} from "../plugins/runtime/shared-runtime-options.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
-import { ADMIN_SCOPE, WRITE_SCOPE } from "./method-scopes.js";
+import { ADMIN_SCOPE, READ_SCOPE, WRITE_SCOPE } from "./method-scopes.js";
 import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "./protocol/client-info.js";
 import type { ErrorShape } from "./protocol/index.js";
 import { PROTOCOL_VERSION } from "./protocol/index.js";
@@ -262,6 +272,18 @@ async function dispatchGatewayMethod<T>(
   }
 
   let result: { ok: boolean; payload?: unknown; error?: ErrorShape } | undefined;
+  const resolvedClient = scope?.client
+    ? {
+        ...scope.client,
+        internal: {
+          ...scope.client.internal,
+          ...(options?.allowSyntheticModelOverride === true ? { allowModelOverride: true } : {}),
+        },
+      }
+    : createSyntheticOperatorClient({
+        allowModelOverride: options?.allowSyntheticModelOverride === true,
+        scopes: options?.syntheticScopes,
+      });
   await handleGatewayRequest({
     req: {
       type: "req",
@@ -269,12 +291,7 @@ async function dispatchGatewayMethod<T>(
       method,
       params,
     },
-    client:
-      scope?.client ??
-      createSyntheticOperatorClient({
-        allowModelOverride: options?.allowSyntheticModelOverride === true,
-        scopes: options?.syntheticScopes,
-      }),
+    client: resolvedClient,
     isWebchatConnect,
     respond: (ok, payload, error) => {
       if (!result) {
@@ -293,12 +310,33 @@ async function dispatchGatewayMethod<T>(
   return result.payload as T;
 }
 
+function resolvePluginSubagentIdempotencyKey(params: {
+  idempotencyKey?: string;
+  sessionKey: string;
+  method: "agent";
+}): string {
+  const provided = typeof params.idempotencyKey === "string" ? params.idempotencyKey.trim() : "";
+  if (provided) {
+    return provided;
+  }
+  // Gateway-backed agent runs require a non-empty idempotency key. When plugin
+  // callers omit one, mint a fresh per-call key so each invocation still maps
+  // to a distinct run instead of failing schema validation.
+  return `plugin-subagent:${params.method}:${params.sessionKey}:${randomUUID()}`;
+}
+
 export function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
   const getSessionMessages: PluginRuntime["subagent"]["getSessionMessages"] = async (params) => {
-    const payload = await dispatchGatewayMethod<{ messages?: unknown[] }>("sessions.get", {
-      key: params.sessionKey,
-      ...(params.limit != null && { limit: params.limit }),
-    });
+    const payload = await dispatchGatewayMethod<{ messages?: unknown[] }>(
+      "sessions.get",
+      {
+        key: params.sessionKey,
+        ...(params.limit != null && { limit: params.limit }),
+      },
+      {
+        syntheticScopes: [READ_SCOPE],
+      },
+    );
     return { messages: Array.isArray(payload?.messages) ? payload.messages : [] };
   };
 
@@ -330,14 +368,19 @@ export function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
           sessionKey: params.sessionKey,
           message: params.message,
           deliver: params.deliver ?? false,
+          idempotencyKey: resolvePluginSubagentIdempotencyKey({
+            idempotencyKey: params.idempotencyKey,
+            sessionKey: params.sessionKey,
+            method: "agent",
+          }),
           ...(allowOverride && params.provider && { provider: params.provider }),
           ...(allowOverride && params.model && { model: params.model }),
           ...(params.extraSystemPrompt && { extraSystemPrompt: params.extraSystemPrompt }),
           ...(params.lane && { lane: params.lane }),
-          ...(params.idempotencyKey && { idempotencyKey: params.idempotencyKey }),
         },
         {
           allowSyntheticModelOverride,
+          syntheticScopes: [WRITE_SCOPE],
         },
       );
       const runId = payload?.runId;
@@ -347,11 +390,23 @@ export function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
       return { runId };
     },
     async waitForRun(params) {
-      const payload = await dispatchGatewayMethod<{ status?: string; error?: string }>(
+      const payload = await dispatchGatewayMethod<{
+        status?: string;
+        error?: string;
+        stopReason?: string;
+        pendingToolCalls?: Array<{
+          id: string;
+          name: string;
+          arguments: string;
+        }>;
+      }>(
         "agent.wait",
         {
           runId: params.runId,
           ...(params.timeoutMs != null && { timeoutMs: params.timeoutMs }),
+        },
+        {
+          syntheticScopes: [WRITE_SCOPE],
         },
       );
       const status = payload?.status;
@@ -361,6 +416,11 @@ export function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
       return {
         status,
         ...(typeof payload?.error === "string" && payload.error && { error: payload.error }),
+        ...(typeof payload?.stopReason === "string" &&
+          payload.stopReason && { stopReason: payload.stopReason }),
+        ...(Array.isArray(payload?.pendingToolCalls) && payload.pendingToolCalls.length > 0
+          ? { pendingToolCalls: payload.pendingToolCalls }
+          : {}),
       };
     },
     getSessionMessages,
@@ -368,6 +428,8 @@ export function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
       return getSessionMessages(params);
     },
     async deleteSession(params) {
+      // Intentionally omit syntheticScopes here so fallback callers keep the
+      // default non-admin scope and cannot delete sessions without real admin.
       await dispatchGatewayMethod("sessions.delete", {
         key: params.sessionKey,
         deleteTranscript: params.deleteTranscript ?? true,
@@ -403,22 +465,44 @@ export function loadGatewayPlugins(params: {
       workspaceDir: params.workspaceDir,
       env: process.env,
     });
-  const pluginRegistry = loadOpenClawPlugins({
-    config: resolvedConfig,
-    workspaceDir: params.workspaceDir,
-    onlyPluginIds: pluginIds,
-    logger: {
-      info: (msg) => params.log.info(msg),
-      warn: (msg) => params.log.warn(msg),
-      error: (msg) => params.log.error(msg),
-      debug: (msg) => params.log.debug(msg),
-    },
-    coreGatewayHandlers: params.coreGatewayHandlers,
-    runtimeOptions: {
-      allowGatewaySubagentBinding: true,
-    },
-    preferSetupRuntimeForChannelPlugins: params.preferSetupRuntimeForChannelPlugins,
+  const previousGatewaySubagentRuntime = getGatewaySubagentRuntime();
+  const gatewaySubagentRuntime = createGatewaySubagentRuntime();
+  setGatewaySubagentRuntime(gatewaySubagentRuntime);
+  const previousSharedRuntimeOptions = getSharedPluginRuntimeOptions();
+  setSharedPluginRuntimeOptions({
+    allowGatewaySubagentBinding: true,
   });
+  let pluginRegistry;
+  try {
+    pluginRegistry = loadOpenClawPlugins({
+      config: resolvedConfig,
+      workspaceDir: params.workspaceDir,
+      onlyPluginIds: pluginIds,
+      logger: {
+        info: (msg) => params.log.info(msg),
+        warn: (msg) => params.log.warn(msg),
+        error: (msg) => params.log.error(msg),
+        debug: (msg) => params.log.debug(msg),
+      },
+      coreGatewayHandlers: params.coreGatewayHandlers,
+      runtimeOptions: {
+        allowGatewaySubagentBinding: true,
+      },
+      preferSetupRuntimeForChannelPlugins: params.preferSetupRuntimeForChannelPlugins,
+    });
+  } catch (error) {
+    if (previousGatewaySubagentRuntime) {
+      setGatewaySubagentRuntime(previousGatewaySubagentRuntime);
+    } else {
+      clearGatewaySubagentRuntime();
+    }
+    if (previousSharedRuntimeOptions) {
+      setSharedPluginRuntimeOptions(previousSharedRuntimeOptions);
+    } else {
+      clearSharedPluginRuntimeOptions();
+    }
+    throw error;
+  }
   const pluginMethods = Object.keys(pluginRegistry.gatewayHandlers);
   const gatewayMethods = Array.from(new Set([...params.baseMethods, ...pluginMethods]));
   return { pluginRegistry, gatewayMethods };
