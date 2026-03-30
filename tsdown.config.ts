@@ -126,8 +126,6 @@ function buildCoreDistEntries(): Record<string, string> {
     "agents/pi-model-discovery-runtime": "src/agents/pi-model-discovery-runtime.ts",
     "commands/status.summary.runtime": "src/commands/status.summary.runtime.ts",
     "plugins/provider-runtime.runtime": "src/plugins/provider-runtime.runtime.ts",
-    "plugins/runtime/runtime-image-generation.runtime":
-      "src/plugins/runtime/runtime-image-generation.runtime.ts",
     "plugins/runtime/runtime-line.contract": "src/plugins/runtime/runtime-line.contract.ts",
     extensionAPI: "src/extensionAPI.ts",
     "infra/warning-filter": "src/infra/warning-filter.ts",
@@ -136,6 +134,7 @@ function buildCoreDistEntries(): Record<string, string> {
     "plugins/build-smoke-entry": "src/plugins/build-smoke-entry.ts",
     "plugins/runtime/index": "src/plugins/runtime/index.ts",
     "llm-slug-generator": "src/hooks/llm-slug-generator.ts",
+    "mcp/plugin-tools-serve": "src/mcp/plugin-tools-serve.ts",
   };
 }
 
