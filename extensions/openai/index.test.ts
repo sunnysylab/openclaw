@@ -27,7 +27,7 @@ vi.mock("openclaw/plugin-sdk/runtime-env", () => ({
 }));
 
 vi.mock("@mariozechner/pi-ai/oauth", async (importOriginal) => {
-  const actual = await importOriginal<any>();
+  const actual = await importOriginal<typeof import("@mariozechner/pi-ai/oauth")>();
   return {
     ...actual,
     refreshOpenAICodexToken: runtimeMocks.refreshOpenAICodexToken,
