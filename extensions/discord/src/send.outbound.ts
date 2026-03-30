@@ -122,12 +122,17 @@ function toDiscordSendResult(
 async function resolveDiscordSendTarget(
   to: string,
   opts: DiscordSendOpts,
-): Promise<{ rest: RequestClient; request: DiscordClientRequest; channelId: string }> {
+): Promise<{
+  rest: RequestClient;
+  request: DiscordClientRequest;
+  sendRequest: DiscordClientRequest;
+  channelId: string;
+}> {
   const cfg = opts.cfg ?? loadConfig();
-  const { rest, request } = createDiscordClient(opts, cfg);
+  const { rest, request, sendRequest } = createDiscordClient(opts, cfg);
   const recipient = await parseAndResolveRecipient(to, opts.accountId, cfg);
   const { channelId } = await resolveChannelId(rest, recipient, request);
-  return { rest, request, channelId };
+  return { rest, request, sendRequest, channelId };
 }
 
 export async function sendMessageDiscord(
@@ -154,7 +159,7 @@ export async function sendMessageDiscord(
   const textWithMentions = rewriteDiscordKnownMentions(textWithTables, {
     accountId: accountInfo.accountId,
   });
-  const { token, rest, request } = createDiscordClient(opts, cfg);
+  const { token, rest, request, sendRequest } = createDiscordClient(opts, cfg);
   const recipient = await parseAndResolveRecipient(to, opts.accountId, cfg);
   const { channelId } = await resolveChannelId(rest, recipient, request);
 
@@ -183,7 +188,7 @@ export async function sendMessageDiscord(
     });
     let threadRes: { id: string; message?: { id: string; channel_id: string } };
     try {
-      threadRes = (await request(
+      threadRes = (await sendRequest(
         () =>
           rest.post(Routes.threads(channelId), {
             body: {
@@ -219,7 +224,7 @@ export async function sendMessageDiscord(
           opts.mediaLocalRoots,
           mediaMaxBytes,
           undefined,
-          request,
+          sendRequest,
           accountInfo.config.maxLinesPerMessage,
           undefined,
           undefined,
@@ -230,7 +235,7 @@ export async function sendMessageDiscord(
           rest,
           threadId,
           chunks: afterMediaChunks,
-          request,
+          request: sendRequest,
           maxLinesPerMessage: accountInfo.config.maxLinesPerMessage,
           chunkMode,
           silent: opts.silent,
@@ -240,7 +245,7 @@ export async function sendMessageDiscord(
           rest,
           threadId,
           chunks: remainingChunks,
-          request,
+          request: sendRequest,
           maxLinesPerMessage: accountInfo.config.maxLinesPerMessage,
           chunkMode,
           silent: opts.silent,
@@ -281,7 +286,7 @@ export async function sendMessageDiscord(
         opts.mediaLocalRoots,
         mediaMaxBytes,
         opts.replyTo,
-        request,
+        sendRequest,
         accountInfo.config.maxLinesPerMessage,
         opts.components,
         opts.embeds,
@@ -294,7 +299,7 @@ export async function sendMessageDiscord(
         channelId,
         textWithMentions,
         opts.replyTo,
-        request,
+        sendRequest,
         accountInfo.config.maxLinesPerMessage,
         opts.components,
         opts.embeds,
@@ -422,7 +427,7 @@ export async function sendStickerDiscord(
   stickerIds: string[],
   opts: DiscordSendOpts & { content?: string } = {},
 ): Promise<DiscordSendResult> {
-  const { rest, request, channelId } = await resolveDiscordSendTarget(to, opts);
+  const { rest, sendRequest, channelId } = await resolveDiscordSendTarget(to, opts);
   const content = opts.content?.trim();
   const rewrittenContent = content
     ? rewriteDiscordKnownMentions(content, {
@@ -430,7 +435,7 @@ export async function sendStickerDiscord(
       })
     : undefined;
   const stickers = normalizeStickerIds(stickerIds);
-  const res = (await request(
+  const res = (await sendRequest(
     () =>
       rest.post(Routes.channelMessages(channelId), {
         body: {
@@ -448,7 +453,7 @@ export async function sendPollDiscord(
   poll: PollInput,
   opts: DiscordSendOpts & { content?: string } = {},
 ): Promise<DiscordSendResult> {
-  const { rest, request, channelId } = await resolveDiscordSendTarget(to, opts);
+  const { rest, sendRequest, channelId } = await resolveDiscordSendTarget(to, opts);
   const content = opts.content?.trim();
   const rewrittenContent = content
     ? rewriteDiscordKnownMentions(content, {
@@ -460,7 +465,7 @@ export async function sendPollDiscord(
   }
   const payload = normalizeDiscordPollInput(poll);
   const flags = opts.silent ? SUPPRESS_NOTIFICATIONS_FLAG : undefined;
-  const res = (await request(
+  const res = (await sendRequest(
     () =>
       rest.post(Routes.channelMessages(channelId), {
         body: {
@@ -529,7 +534,7 @@ export async function sendVoiceMessageDiscord(
     const client = createDiscordClient(opts, cfg);
     token = client.token;
     rest = client.rest;
-    const request = client.request;
+    const { request, sendRequest } = client;
     const recipient = await parseAndResolveRecipient(to, opts.accountId, cfg);
     channelId = (await resolveChannelId(rest, recipient, request)).channelId;
 
@@ -551,7 +556,7 @@ export async function sendVoiceMessageDiscord(
       audioBuffer,
       metadata,
       opts.replyTo,
-      request,
+      sendRequest,
       opts.silent,
       token,
     );

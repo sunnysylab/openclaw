@@ -19,7 +19,7 @@ import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { convertMarkdownTables } from "openclaw/plugin-sdk/text-runtime";
 import { resolveDiscordAccount } from "../accounts.js";
 import { chunkDiscordTextWithMode } from "../chunk.js";
-import { createDiscordRetryRunner } from "../retry.js";
+import { createDiscordSendRetryRunner } from "../retry.js";
 import { sendMessageDiscord, sendVoiceMessageDiscord, sendWebhookMessageDiscord } from "../send.js";
 import { sendDiscordText } from "../send.shared.js";
 
@@ -265,7 +265,7 @@ export async function deliverDiscordReply(params: {
   const account = resolveDiscordAccount({ cfg: params.cfg, accountId: params.accountId });
   const retryConfig = resolveDeliveryRetryConfig(account.config.retry);
   const request: RetryRunner | undefined = channelId
-    ? createDiscordRetryRunner({ configRetry: account.config.retry })
+    ? createDiscordSendRetryRunner({ configRetry: account.config.retry })
     : undefined;
   let deliveredAny = false;
   for (const payload of params.replies) {
