@@ -818,7 +818,7 @@ export function createSignalEventHandler(deps: SignalEventHandlerDeps) {
       replyToId: quotedId,
       replyToBody: quotedText || undefined,
       replyToSender: quotedAuthor || undefined,
-      replyToIsQuote: quotedText ? true : undefined,
+      replyToIsQuote: quote ? true : undefined,
     });
   };
 }
