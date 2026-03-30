@@ -760,11 +760,6 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         await commitInboundEventIfClaimed();
         return;
       }
-      if (isRoom && !isConfiguredBotSender) {
-        // Re-open terminated bot chains only after this turn survives
-        // mention/command gates and resolves into a usable inbound body.
-        clearBotChainStatesForRoomRoute(roomId, _route.sessionKey);
-      }
       // Holds the inbound-turn snapshot to commit only after successful dispatch.
       // Written here to pass to the judge; flushed to activeBotChainState on the
       // success path so a failed/retried dispatch cannot pre-populate turn history.
@@ -1277,6 +1272,9 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         return;
       }
       if (!queuedFinal) {
+        if (isRoom && !isConfiguredBotSender) {
+          clearBotChainStatesForRoomRoute(roomId, _route.sessionKey);
+        }
         await commitInboundEventIfClaimed();
         return;
       }
@@ -1296,6 +1294,10 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
             }]
           : pendingBotChainTurns;
         activeBotChainState.turns = withReply.slice(-MAX_BOT_CHAIN_TURNS);
+      }
+      if (isRoom && !isConfiguredBotSender) {
+        // Re-open terminated bot chains only after this turn is fully committed.
+        clearBotChainStatesForRoomRoute(roomId, _route.sessionKey);
       }
       await commitInboundEventIfClaimed();
     } catch (err) {

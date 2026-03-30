@@ -1457,6 +1457,72 @@ describe("matrix monitor handler semantic bot loop termination", () => {
     expect(dispatchReplyFromConfig).not.toHaveBeenCalled();
     expect(runMatrixSemanticLoopJudgeMock).toHaveBeenCalledTimes(2);
   });
+
+  it("does not clear terminated bot chain when non-bot turn fails to commit", async () => {
+    // P4: clearBotChainStatesForRoomRoute must only fire on committed paths.
+    // A non-bot message that passes mention/body gates but then fails dispatch
+    // (finalReplyDeliveryFailed) must not permanently clear a terminated chain.
+    const dispatchReplyFromConfig = vi.fn(async () => {
+      throw new Error("simulated dispatch failure");
+    });
+    const { handler } = createMatrixHandlerTestHarness({
+      isDirectMessage: false,
+      accountAllowBots: true,
+      configuredBotUserIds: new Set(["@ops:example.org"]),
+      roomsConfig: {
+        "!room:example.org": { requireMention: false },
+      },
+      dispatchReplyFromConfig,
+      getMemberDisplayName: async () => "ops-bot",
+    });
+
+    // First: a bot message that triggers stop_loop to set terminated=true.
+    runMatrixSemanticLoopJudgeMock.mockResolvedValueOnce({
+      decision: "stop_loop",
+      confidence: 0.95,
+      reasonCode: "no_new_information",
+      reasonShort: "No meaningful information gain.",
+    });
+    await handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$bot-stop",
+        sender: "@ops:example.org",
+        body: "bot message",
+      }),
+    );
+
+    // Second: a non-bot message that passes gates but fails dispatch.
+    await handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$human-fail",
+        sender: "@human:example.org",
+        body: "human message",
+      }),
+    );
+
+    // Third: bot sends again — chain should still be terminated because
+    // the non-bot turn never committed.
+    runMatrixSemanticLoopJudgeMock.mockResolvedValueOnce({
+      decision: "continue",
+      confidence: 0.9,
+      reasonCode: "progress_detected",
+      reasonShort: "Progress detected.",
+    });
+    await handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$bot-retry",
+        sender: "@ops:example.org",
+        body: "bot retry",
+      }),
+    );
+
+    // Judge must only have been called for the first bot message (stop_loop).
+    // The retry must have been dropped by the terminated gate without calling judge.
+    expect(runMatrixSemanticLoopJudgeMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("matrix monitor handler durable inbound dedupe", () => {
