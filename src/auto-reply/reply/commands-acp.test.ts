@@ -3,7 +3,10 @@ import { AcpRuntimeError } from "../../acp/runtime/errors.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionBindingRecord } from "../../infra/outbound/session-binding-service.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
-import { createChannelTestPluginBase, createTestRegistry } from "../../test-utils/channel-plugins.js";
+import {
+  createChannelTestPluginBase,
+  createTestRegistry,
+} from "../../test-utils/channel-plugins.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 
 const hoisted = vi.hoisted(() => {
@@ -126,7 +129,9 @@ function parseTelegramChatIdForTest(raw?: string | null): string | undefined {
   return (topicMatch?.[1] ?? trimmed).trim() || undefined;
 }
 
-function parseDiscordConversationIdForTest(targets: Array<string | undefined | null>): string | undefined {
+function parseDiscordConversationIdForTest(
+  targets: Array<string | undefined | null>,
+): string | undefined {
   for (const rawTarget of targets) {
     const target = rawTarget?.trim();
     if (!target) {
@@ -986,7 +991,7 @@ describe("/acp command", () => {
 
   it("persists ACP spawn labels to the spawned session store instead of the requester store", async () => {
     const commandParams = createConversationParams(
-      "/acp spawn codex --bind here --label codex-a2ui",
+      "/acp spawn codex --bind here --label spawned-label",
       {
         channel: "telegram",
         originatingTo: "telegram:-1003841603622",
@@ -1023,12 +1028,14 @@ describe("/acp command", () => {
     const updateFn = hoisted.updateSessionStoreMock.mock.calls[0]?.[1] as
       | ((store: Record<string, { label?: string; updatedAt: number }>) => unknown)
       | undefined;
-    const updated = updateFn?.({
+    const store: Record<string, { label?: string; updatedAt: number }> = {
       [spawnedSessionKey ?? "missing"]: {
         updatedAt: 1,
       },
-    }) as { label?: string; updatedAt?: number } | undefined;
-    expect(updated?.label).toBe("codex-a2ui");
+    };
+    updateFn?.(store);
+    const updated = store[spawnedSessionKey ?? "missing"];
+    expect(updated?.label).toBe("spawned-label");
     expect(updated?.updatedAt).toBeTypeOf("number");
   });
 
