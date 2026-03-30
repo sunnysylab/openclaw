@@ -7,6 +7,7 @@ import { resolveAgentMainSessionKey, resolveMainSessionKey } from "../../config/
 import { callGateway } from "../../gateway/call.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
 import {
+  DeliveryError,
   deliverOutboundPayloads,
   type OutboundDeliveryResult,
 } from "../../infra/outbound/deliver.js";
@@ -328,7 +329,7 @@ async function retryTransientDirectCronDelivery<T>(params: {
       return await params.run();
     } catch (err) {
       const delayMs = retryDelaysMs[retryIndex];
-      if (delayMs == null || !isTransientDirectCronDeliveryError(err) || params.signal?.aborted) {
+      if (delayMs == null || !isTransientDirectCronDeliveryError(err) || params.signal?.aborted || err instanceof DeliveryError) {
         throw err;
       }
       const nextAttempt = retryIndex + 2;

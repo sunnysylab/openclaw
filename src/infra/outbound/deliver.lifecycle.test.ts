@@ -419,17 +419,15 @@ describe("deliverOutboundPayloads lifecycle", () => {
     ).rejects.toThrow("first payload failed");
 
     // Should NOT be a DeliveryError since nothing was sent yet
-    try {
-      await deliverOutboundPayloads({
+    await expect(
+      deliverOutboundPayloads({
         cfg: whatsappChunkConfig,
         channel: "whatsapp",
         to: "+1555",
         payloads: [{ text: "a" }],
         deps: { sendWhatsApp },
         bestEffort: false,
-      });
-    } catch (err) {
-      expect(err).not.toBeInstanceOf(DeliveryError);
-    }
+      }),
+    ).rejects.not.toBeInstanceOf(DeliveryError);
   });
 });

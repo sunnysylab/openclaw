@@ -23,11 +23,15 @@ vi.mock("../../agents/subagent-registry.js", () => ({
   countActiveDescendantRuns: vi.fn().mockReturnValue(0),
 }));
 
-vi.mock("../../infra/outbound/deliver.js", () => ({
-  deliverOutboundPayloads: vi
-    .fn()
-    .mockResolvedValue({ results: [{ ok: true }], cancelledCount: 0, allCancelledByHook: false }),
-}));
+vi.mock("../../infra/outbound/deliver.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../infra/outbound/deliver.js")>();
+  return {
+    ...actual,
+    deliverOutboundPayloads: vi
+      .fn()
+      .mockResolvedValue({ results: [{ ok: true }], cancelledCount: 0, allCancelledByHook: false }),
+  };
+});
 
 vi.mock("../../infra/outbound/identity.js", () => ({
   resolveAgentOutboundIdentity: vi.fn().mockReturnValue({}),
