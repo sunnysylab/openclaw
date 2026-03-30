@@ -259,8 +259,6 @@ importers:
 
   extensions/anthropic: {}
 
-  extensions/anthropic-vertex: {}
-
   extensions/bluebubbles:
     devDependencies:
       openclaw:
