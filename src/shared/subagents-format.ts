@@ -132,10 +132,10 @@ export function formatTokenUsageDisplay(entry?: TokenUsageLike) {
     const input = formatTokenShort(io.input) ?? "0";
     const output = formatTokenShort(io.output) ?? "0";
     parts.push(`tokens ${formatTokenShort(io.total)} (in ${input} / out ${output})`);
-  } else if (promptCache > 0) {
+  } else if (promptCache !== undefined && promptCache > 0) {
     parts.push(`tokens ${formatTokenShort(promptCache)} prompt/cache`);
   }
-  if (io && promptCache > io.total) {
+  if (io && promptCache !== undefined && promptCache > io.total) {
     parts.push(`prompt/cache ${formatTokenShort(promptCache)}`);
   }
   return parts.join(", ");

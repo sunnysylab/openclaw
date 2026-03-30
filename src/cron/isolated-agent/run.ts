@@ -227,10 +227,6 @@ export async function runCronIsolatedAgentTurn(params: {
     mainKey: params.cfg.session?.mainKey,
     cfg: params.cfg,
   });
-  const payloadHookExternalContentSource =
-    params.job.payload.kind === "agentTurn" ? params.job.payload.externalContentSource : undefined;
-  const hookExternalContentSource =
-    payloadHookExternalContentSource ?? resolveHookExternalContentSource(baseSessionKey);
 
   const workspaceDirRaw = resolveAgentWorkspaceDir(params.cfg, agentId);
   const agentDir = resolveAgentDir(params.cfg, agentId);
@@ -648,14 +644,11 @@ export async function runCronIsolatedAgentTurn(params: {
       cronSession.sessionEntry.totalTokens = undefined;
       cronSession.sessionEntry.totalTokensFresh = false;
       cronSession.sessionEntry.totalTokensEstimate = undefined;
-    } else if (
-      cronSession.sessionEntry.totalTokensEstimate === undefined &&
-      preRunTotalTokens !== undefined &&
-      cronSession.sessionEntry.totalTokensFresh !== false
-    ) {
-      // Refresh or backfill estimate baseline from the last known fresh total.
-      // (Note: totalTokensFresh was already true on cronSession.sessionEntry if it was true on entry)
+    } else if (preRunTotalTokens !== undefined && cronSession.sessionEntry.totalTokensFresh !== false) {
+      // Always prefer a confirmed fresh total as the estimate baseline.
       cronSession.sessionEntry.totalTokensEstimate = preRunTotalTokens;
+    } else if (cronSession.sessionEntry.totalTokensEstimate !== undefined) {
+      // Preserve existing estimate.
     }
 
     cronSession.sessionEntry.contextTokens = contextTokens;

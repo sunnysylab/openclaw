@@ -26,9 +26,13 @@ vi.mock("openclaw/plugin-sdk/runtime-env", () => ({
   ensureGlobalUndiciEnvProxyDispatcher: runtimeMocks.ensureGlobalUndiciEnvProxyDispatcher,
 }));
 
-vi.mock("@mariozechner/pi-ai/oauth", () => ({
-  refreshOpenAICodexToken: runtimeMocks.refreshOpenAICodexToken,
-}));
+vi.mock("@mariozechner/pi-ai/oauth", async (importOriginal) => {
+  const actual = await importOriginal<any>();
+  return {
+    ...actual,
+    refreshOpenAICodexToken: runtimeMocks.refreshOpenAICodexToken,
+  };
+});
 
 import { refreshOpenAICodexToken } from "./openai-codex-provider.runtime.js";
 

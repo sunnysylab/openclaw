@@ -239,11 +239,11 @@ export async function persistSessionUsageUpdate(params: {
 
         if (modelChanged) {
           patch.totalTokensEstimate = undefined;
+        } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+          // Always prefer a confirmed fresh total as the estimate baseline.
+          patch.totalTokensEstimate = entry.totalTokens;
         } else if (entry.totalTokensEstimate !== undefined) {
           patch.totalTokensEstimate = entry.totalTokensEstimate;
-        } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
-          // Refresh or backfill estimate baseline from the last known fresh total.
-          patch.totalTokensEstimate = entry.totalTokens;
         }
 
         return applyCliSessionIdToSessionPatch(params, entry, patch);

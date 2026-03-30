@@ -93,7 +93,7 @@ export default definePluginEntry({
         return (model, context, options) => {
           return streamSimple(model, context, {
             ...options,
-            apiKey: options?.apiKey ?? apiKey,
+            apiKey: (options?.apiKey ?? apiKey) as any,
           });
         };
       },

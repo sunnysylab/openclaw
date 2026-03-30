@@ -85,11 +85,11 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.totalTokens = undefined;
     next.totalTokensFresh = false;
     next.totalTokensEstimate = undefined;
+  } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+    // Always prefer a confirmed fresh total as the estimate baseline.
+    next.totalTokensEstimate = entry.totalTokens;
   } else if (entry.totalTokensEstimate !== undefined) {
     next.totalTokensEstimate = entry.totalTokensEstimate;
-  } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
-    // Refresh or backfill estimate baseline from the last known fresh total.
-    next.totalTokensEstimate = entry.totalTokens;
   }
 
   if (isCliProvider(providerUsed, cfg)) {

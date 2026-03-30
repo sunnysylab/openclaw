@@ -88,6 +88,8 @@ export type StatusArgs = {
   explicitConfiguredContextTokens?: number;
   /** Actual runtime context tokens reported by the model */
   runtimeContextTokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
   subagentsLine?: string;
   includeTranscriptUsage?: boolean;
   now?: number;
@@ -443,7 +445,7 @@ export function buildStatusMessage(args: StatusArgs): string {
 
   const selectedModelLabel = modelRefs.selected.label || "unknown";
   const activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
-  const initialFallbackState = resolveActiveFallbackState({
+  const fallbackState = resolveActiveFallbackState({
     selectedModelRef: selectedModelLabel,
     activeModelRef: activeModelLabel,
     state: entry,
@@ -457,9 +459,9 @@ export function buildStatusMessage(args: StatusArgs): string {
   let totalTokens =
     freshTotal ??
     entry?.totalTokensEstimate ??
-    (entry?.totalTokensFresh !== false ? entry?.totalTokens : undefined) ??
-    (entry?.inputTokens !== undefined || entry?.outputTokens !== undefined
-      ? (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0)
+    entry?.totalTokens ??
+    (args.inputTokens !== undefined && args.outputTokens !== undefined
+      ? args.inputTokens + args.outputTokens
       : undefined);
 
   let contextLookupProvider: string | undefined = activeProvider;
@@ -473,7 +475,7 @@ export function buildStatusMessage(args: StatusArgs): string {
     const slashIndex = runtimeModelRaw.indexOf("/");
     const embeddedProvider = runtimeModelRaw.slice(0, slashIndex).trim().toLowerCase();
     const fallbackMatchesRuntimeModel =
-      initialFallbackState.active &&
+      fallbackState.active &&
       runtimeModelRaw.toLowerCase() ===
         String(entry?.fallbackNoticeActiveModel ?? "")
           .trim()
@@ -512,19 +514,15 @@ export function buildStatusMessage(args: StatusArgs): string {
       const candidate = logUsage.promptTokens || logUsage.total;
       const hasZeroEstimate = entry?.totalTokensEstimate === 0;
 
-      // Ensure the transcript can act as an authoritative fallback when the store lacks
-      // fresh data (even if explicitly marked stale via totalTokensFresh === false),
-      // unless there is a larger, preserved estimate that should take precedence.
+      // Session transcript is authoritative — always prefer it over the store
+      // when it provides a larger prompt-size or total tokens.
       const shouldFallbackToTranscript =
-        logUsage.totalTokensFresh &&
         (freshTotal === undefined || candidate > freshTotal) &&
         (entry?.totalTokensEstimate === undefined ||
           (candidate > 0 && (hasZeroEstimate || candidate > entry.totalTokensEstimate))) &&
         (!totalTokens || totalTokens === 0 || candidate > totalTokens);
 
       if (shouldFallbackToTranscript) {
-        // Session transcript is authoritative when the store has no fresh data
-        // and no larger preserved estimate (or a zero estimate being overridden by fresh usage).
         totalTokens = candidate;
       }
       if (!entry?.model && logUsage.model) {
@@ -556,7 +554,6 @@ export function buildStatusMessage(args: StatusArgs): string {
     }
   }
 
-  const activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
   const runtimeDiffersFromSelected = activeModelLabel !== (modelRefs.selected.label || "unknown");
 
   resolveActiveFallbackState({
