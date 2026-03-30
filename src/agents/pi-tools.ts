@@ -37,6 +37,7 @@ import {
 import {
   assertRequiredParams,
   createHostWorkspaceEditTool,
+  createHostWorkspaceReadTool,
   createHostWorkspaceWriteTool,
   createOpenClawReadTool,
   createSandboxedEditTool,
@@ -434,14 +435,19 @@ export function createOpenClawCodingTools(options?: {
             : sandboxed,
         ];
       }
+      if (resolvedRoots) {
+        const rooted = createHostWorkspaceReadTool(workspaceRoot, {
+          roots: resolvedRoots,
+          modelContextWindowTokens: options?.modelContextWindowTokens,
+          imageSanitization,
+        });
+        return [wrapToolMultiRootGuard(rooted, workspaceRoot, resolvedRoots)];
+      }
       const freshReadTool = createReadTool(workspaceRoot);
       const wrapped = createOpenClawReadTool(freshReadTool, {
         modelContextWindowTokens: options?.modelContextWindowTokens,
         imageSanitization,
       });
-      if (resolvedRoots) {
-        return [wrapToolMultiRootGuard(wrapped, workspaceRoot, resolvedRoots)];
-      }
       return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
     }
     if (tool.name === "bash" || tool.name === execToolName) {
