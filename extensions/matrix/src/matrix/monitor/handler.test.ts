@@ -1352,9 +1352,8 @@ describe("matrix monitor handler semantic bot loop termination", () => {
     // Both invocations must have called the judge exactly once each.
     expect(runMatrixSemanticLoopJudgeMock).toHaveBeenCalledTimes(2);
     // On the retry the judge must have received only 1 turn (not 2).
-    const secondCallTurns = runMatrixSemanticLoopJudgeMock.mock.calls[1]?.[0]?.turns as
-      | Array<{ text: string }>
-      | undefined;
+    const mockCalls = runMatrixSemanticLoopJudgeMock.mock.calls as unknown as Array<[{ turns: Array<{ text: string }> }]>;
+    const secondCallTurns = mockCalls[1]?.[0]?.turns;
     expect(secondCallTurns).toHaveLength(1);
   });
 
@@ -1390,7 +1389,8 @@ describe("matrix monitor handler semantic bot loop termination", () => {
     // Because handler.test.ts mocks the entire semantic-loop-judge module, this
     // test exercises the handler wiring: judge is called exactly once when a
     // configured-bot message arrives in a room.
-    expect(runMatrixSemanticLoopJudgeMock.mock.calls[0]?.[0]).toMatchObject({
+    const p1MockCalls = runMatrixSemanticLoopJudgeMock.mock.calls as unknown as Array<[{ roomId: string }]>;
+    expect(p1MockCalls[0]?.[0]).toMatchObject({
       roomId: "!room:example.org",
     });
   });
