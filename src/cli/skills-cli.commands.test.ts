@@ -169,4 +169,30 @@ describe("skills cli commands", () => {
     );
     expect(runtimeErrors).toEqual([]);
   });
+
+  it("updates tracked skills in the workspace inferred from cwd before falling back to the default agent", async () => {
+    resolveAgentIdByWorkspacePathMock.mockReturnValue("writer");
+    resolveAgentWorkspaceDirMock.mockImplementation((_cfg, agentId) => `/tmp/workspace-${agentId}`);
+    readTrackedClawHubSkillSlugsMock.mockResolvedValue(["content-writer"]);
+    updateSkillsFromClawHubMock.mockResolvedValue([
+      {
+        ok: true,
+        slug: "content-writer",
+        previousVersion: "0.9.0",
+        version: "1.0.0",
+        changed: true,
+        targetDir: "/tmp/workspace-writer/skills/content-writer",
+      },
+    ]);
+
+    await runCommand(["skills", "update", "--all"]);
+
+    expect(resolveAgentIdByWorkspacePathMock).toHaveBeenCalledWith({}, process.cwd());
+    expect(readTrackedClawHubSkillSlugsMock).toHaveBeenCalledWith("/tmp/workspace-writer");
+    expect(updateSkillsFromClawHubMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/workspace-writer",
+      slug: undefined,
+      logger: expect.any(Object),
+    });
+  });
 });
