@@ -178,4 +178,31 @@ describe("extra-params: OpenRouter Anthropic cache_control", () => {
     expect(payload.messages[0].content).toBe("System prompt.");
     expect(payload.messages[1].content).toBe("Hello");
   });
+
+  it("only marks the last system message when multiple system messages exist", () => {
+    const payload = {
+      messages: [
+        { role: "system", content: "First system instruction." },
+        { role: "system", content: "Second system instruction." },
+        { role: "user", content: "Hello" },
+      ],
+    };
+
+    runOpenRouterPayload(payload, "anthropic/claude-opus-4-6");
+
+    // First system message: no cache_control (only the last gets it)
+    expect(payload.messages[0].content).toBe("First system instruction.");
+    // Last system message: gets cache_control
+    expect(payload.messages[1].content).toEqual([
+      {
+        type: "text",
+        text: "Second system instruction.",
+        cache_control: { type: "ephemeral" },
+      },
+    ]);
+    // Last user message: gets cache_control
+    expect(payload.messages[2].content).toEqual([
+      { type: "text", text: "Hello", cache_control: { type: "ephemeral" } },
+    ]);
+  });
 });

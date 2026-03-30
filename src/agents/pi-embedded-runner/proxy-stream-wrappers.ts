@@ -16,6 +16,19 @@ function isOpenRouterAnthropicModel(provider: string, modelId: string): boolean 
   return provider.toLowerCase() === "openrouter" && modelId.toLowerCase().startsWith("anthropic/");
 }
 
+const EPHEMERAL_CACHE_CONTROL = { type: "ephemeral" } as const;
+
+function applyCacheControl(msg: { content?: unknown }): void {
+  if (typeof msg.content === "string") {
+    msg.content = [{ type: "text", text: msg.content, cache_control: EPHEMERAL_CACHE_CONTROL }];
+  } else if (Array.isArray(msg.content) && msg.content.length > 0) {
+    const last = msg.content[msg.content.length - 1];
+    if (last && typeof last === "object") {
+      (last as Record<string, unknown>).cache_control = EPHEMERAL_CACHE_CONTROL;
+    }
+  }
+}
+
 function mapThinkingLevelToOpenRouterReasoningEffort(
   thinkingLevel: ThinkLevel,
 ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
@@ -73,36 +86,24 @@ export function createOpenRouterSystemCacheWrapper(baseStreamFn: StreamFn | unde
         return;
       }
       const typedMessages = messages as Array<{ role?: string; content?: unknown }>;
+      // Anthropic allows max 4 explicit cache_control breakpoints per request.
+      // We use at most 2: one on the last system/developer message (caches the
+      // stable instruction prefix) and one on the last user message (caches
+      // conversation history). Marking only the *last* system message is
+      // sufficient because caching is a prefix match — everything before the
+      // breakpoint is cached together.
+      let lastSystemMsg: { role?: string; content?: unknown } | undefined;
       for (const msg of typedMessages) {
-        if (msg.role !== "system" && msg.role !== "developer") {
-          continue;
-        }
-        if (typeof msg.content === "string") {
-          msg.content = [
-            { type: "text", text: msg.content, cache_control: { type: "ephemeral" } },
-          ];
-        } else if (Array.isArray(msg.content) && msg.content.length > 0) {
-          const last = msg.content[msg.content.length - 1];
-          if (last && typeof last === "object") {
-            (last as Record<string, unknown>).cache_control = { type: "ephemeral" };
-          }
+        if (msg.role === "system" || msg.role === "developer") {
+          lastSystemMsg = msg;
         }
       }
-      // Cache the conversation history prefix by marking the last user message.
-      // This mirrors what pi-ai does for direct Anthropic: each turn only pays
-      // full price for new tokens; prior history is served from cache at ~0.1x.
+      if (lastSystemMsg) {
+        applyCacheControl(lastSystemMsg);
+      }
       const lastMsg = typedMessages[typedMessages.length - 1];
       if (lastMsg?.role === "user") {
-        if (Array.isArray(lastMsg.content) && lastMsg.content.length > 0) {
-          const lastBlock = lastMsg.content[lastMsg.content.length - 1];
-          if (lastBlock && typeof lastBlock === "object") {
-            (lastBlock as Record<string, unknown>).cache_control = { type: "ephemeral" };
-          }
-        } else if (typeof lastMsg.content === "string") {
-          lastMsg.content = [
-            { type: "text", text: lastMsg.content, cache_control: { type: "ephemeral" } },
-          ];
-        }
+        applyCacheControl(lastMsg);
       }
     });
   };
