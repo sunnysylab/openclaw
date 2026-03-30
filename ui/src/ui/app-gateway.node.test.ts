@@ -133,6 +133,7 @@ function createHost() {
     assistantAvatar: null,
     assistantAgentId: null,
     serverVersion: null,
+    seamColor: null,
     sessionKey: "main",
     basePath: "",
     chatMessage: "",
