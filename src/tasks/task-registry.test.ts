@@ -6,7 +6,7 @@ import {
   resetHeartbeatWakeStateForTests,
 } from "../infra/heartbeat-wake.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../infra/system-events.js";
-import { withTempDir } from "../test-helpers/temp-dir.js";
+import { withTempDir as withRawTempDir } from "../test-helpers/temp-dir.js";
 import {
   createTaskRecord,
   findLatestTaskForSessionKey,
@@ -59,6 +59,21 @@ vi.mock("../acp/control-plane/manager.js", () => ({
 vi.mock("../agents/subagent-control.js", () => ({
   killSubagentRunAdmin: (params: unknown) => hoisted.killSubagentRunAdminMock(params),
 }));
+
+async function withTempDir<T>(
+  options: Parameters<typeof withRawTempDir>[0],
+  run: (root: string) => Promise<T>,
+): Promise<T> {
+  return await withRawTempDir(options, async (root) => {
+    process.env.OPENCLAW_STATE_DIR = root;
+    resetTaskRegistryForTests();
+    try {
+      return await run(root);
+    } finally {
+      resetTaskRegistryForTests();
+    }
+  });
+}
 
 async function loadFreshTaskRegistryModulesForControlTest() {
   vi.resetModules();
