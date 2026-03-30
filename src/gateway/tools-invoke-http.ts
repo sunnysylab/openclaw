@@ -13,6 +13,7 @@ import {
   buildDefaultToolPolicyPipelineSteps,
 } from "../agents/tool-policy-pipeline.js";
 import {
+  applyOwnerOnlyToolPolicy,
   collectExplicitAllowlist,
   mergeAlsoAllowPolicy,
   resolveToolProfilePolicy,
@@ -306,8 +307,9 @@ export async function handleToolsInvokeHttpRequest(
   );
   const gatewayDenySet = new Set(gatewayDenyNames);
   const gatewayFiltered = subagentFiltered.filter((t) => !gatewayDenySet.has(t.name));
+  const ownerAuthorizedTools = applyOwnerOnlyToolPolicy(gatewayFiltered, false);
 
-  const tool = gatewayFiltered.find((t) => t.name === toolName);
+  const tool = ownerAuthorizedTools.find((t) => t.name === toolName);
   if (!tool) {
     sendJson(res, 404, {
       ok: false,
