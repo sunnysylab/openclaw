@@ -90,6 +90,11 @@ const HOST_READ_ALLOWED_DOCUMENT_EXTS = new Set([
 ]);
 const MB = 1024 * 1024;
 
+function normalizeMimeType(contentType?: string): string | undefined {
+  const normalized = contentType?.split(";", 1)[0]?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
 function formatMb(bytes: number, digits = 2): string {
   return (bytes / MB).toFixed(digits);
 }
@@ -110,7 +115,8 @@ function isPixelLimitError(error: unknown): boolean {
 }
 
 function isHeicSource(opts: { contentType?: string; fileName?: string }): boolean {
-  if (opts.contentType && HEIC_MIME_RE.test(opts.contentType.trim())) {
+  const normalizedContentType = normalizeMimeType(opts.contentType);
+  if (normalizedContentType && HEIC_MIME_RE.test(normalizedContentType)) {
     return true;
   }
   if (opts.fileName && HEIC_EXT_RE.test(opts.fileName.trim())) {
@@ -149,10 +155,11 @@ function shouldConvertHeicBuffer(opts: { contentType?: string; fileName?: string
   if (!isHeicSource(opts)) {
     return false;
   }
-  if (!opts.contentType) {
+  const normalizedContentType = normalizeMimeType(opts.contentType);
+  if (!normalizedContentType) {
     return true;
   }
-  return HEIC_MIME_RE.test(opts.contentType.trim());
+  return HEIC_MIME_RE.test(normalizedContentType);
 }
 
 async function normalizeAudioOnlyWebmMime(
