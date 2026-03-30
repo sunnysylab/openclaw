@@ -25,6 +25,7 @@ export type VoiceWakeRoutingConfig = {
 };
 
 const MAX_VOICEWAKE_ROUTES = 32;
+const MAX_VOICEWAKE_TRIGGER_LENGTH = 64;
 
 const DEFAULT_ROUTING: VoiceWakeRoutingConfig = {
   version: 1,
@@ -203,6 +204,12 @@ export function validateVoiceWakeRoutingConfigInput(
         return {
           ok: false,
           message: `config.routes[${index}].trigger must be a non-empty string`,
+        };
+      }
+      if (trigger.length > MAX_VOICEWAKE_TRIGGER_LENGTH) {
+        return {
+          ok: false,
+          message: `config.routes[${index}].trigger must be at most ${MAX_VOICEWAKE_TRIGGER_LENGTH} characters`,
         };
       }
       const duplicateIndex = normalizedTriggers.get(normalizedTrigger);

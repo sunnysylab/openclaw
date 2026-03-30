@@ -90,4 +90,20 @@ describe("voicewake routing normalization", () => {
       message: "config.routes must contain at most 32 entries",
     });
   });
+
+  it("rejects oversized triggers", () => {
+    expect(
+      validateVoiceWakeRoutingConfigInput({
+        routes: [
+          {
+            trigger: "x".repeat(65),
+            target: { mode: "current" as const },
+          },
+        ],
+      }),
+    ).toEqual({
+      ok: false,
+      message: "config.routes[0].trigger must be at most 64 characters",
+    });
+  });
 });

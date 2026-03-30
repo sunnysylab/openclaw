@@ -822,6 +822,14 @@ actor VoiceWakeRuntime {
         !self.trimmedAfterTrigger(text, triggers: triggers).isEmpty
     }
 
+    static func _testIsTriggerOnly(_ text: String, triggers: [String]) -> Bool {
+        self.isTriggerOnlyText(transcript: text, triggers: triggers)
+    }
+
+    static func _testMatchedTriggerWord(_ text: String, triggers: [String]) -> String? {
+        self.matchedTriggerWordText(transcript: text, triggers: triggers)
+    }
+
     static func _testAttributedColor(isFinal: Bool) -> NSColor {
         VoiceOverlayTextFormatting.makeAttributed(committed: "sample", volatile: "", isFinal: isFinal)
             .attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor ?? .clear
