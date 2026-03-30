@@ -429,6 +429,24 @@ describe("normalizeCronJobCreate", () => {
     expect(normalized.sessionTarget).toBe("session:agent:main:discord:group:ops");
   });
 
+  it("downgrades current sessionTarget to isolated for direct chat sessions", () => {
+    const normalized = normalizeCronJobCreate(
+      {
+        name: "current-direct-session",
+        schedule: { kind: "cron", expr: "* * * * *" },
+        sessionTarget: "current",
+        payload: { kind: "agentTurn", message: "hello" },
+      },
+      {
+        sessionContext: {
+          sessionKey: "agent:main:feishu:direct:ou_d666cad4e4b102c17a9191f25cedb63f",
+        },
+      },
+    ) as unknown as Record<string, unknown>;
+
+    expect(normalized.sessionTarget).toBe("isolated");
+  });
+
   it("falls back current sessionTarget to isolated without context", () => {
     const normalized = normalizeCronJobCreate({
       name: "current-without-context",
@@ -450,9 +468,46 @@ describe("normalizeCronJobCreate", () => {
 
     expect(normalized.sessionTarget).toBe("session:MySessionID");
   });
+
+  it("preserves non-channel named sessions even when they contain direct-like text", () => {
+    const normalized = normalizeCronJobCreate({
+      name: "named-session",
+      schedule: { kind: "cron", expr: "* * * * *" },
+      sessionTarget: "session:project-direct-notes",
+      payload: { kind: "agentTurn", message: "hello" },
+    }) as unknown as Record<string, unknown>;
+
+    expect(normalized.sessionTarget).toBe("session:project-direct-notes");
+  });
+
+  it("downgrades explicit direct session targets to isolated", () => {
+    const normalized = normalizeCronJobCreate({
+      name: "direct-session-target",
+      schedule: { kind: "cron", expr: "* * * * *" },
+      sessionTarget: "session:agent:main:feishu:direct:ou_d666cad4e4b102c17a9191f25cedb63f",
+      payload: { kind: "agentTurn", message: "hello" },
+    }) as unknown as Record<string, unknown>;
+
+    expect(normalized.sessionTarget).toBe("isolated");
+  });
 });
 
 describe("normalizeCronJobPatch", () => {
+  it("downgrades current sessionTarget patches to isolated for direct chat sessions", () => {
+    const normalized = normalizeCronJobPatch(
+      {
+        sessionTarget: "current",
+      },
+      {
+        sessionContext: {
+          sessionKey: "agent:main:feishu:direct:ou_d666cad4e4b102c17a9191f25cedb63f",
+        },
+      },
+    ) as unknown as Record<string, unknown>;
+
+    expect(normalized.sessionTarget).toBe("isolated");
+  });
+
   it("infers agentTurn kind for model-only payload patches", () => {
     const normalized = normalizeCronJobPatch({
       payload: {
