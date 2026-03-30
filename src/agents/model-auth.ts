@@ -130,7 +130,6 @@ function isLocalBaseUrl(baseUrl: string): boolean {
     return (
       host === "localhost" ||
       host === "127.0.0.1" ||
-      host === "10.0.0.54" ||
       host === "0.0.0.0" ||
       host === "[::1]" ||
       host === "[::ffff:7f00:1]" ||

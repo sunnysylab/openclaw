@@ -140,16 +140,16 @@ export async function updateSessionStoreAfterAgentRun(params: {
     const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
     const hasFreshContextSnapshot =
-      hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens > 0);
+      hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
 
-    if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
+    if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
       next.totalTokens = totalTokens;
       next.totalTokensFresh = totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
 
       if (modelChanged) {
         next.totalTokensEstimate = undefined;
       } else {
-        if (totalTokens > 0) {
+        if (totalTokens > 0 || (totalTokens === 0 && next.totalTokensFresh)) {
           next.totalTokensEstimate = totalTokens;
         }
         if (totalTokens === 0 && !next.totalTokensFresh) {
