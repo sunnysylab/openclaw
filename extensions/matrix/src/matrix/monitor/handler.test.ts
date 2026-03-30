@@ -1394,6 +1394,69 @@ describe("matrix monitor handler semantic bot loop termination", () => {
       roomId: "!room:example.org",
     });
   });
+
+  it("drops concurrent bot event that races past terminated gate when stop_loop settles first", async () => {
+    // P3: two events from the same configured sender can both pass the initial
+    // terminated=false gate before either awaits the judge.  The event whose
+    // judge returns stop_loop sets terminated=true; the concurrent event whose
+    // judge returns continue must re-check after the await and bail out rather
+    // than writing turns or dispatching.
+    const dispatchReplyFromConfig = vi.fn(async () => ({
+      queuedFinal: true,
+      counts: { final: 1, block: 0, tool: 0 },
+    }));
+    const { handler } = createMatrixHandlerTestHarness({
+      isDirectMessage: false,
+      accountAllowBots: true,
+      configuredBotUserIds: new Set(["@ops:example.org"]),
+      roomsConfig: {
+        "!room:example.org": { requireMention: false },
+      },
+      dispatchReplyFromConfig,
+      getMemberDisplayName: async () => "ops-bot",
+    });
+
+    // Simulate the race: first judge call terminates the chain, second returns
+    // continue. Because both events can pass the initial gate before either
+    // awaits, the second event must drop after the post-judge recheck.
+    runMatrixSemanticLoopJudgeMock
+      .mockResolvedValueOnce({
+        decision: "stop_loop",
+        confidence: 0.97,
+        reasonCode: "no_new_information",
+        reasonShort: "No meaningful information gain.",
+      })
+      .mockResolvedValueOnce({
+        decision: "continue",
+        confidence: 0.9,
+        reasonCode: "progress_detected",
+        reasonShort: "Meaningful progress detected.",
+      });
+
+    // Fire both concurrently without awaiting between them.
+    const eventA = handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$concurrent-a",
+        sender: "@ops:example.org",
+        body: "message a",
+      }),
+    );
+    const eventB = handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$concurrent-b",
+        sender: "@ops:example.org",
+        body: "message b",
+      }),
+    );
+    await Promise.all([eventA, eventB]);
+
+    // stopLoop from event A must suppress event B's dispatch despite both
+    // passing the initial gate.
+    expect(dispatchReplyFromConfig).not.toHaveBeenCalled();
+    expect(runMatrixSemanticLoopJudgeMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("matrix monitor handler durable inbound dedupe", () => {

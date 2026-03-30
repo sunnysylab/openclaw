@@ -793,6 +793,15 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           await commitInboundEventIfClaimed();
           return;
         }
+        // Recheck after the async judge await: a concurrent event from the same
+        // configured sender may have set terminated=true while we were waiting.
+        if (activeBotChainState.terminated) {
+          logVerboseMessage(
+            `matrix: drop configured bot sender=${senderId} (concurrent stop_loop settled first room=${roomId})`,
+          );
+          await commitInboundEventIfClaimed();
+          return;
+        }
         // Judge approved; stage the inbound turn for post-dispatch commit.
         pendingBotChainTurns = nextTurns;
       }
@@ -1275,7 +1284,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
       logVerboseMessage(
         `matrix: delivered ${finalCount} reply${finalCount === 1 ? "" : "ies"} to ${replyTarget}`,
       );
-      if (isRoom && isConfiguredBotSender && activeBotChainState && pendingBotChainTurns) {
+      if (isRoom && isConfiguredBotSender && activeBotChainState && pendingBotChainTurns && !activeBotChainState.terminated) {
         // Commit the staged inbound turn now that dispatch succeeded, then
         // append the agent's own reply turn if one was produced.
         const botReply = semanticFinalText.trim();
