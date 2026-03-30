@@ -16,13 +16,15 @@ function isOpenRouterAnthropicModel(provider: string, modelId: string): boolean 
   return provider.toLowerCase() === "openrouter" && modelId.toLowerCase().startsWith("anthropic/");
 }
 
+const CACHEABLE_BLOCK_TYPES = new Set(["text", "image", "tool_result"]);
+
 function applyCacheControl(msg: { content?: unknown }): void {
   const cacheControl = { type: "ephemeral" };
   if (typeof msg.content === "string") {
     msg.content = [{ type: "text", text: msg.content, cache_control: cacheControl }];
   } else if (Array.isArray(msg.content) && msg.content.length > 0) {
     const last = msg.content[msg.content.length - 1];
-    if (last && typeof last === "object") {
+    if (last && typeof last === "object" && CACHEABLE_BLOCK_TYPES.has((last as { type?: string }).type ?? "")) {
       (last as Record<string, unknown>).cache_control = cacheControl;
     }
   }

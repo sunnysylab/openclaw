@@ -179,6 +179,29 @@ describe("extra-params: OpenRouter Anthropic cache_control", () => {
     expect(payload.messages[1].content).toBe("Hello");
   });
 
+  it("skips cache_control when last user block is not a cacheable type", () => {
+    const payload = {
+      messages: [
+        { role: "system", content: "System prompt." },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Describe this document" },
+            { type: "document", source: { type: "base64", data: "abc" } },
+          ],
+        },
+      ],
+    };
+
+    runOpenRouterPayload(payload, "anthropic/claude-opus-4-6");
+
+    const userContent = payload.messages[1].content as Array<Record<string, unknown>>;
+    // text block: no cache_control (it's not the last block)
+    expect(userContent[0]).toEqual({ type: "text", text: "Describe this document" });
+    // document block: no cache_control (not a cacheable type)
+    expect(userContent[1]).toEqual({ type: "document", source: { type: "base64", data: "abc" } });
+  });
+
   it("only marks the last system message when multiple system messages exist", () => {
     const payload = {
       messages: [
