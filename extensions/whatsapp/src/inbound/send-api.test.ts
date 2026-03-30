@@ -12,8 +12,12 @@ vi.mock("openclaw/plugin-sdk/channel-runtime", async (importOriginal) => {
 });
 
 describe("createWebSendApi", () => {
-  const sendMessage = vi.fn(async () => ({ key: { id: "msg-1" } }));
+  const sendMessage = vi.fn(async () => ({
+    key: { id: "msg-1" },
+    message: { conversation: "sent" },
+  }));
   const sendPresenceUpdate = vi.fn(async () => {});
+  const resolveQuotedMessage = vi.fn();
   let api: ReturnType<typeof createWebSendApi>;
 
   beforeEach(async () => {
@@ -23,6 +27,7 @@ describe("createWebSendApi", () => {
     api = createWebSendApi({
       sock: { sendMessage, sendPresenceUpdate },
       defaultAccountId: "main",
+      resolveQuotedMessage,
     });
   });
 
@@ -67,6 +72,31 @@ describe("createWebSendApi", () => {
       accountId: "main",
       direction: "outbound",
     });
+  });
+
+  it("uses quoted message options when replyToId resolves", async () => {
+    const quoted = {
+      key: { id: "reply-1", remoteJid: "1555@s.whatsapp.net", fromMe: false },
+      message: { conversation: "original" },
+    };
+    resolveQuotedMessage.mockReturnValueOnce(quoted);
+
+    await api.sendMessage("+1555", "hello", undefined, undefined, { replyToId: "reply-1" });
+
+    expect(resolveQuotedMessage).toHaveBeenCalledWith({
+      accountId: "main",
+      remoteJid: "1555@s.whatsapp.net",
+      messageId: "reply-1",
+    });
+    expect(sendMessage).toHaveBeenCalledWith("1555@s.whatsapp.net", { text: "hello" }, { quoted });
+  });
+
+  it("falls back to a plain send when replyToId cannot be resolved", async () => {
+    resolveQuotedMessage.mockReturnValueOnce(null);
+
+    await api.sendMessage("+1555", "hello", undefined, undefined, { replyToId: "missing" });
+
+    expect(sendMessage).toHaveBeenCalledWith("1555@s.whatsapp.net", { text: "hello" });
   });
 
   it("supports image media with caption", async () => {
@@ -115,7 +145,10 @@ describe("createWebSendApi", () => {
   });
 
   it("falls back to unknown messageId if Baileys result does not expose key.id", async () => {
-    sendMessage.mockResolvedValueOnce({ key: {} as { id: string } });
+    sendMessage.mockResolvedValueOnce({
+      key: {} as { id: string },
+      message: { conversation: "sent" },
+    });
     const res = await api.sendMessage("+1555", "hello");
     expect(res.messageId).toBe("unknown");
   });

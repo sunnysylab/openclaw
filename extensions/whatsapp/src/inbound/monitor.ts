@@ -25,6 +25,7 @@ import {
 } from "./extract.js";
 import { attachEmitterListener, closeInboundMonitorSocket } from "./lifecycle.js";
 import { downloadInboundMedia } from "./media.js";
+import { getRecentWhatsAppMessage, rememberRecentWhatsAppMessage } from "./recent-messages.js";
 import { createWebSendApi } from "./send-api.js";
 import type { WebInboundMessage, WebListenerCloseReason } from "./types.js";
 
@@ -150,6 +151,12 @@ export async function monitorWebInbox(options: {
     if (!messageId) {
       return;
     }
+    rememberRecentWhatsAppMessage({
+      accountId: options.accountId,
+      remoteJid,
+      message: result as WAMessage,
+      authDir: options.authDir,
+    });
     rememberRecentOutboundMessage({
       accountId: options.accountId,
       remoteJid,
@@ -157,8 +164,14 @@ export async function monitorWebInbox(options: {
     });
   };
 
-  const sendTrackedMessage = async (jid: string, content: AnyMessageContent) => {
-    const result = await sock.sendMessage(jid, content);
+  const sendTrackedMessage = async (
+    jid: string,
+    content: AnyMessageContent,
+    sendOptions?: { quoted?: WAMessage },
+  ) => {
+    const result = sendOptions
+      ? await sock.sendMessage(jid, content, sendOptions)
+      : await sock.sendMessage(jid, content);
     rememberOutboundMessage(jid, result);
     return result;
   };
@@ -473,6 +486,12 @@ export async function monitorWebInbox(options: {
       if (!inbound) {
         continue;
       }
+      rememberRecentWhatsAppMessage({
+        accountId: options.accountId,
+        remoteJid: inbound.remoteJid,
+        message: msg,
+        authDir: options.authDir,
+      });
 
       await maybeMarkInboundAsRead(inbound);
 
@@ -533,10 +552,16 @@ export async function monitorWebInbox(options: {
 
   const sendApi = createWebSendApi({
     sock: {
-      sendMessage: (jid: string, content: AnyMessageContent) => sendTrackedMessage(jid, content),
+      sendMessage: (
+        jid: string,
+        content: AnyMessageContent,
+        sendOptions?: { quoted?: WAMessage },
+      ) => sendTrackedMessage(jid, content, sendOptions),
       sendPresenceUpdate: (presence, jid?: string) => sock.sendPresenceUpdate(presence, jid),
     },
     defaultAccountId: options.accountId,
+    resolveQuotedMessage: ({ accountId, remoteJid, messageId }) =>
+      getRecentWhatsAppMessage({ accountId, remoteJid, messageId, authDir: options.authDir }),
   });
 
   return {
