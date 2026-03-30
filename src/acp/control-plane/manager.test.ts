@@ -314,9 +314,10 @@ describe("AcpSessionManager", () => {
         terminalOutcome: "blocked",
         terminalSummary: "Permission denied for /root/oc-acp-write-should-fail.txt.",
       });
+
+      resetTaskRegistryForTests();
     });
   });
-
   it("serializes concurrent turns for the same ACP session", async () => {
     const runtimeState = createRuntime();
     hoisted.requireAcpRuntimeBackendMock.mockReturnValue({

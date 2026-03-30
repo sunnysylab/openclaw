@@ -95,6 +95,17 @@ async function flushAsyncWork(times = 4) {
   }
 }
 
+async function withTaskRegistryTempDir<T>(run: (root: string) => Promise<T>): Promise<T> {
+  const root = await withTempDir({ prefix: "openclaw-task-registry-" }, async (dir) => {
+    try {
+      return await run(dir);
+    } finally {
+      resetTaskRegistryForTests();
+    }
+  });
+  return root;
+}
+
 describe("task-registry", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -112,7 +123,7 @@ describe("task-registry", () => {
   });
 
   it("updates task status from lifecycle events", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -152,7 +163,7 @@ describe("task-registry", () => {
   });
 
   it("summarizes task pressure by status and runtime", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -206,7 +217,7 @@ describe("task-registry", () => {
   });
 
   it("delivers ACP completion to the requester channel when a delivery origin exists", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       hoisted.sendMessageMock.mockResolvedValue({
@@ -264,7 +275,7 @@ describe("task-registry", () => {
   });
 
   it("records delivery failure and queues a session fallback when direct delivery misses", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       hoisted.sendMessageMock.mockRejectedValueOnce(new Error("telegram unavailable"));
@@ -310,7 +321,7 @@ describe("task-registry", () => {
   });
 
   it("still wakes the parent when blocked delivery misses the outward channel", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       hoisted.sendMessageMock.mockRejectedValueOnce(new Error("telegram unavailable"));
@@ -347,7 +358,7 @@ describe("task-registry", () => {
   });
 
   it("marks internal fallback delivery as session queued instead of delivered", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -385,7 +396,7 @@ describe("task-registry", () => {
   });
 
   it("wakes the parent for blocked tasks even when delivery falls back to the session", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -417,7 +428,7 @@ describe("task-registry", () => {
   });
 
   it("does not include internal progress detail in the terminal channel message", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       hoisted.sendMessageMock.mockResolvedValue({
@@ -468,7 +479,7 @@ describe("task-registry", () => {
   });
 
   it("surfaces blocked outcomes separately from completed tasks", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       hoisted.sendMessageMock.mockResolvedValue({
@@ -509,7 +520,7 @@ describe("task-registry", () => {
   });
 
   it("does not queue an unblock follow-up for ordinary completed tasks", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       hoisted.sendMessageMock.mockResolvedValue({
@@ -548,7 +559,7 @@ describe("task-registry", () => {
   });
 
   it("keeps distinct task records when different producers share a runId", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -581,7 +592,7 @@ describe("task-registry", () => {
   });
 
   it("suppresses duplicate ACP delivery when a preferred spawned task shares the runId", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       hoisted.sendMessageMock.mockResolvedValue({
@@ -634,7 +645,7 @@ describe("task-registry", () => {
   });
 
   it("adopts preferred ACP spawn metadata when collapsing onto an earlier direct record", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -678,7 +689,7 @@ describe("task-registry", () => {
   });
 
   it("collapses ACP run-owned task creation onto the existing spawned task", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -718,7 +729,7 @@ describe("task-registry", () => {
   });
 
   it("delivers a terminal ACP update only once when multiple notifiers race", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       hoisted.sendMessageMock.mockResolvedValue({
@@ -763,7 +774,7 @@ describe("task-registry", () => {
   });
 
   it("restores persisted tasks from disk on the next lookup", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -790,7 +801,7 @@ describe("task-registry", () => {
   });
 
   it("projects inspection-time orphaned tasks as lost without mutating the registry", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -822,7 +833,7 @@ describe("task-registry", () => {
   });
 
   it("marks orphaned tasks lost with cleanupAfter in a single maintenance pass", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       const now = Date.now();
@@ -855,7 +866,7 @@ describe("task-registry", () => {
   });
 
   it("prunes old terminal tasks during maintenance sweeps", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
 
@@ -885,7 +896,7 @@ describe("task-registry", () => {
   });
 
   it("previews and repairs missing cleanup timestamps during maintenance", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       const now = Date.now();
@@ -932,7 +943,7 @@ describe("task-registry", () => {
   });
 
   it("summarizes inspectable task audit findings", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       const now = Date.now();
@@ -980,7 +991,7 @@ describe("task-registry", () => {
   });
 
   it("delivers concise state-change updates only when notify policy requests them", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       hoisted.sendMessageMock.mockResolvedValue({
@@ -1035,7 +1046,7 @@ describe("task-registry", () => {
   });
 
   it("keeps background ACP progress off the foreground lane and only sends a terminal notify", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       resetSystemEventsForTest();
@@ -1108,7 +1119,7 @@ describe("task-registry", () => {
   });
 
   it("delivers a concise terminal failure message without internal ACP chatter", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       resetSystemEventsForTest();
@@ -1158,7 +1169,7 @@ describe("task-registry", () => {
   });
 
   it("emits concise state-change updates without surfacing raw ACP chatter", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       process.env.OPENCLAW_STATE_DIR = root;
       resetTaskRegistryForTests();
       resetSystemEventsForTest();
@@ -1220,7 +1231,7 @@ describe("task-registry", () => {
   });
 
   it("cancels ACP-backed tasks through the ACP session manager", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       const registry = await loadFreshTaskRegistryModulesForControlTest();
       process.env.OPENCLAW_STATE_DIR = root;
       registry.resetTaskRegistryForTests();
@@ -1274,7 +1285,7 @@ describe("task-registry", () => {
   });
 
   it("cancels subagent-backed tasks through subagent control", async () => {
-    await withTempDir({ prefix: "openclaw-task-registry-" }, async (root) => {
+    await withTaskRegistryTempDir(async (root) => {
       const registry = await loadFreshTaskRegistryModulesForControlTest();
       process.env.OPENCLAW_STATE_DIR = root;
       registry.resetTaskRegistryForTests();

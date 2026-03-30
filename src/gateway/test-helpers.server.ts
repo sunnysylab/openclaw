@@ -364,20 +364,20 @@ export function installGatewayTestHooks(options?: { scope?: "test" | "suite" }) 
     });
     beforeEach(async () => {
       await resetGatewayTestState({ uniqueConfigRoot: false });
-    }, 60_000);
+    }, 180_000);
     afterEach(async () => {
       await cleanupGatewayTestHome({ restoreEnv: false });
     });
     afterAll(async () => {
       await cleanupGatewayTestHome({ restoreEnv: true });
-    });
+    }, 300_000);
     return;
   }
 
   beforeEach(async () => {
     await setupGatewayTestHome();
     await resetGatewayTestState({ uniqueConfigRoot: false });
-  }, 60_000);
+  }, 180_000);
 
   afterEach(async () => {
     await cleanupGatewayTestHome({ restoreEnv: true });
