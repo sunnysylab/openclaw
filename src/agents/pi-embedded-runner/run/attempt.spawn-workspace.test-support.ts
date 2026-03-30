@@ -655,6 +655,7 @@ export async function createContextEngineAttemptRunner(params: {
     }) => Promise<CompactResult>;
     info?: Partial<ContextEngineInfo>;
   };
+  attemptOverrides?: Partial<Parameters<Awaited<ReturnType<typeof loadRunEmbeddedAttempt>>>[0]>;
   sessionKey: string;
   tempPaths: string[];
 }) {
@@ -731,5 +732,6 @@ export async function createContextEngineAttemptRunner(params: {
         version: infoVersion,
       },
     },
+    ...params.attemptOverrides,
   });
 }
