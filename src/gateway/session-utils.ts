@@ -354,6 +354,8 @@ function resolveTranscriptUsageFallback(params: {
     },
   });
   return {
+    modelProvider,
+    model,
     totalTokens: resolveNonNegativeNumber(snapshot.totalTokens),
     totalTokensFresh: snapshot.totalTokensFresh === true,
     contextTokens: resolvePositiveNumber(contextTokens),

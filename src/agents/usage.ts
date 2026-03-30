@@ -187,7 +187,7 @@ export function deriveSessionTotalTokens(params: {
         : undefined));
 
   if (!(typeof promptTokens === "number") || !Number.isFinite(promptTokens) || promptTokens < 0) {
-    return params.contextTokens;
+    return undefined;
   }
 
   // Keep this value unclamped; display layers are responsible for capping
