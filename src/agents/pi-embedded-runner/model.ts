@@ -735,7 +735,7 @@ export async function resolveModelAsync(
  *
  * See: https://github.com/openclaw/openclaw/issues/17328
  */
-function buildUnknownModelError(params: {
+export function buildUnknownModelError(params: {
   provider: string;
   modelId: string;
   cfg?: OpenClawConfig;
