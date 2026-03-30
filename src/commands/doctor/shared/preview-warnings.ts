@@ -10,14 +10,14 @@ import {
   scanTelegramAllowFromUsernameEntries,
 } from "../providers/telegram.js";
 import {
-  collectBundledPluginLoadPathWarnings,
-  scanBundledPluginLoadPathMigrations,
-} from "./bundled-plugin-load-paths.js";
-import {
   type BundledPluginInstallPathOptions,
   collectBundledPluginInstallPathWarnings,
   scanBundledPluginInstallPathRepairs,
 } from "./bundled-plugin-install-paths.js";
+import {
+  collectBundledPluginLoadPathWarnings,
+  scanBundledPluginLoadPathMigrations,
+} from "./bundled-plugin-load-paths.js";
 import { scanEmptyAllowlistPolicyWarnings } from "./empty-allowlist-scan.js";
 import {
   collectExecSafeBinCoverageWarnings,
@@ -134,10 +134,13 @@ export function collectDoctorPreviewWarnings(params: {
     params.cfg,
     params.bundledPluginPathOptions,
   );
-  if (staleBundledPluginPaths.length > 0) {
+  const installPathWarnings = staleBundledPluginPaths.filter(
+    (hit) => hit.installFieldHits.length > 0,
+  );
+  if (installPathWarnings.length > 0) {
     warnings.push(
       ...collectBundledPluginInstallPathWarnings({
-        hits: staleBundledPluginPaths,
+        hits: installPathWarnings,
         doctorFixCommand: params.doctorFixCommand,
       }),
     );

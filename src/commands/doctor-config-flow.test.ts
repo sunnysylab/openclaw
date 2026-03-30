@@ -810,10 +810,11 @@ describe("doctor config flow", () => {
       ).toBe(true);
       expect(
         noteSpy.mock.calls.some((call) =>
-          String(call[0]).includes(
-            "Telegram allowFrom contains @username entries, but no Telegram bot token is configured",
-          ),
+          String(call[0]).includes("Telegram allowFrom contains @username entries"),
         ),
+      ).toBe(true);
+      expect(
+        noteSpy.mock.calls.some((call) => String(call[0]).includes("cannot auto-resolve")),
       ).toBe(true);
     } finally {
       noteSpy.mockRestore();
