@@ -16,6 +16,7 @@ export const formatDuration = (ms: number | null | undefined) => {
 export const formatTokensCompact = (
   sess: Pick<
     SessionStatus,
+    | "inputTokens"
     | "totalTokens"
     | "totalTokensEstimate"
     | "contextTokens"
@@ -28,6 +29,7 @@ export const formatTokensCompact = (
   const ctx = sess.contextTokens;
   const cacheRead = sess.cacheRead;
   const cacheWrite = sess.cacheWrite;
+  const inputTokens = sess.inputTokens;
 
   let result = "";
   if (used == null) {
@@ -41,10 +43,23 @@ export const formatTokensCompact = (
 
   // Add cache hit rate if there are cached reads
   if (typeof cacheRead === "number" && cacheRead > 0) {
+    const cacheWriteTokens =
+      typeof cacheWrite === "number" && Number.isFinite(cacheWrite) && cacheWrite >= 0
+        ? cacheWrite
+        : 0;
+    const promptTokensFromParts =
+      typeof inputTokens === "number" && Number.isFinite(inputTokens) && inputTokens >= 0
+        ? inputTokens + cacheRead + cacheWriteTokens
+        : undefined;
+    // Legacy entries can carry an undersized totalTokens value. Keep the cache
+    // denominator aligned with the prompt-side token fields when available, and
+    // never let the fallback denominator drop below the known cached prompt
+    // tokens.
     const total =
-      typeof used === "number"
-        ? used
-        : cacheRead + (typeof cacheWrite === "number" ? cacheWrite : 0);
+      promptTokensFromParts ??
+      (typeof used === "number" && Number.isFinite(used) && used > 0
+        ? Math.max(used, cacheRead + cacheWriteTokens)
+        : cacheRead + cacheWriteTokens);
     const hitRate = Math.round((cacheRead / total) * 100);
     result += ` · 🗄️ ${hitRate}% cached`;
   }

@@ -29,14 +29,7 @@ import { resolveCommitHash } from "../infra/git-commit.js";
 import type { MediaUnderstandingDecision } from "../media-understanding/types.js";
 import { listPluginCommands } from "../plugins/commands.js";
 import { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
-import {
-  getTtsMaxLength,
-  getTtsProvider,
-  isSummarizationEnabled,
-  resolveTtsAutoMode,
-  resolveTtsConfig,
-  resolveTtsPrefsPath,
-} from "../tts/tts.js";
+import { resolveStatusTtsSnapshot } from "../tts/status-config.js";
 import {
   estimateUsageCost,
   formatTokenCount as formatTokenCountShared,
@@ -398,20 +391,14 @@ const formatVoiceModeLine = (
   if (!config) {
     return null;
   }
-  const ttsConfig = resolveTtsConfig(config);
-  const prefsPath = resolveTtsPrefsPath(ttsConfig);
-  const autoMode = resolveTtsAutoMode({
-    config: ttsConfig,
-    prefsPath,
+  const snapshot = resolveStatusTtsSnapshot({
+    cfg: config,
     sessionAuto: sessionEntry?.ttsAuto,
   });
-  if (autoMode === "off") {
+  if (!snapshot) {
     return null;
   }
-  const provider = getTtsProvider(ttsConfig, prefsPath);
-  const maxLength = getTtsMaxLength(prefsPath);
-  const summarize = isSummarizationEnabled(prefsPath) ? "on" : "off";
-  return `🔊 Voice: ${autoMode} · provider=${provider} · limit=${maxLength} · summary=${summarize}`;
+  return `🔊 Voice: ${snapshot.autoMode} · provider=${snapshot.provider} · limit=${snapshot.maxLength} · summary=${snapshot.summarize ? "on" : "off"}`;
 };
 
 export function buildStatusMessage(args: StatusArgs): string {
@@ -442,6 +429,7 @@ export function buildStatusMessage(args: StatusArgs): string {
     cfg: selectionConfig,
     defaultProvider: DEFAULT_PROVIDER,
     defaultModel: DEFAULT_MODEL,
+    allowPluginNormalization: false,
   });
   const selectedProvider = entry?.providerOverride ?? resolved.provider ?? DEFAULT_PROVIDER;
   const selectedModel = entry?.modelOverride ?? resolved.model ?? DEFAULT_MODEL;
@@ -568,43 +556,98 @@ export function buildStatusMessage(args: StatusArgs): string {
     }
   }
 
-  const fallbackState = resolveActiveFallbackState({
+  const activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
+  const runtimeDiffersFromSelected = activeModelLabel !== (modelRefs.selected.label || "unknown");
+
+  resolveActiveFallbackState({
     selectedModelRef: selectedModelLabel,
-    activeModelRef: formatProviderModelRef(activeProvider, activeModel) || "unknown",
+    activeModelRef: activeModelLabel,
     state: entry,
   });
 
-  const resolvedWindow = resolveContextTokensForModel({
+  const selectedContextTokens = resolveContextTokensForModel({
+    cfg: contextConfig,
+    provider: selectedProvider,
+    model: selectedModel,
+    allowAsyncLoad: false,
+  });
+
+  const activeContextTokens = resolveContextTokensForModel({
     cfg: contextConfig,
     provider: contextLookupProvider,
     model: contextLookupModel,
+    allowAsyncLoad: false,
   });
 
-  const entryModelMatch =
-    !entry?.model ||
-    (entry?.model === activeModel &&
-      (entry?.modelProvider === activeProvider || !entry?.modelProvider)) ||
-    (entry?.model === modelRefs.active.label && !entry?.modelProvider) ||
-    (entry?.model === activeModelLabel && !entry?.modelProvider);
-
-  let contextTokens = args.runtimeContextTokens;
-
-  if (contextTokens === undefined && entryModelMatch && entry?.contextTokens) {
-    contextTokens = entry.contextTokens;
-  }
-
-  if (contextTokens === undefined) {
-    contextTokens =
-      args.explicitConfiguredContextTokens ?? resolvedWindow ?? args.agent?.contextTokens;
-  }
-
-  // Clamping for fallback sessions: ensures selected-model overrides don't
-  // overstate context during fallback to a smaller model.
-  if (contextTokens && resolvedWindow && contextTokens > resolvedWindow) {
-    contextTokens = resolvedWindow;
-  }
-
-  contextTokens ??= DEFAULT_CONTEXT_TOKENS;
+  const persistedContextTokens =
+    typeof entry?.contextTokens === "number" && entry.contextTokens > 0
+      ? entry.contextTokens
+      : undefined;
+  const explicitRuntimeContextTokens =
+    typeof args.runtimeContextTokens === "number" && args.runtimeContextTokens > 0
+      ? args.runtimeContextTokens
+      : undefined;
+  const explicitConfiguredContextTokens =
+    typeof args.explicitConfiguredContextTokens === "number" &&
+    args.explicitConfiguredContextTokens > 0
+      ? args.explicitConfiguredContextTokens
+      : undefined;
+  const cappedConfiguredContextTokens =
+    typeof explicitConfiguredContextTokens === "number"
+      ? typeof activeContextTokens === "number"
+        ? Math.min(explicitConfiguredContextTokens, activeContextTokens)
+        : explicitConfiguredContextTokens
+      : undefined;
+  // When a fallback model is active, the selected-model context limit that
+  // callers keep on the agent config is often stale. Prefer an explicit runtime
+  // snapshot when available. Separately, callers can pass an explicit configured
+  // cap that should still apply on fallback paths, but it cannot exceed the
+  // active runtime window when that window is known. Persisted runtime snapshots
+  // still take precedence over configured caps so historical fallback sessions
+  // keep their last known live limit even if the active model later becomes
+  // unresolvable.
+  const contextTokens = runtimeDiffersFromSelected
+    ? (explicitRuntimeContextTokens ??
+      (() => {
+        if (persistedContextTokens !== undefined) {
+          const persistedLooksSelectedWindow =
+            typeof selectedContextTokens === "number" &&
+            persistedContextTokens === selectedContextTokens;
+          const activeWindowDiffersFromSelected =
+            typeof selectedContextTokens === "number" &&
+            typeof activeContextTokens === "number" &&
+            activeContextTokens !== selectedContextTokens;
+          const explicitConfiguredMatchesPersisted =
+            typeof explicitConfiguredContextTokens === "number" &&
+            explicitConfiguredContextTokens === persistedContextTokens;
+          if (
+            persistedLooksSelectedWindow &&
+            activeWindowDiffersFromSelected &&
+            !explicitConfiguredMatchesPersisted
+          ) {
+            return activeContextTokens;
+          }
+          if (typeof activeContextTokens === "number") {
+            return Math.min(persistedContextTokens, activeContextTokens);
+          }
+          return persistedContextTokens;
+        }
+        if (cappedConfiguredContextTokens !== undefined) {
+          return cappedConfiguredContextTokens;
+        }
+        if (typeof activeContextTokens === "number") {
+          return activeContextTokens;
+        }
+        return DEFAULT_CONTEXT_TOKENS;
+      })())
+    : (resolveContextTokensForModel({
+        cfg: contextConfig,
+        ...(contextLookupProvider ? { provider: contextLookupProvider } : {}),
+        model: contextLookupModel,
+        contextTokensOverride: persistedContextTokens ?? args.agent?.contextTokens,
+        fallbackContextTokens: DEFAULT_CONTEXT_TOKENS,
+        allowAsyncLoad: false,
+      }) ?? DEFAULT_CONTEXT_TOKENS);
 
   const thinkLevel =
     args.resolvedThink ?? args.sessionEntry?.thinkingLevel ?? args.agent?.thinkingDefault ?? "off";
@@ -689,6 +732,7 @@ export function buildStatusMessage(args: StatusArgs): string {
         provider: activeProvider,
         model: activeModel,
         config: args.config,
+        allowPluginNormalization: false,
       })
     : undefined;
   const hasUsage = typeof inputTokens === "number" || typeof outputTokens === "number";
@@ -726,11 +770,13 @@ export function buildStatusMessage(args: StatusArgs): string {
     const aliasIndex = buildModelAliasIndex({
       cfg: args.config,
       defaultProvider: DEFAULT_PROVIDER,
+      allowPluginNormalization: false,
     });
     const resolvedOverride = resolveModelRefFromString({
       raw: channelOverride.model,
       defaultProvider: DEFAULT_PROVIDER,
       aliasIndex,
+      allowPluginNormalization: false,
     });
     if (!resolvedOverride) {
       return undefined;
@@ -824,7 +870,7 @@ export function buildHelpMessage(cfg?: OpenClawConfig): string {
   lines.push("  /new  |  /reset  |  /compact [instructions]  |  /stop");
   lines.push("");
 
-  const optionParts = ["/think <level>", "/model <id>", "/fast on|off", "/verbose on|off"];
+  const optionParts = ["/think <level>", "/model <id>", "/fast status|on|off", "/verbose on|off"];
   if (isCommandFlagEnabled(cfg, "config")) {
     optionParts.push("/config");
   }

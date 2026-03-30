@@ -52,6 +52,19 @@ import {
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
 import type { SpawnSubagentMode } from "./subagent-spawn.js";
 import { isAnnounceSkip } from "./tools/sessions-send-helpers.js";
+
+type SubagentAnnounceDeps = {
+  callGateway: typeof callGateway;
+  loadConfig: typeof loadConfig;
+};
+
+const defaultSubagentAnnounceDeps: SubagentAnnounceDeps = {
+  callGateway,
+  loadConfig,
+};
+
+let subagentAnnounceDeps: SubagentAnnounceDeps = defaultSubagentAnnounceDeps;
+
 let subagentRegistryRuntimePromise: Promise<
   typeof import("./subagent-registry-runtime.js")
 > | null = null;
@@ -1209,7 +1222,7 @@ async function wakeSubagentRunAfterDescendants(params: {
     return false;
   }
 
-  const cfg = loadConfig();
+  const cfg = subagentAnnounceDeps.loadConfig();
   const announceTimeoutMs = resolveSubagentAnnounceTimeoutMs(cfg);
   const wakeMessage = buildDescendantWakeMessage({
     findings: params.findings,
@@ -1222,7 +1235,7 @@ async function wakeSubagentRunAfterDescendants(params: {
       operation: "descendant wake agent call",
       signal: params.signal,
       run: async () =>
-        await callGateway({
+        await subagentAnnounceDeps.callGateway({
           method: "agent",
           params: {
             sessionKey: params.childSessionKey,
@@ -1557,6 +1570,7 @@ export async function runSubagentAnnounceFlow(params: {
       steerMessage: triggerMessage,
       internalEvents,
       summaryLine: taskLabel,
+      requesterSessionOrigin: targetRequesterOrigin,
       requesterOrigin:
         expectsCompletionMessage && !requesterIsSubagent
           ? completionDirectOrigin
@@ -1586,7 +1600,7 @@ export async function runSubagentAnnounceFlow(params: {
     // Patch label after all writes complete
     if (params.label) {
       try {
-        await callGateway({
+        await subagentAnnounceDeps.callGateway({
           method: "sessions.patch",
           params: { key: params.childSessionKey, label: params.label },
           timeoutMs: 10_000,
@@ -1597,7 +1611,7 @@ export async function runSubagentAnnounceFlow(params: {
     }
     if (shouldDeleteChildSession) {
       try {
-        await callGateway({
+        await subagentAnnounceDeps.callGateway({
           method: "sessions.delete",
           params: {
             key: params.childSessionKey,
@@ -1613,3 +1627,14 @@ export async function runSubagentAnnounceFlow(params: {
   }
   return didAnnounce;
 }
+
+export const __testing = {
+  setDepsForTest(overrides?: Partial<SubagentAnnounceDeps>) {
+    subagentAnnounceDeps = overrides
+      ? {
+          ...defaultSubagentAnnounceDeps,
+          ...overrides,
+        }
+      : defaultSubagentAnnounceDeps;
+  },
+};

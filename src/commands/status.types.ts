@@ -1,4 +1,5 @@
 import type { ChannelId } from "../channels/plugins/types.js";
+import type { TaskRegistrySummary } from "../tasks/task-registry.types.js";
 
 export type SessionStatus = {
   agentId?: string;
@@ -49,6 +50,7 @@ export type StatusSummary = {
   };
   channelSummary: string[];
   queuedSystemEvents: string[];
+  tasks: TaskRegistrySummary;
   sessions: {
     paths: string[];
     count: number;

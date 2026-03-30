@@ -8,13 +8,10 @@ import {
   resolveFreshSessionTotalTokens,
   type SessionSystemPromptReport,
 } from "../../config/sessions/types.js";
+import { estimateTokensFromChars } from "../../utils/cjk-chars.js";
 import type { ReplyPayload } from "../types.js";
 import { resolveCommandsSystemPromptBundle } from "./commands-system-prompt.js";
 import type { HandleCommandsParams } from "./commands-types.js";
-
-function estimateTokensFromChars(chars: number): number {
-  return Math.ceil(Math.max(0, chars) / 4);
-}
 
 function formatInt(n: number): string {
   return new Intl.NumberFormat("en-US").format(n);
