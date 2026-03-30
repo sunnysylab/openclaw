@@ -173,7 +173,7 @@ export function buildAgentPeerSessionKey(params: {
   return `agent:${normalizeAgentId(params.agentId)}:${channel}:${peerKind}:${peerId}`;
 }
 
-function resolveLinkedPeerId(params: {
+export function resolveCanonicalIdentityFromLinks(params: {
   identityLinks?: Record<string, string[]>;
   channel: string;
   peerId: string;
@@ -217,6 +217,14 @@ function resolveLinkedPeerId(params: {
     }
   }
   return null;
+}
+
+function resolveLinkedPeerId(params: {
+  identityLinks?: Record<string, string[]>;
+  channel: string;
+  peerId: string;
+}): string | null {
+  return resolveCanonicalIdentityFromLinks(params);
 }
 
 export function buildGroupHistoryKey(params: {
