@@ -467,8 +467,8 @@ export function buildStatusMessage(args: StatusArgs): string {
   let activeModel = modelRefs.active.model;
 
   const selectedModelLabel = modelRefs.selected.label || "unknown";
-  const activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
-  const fallbackState = resolveActiveFallbackState({
+  let activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
+  let fallbackState = resolveActiveFallbackState({
     selectedModelRef: selectedModelLabel,
     activeModelRef: activeModelLabel,
     state: entry,
@@ -577,9 +577,10 @@ export function buildStatusMessage(args: StatusArgs): string {
     }
   }
 
+  activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
   const runtimeDiffersFromSelected = activeModelLabel !== (modelRefs.selected.label || "unknown");
 
-  resolveActiveFallbackState({
+  fallbackState = resolveActiveFallbackState({
     selectedModelRef: selectedModelLabel,
     activeModelRef: activeModelLabel,
     state: entry,
