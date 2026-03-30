@@ -79,7 +79,10 @@ enum VoiceWakeTextUtils {
         guard !transcript.isEmpty else { return nil }
         guard !self.normalizeToken(transcript).isEmpty else { return nil }
         guard WakeWordGate.matchesTextOnly(text: transcript, triggers: triggers) else { return nil }
-        guard self.startsWithTrigger(transcript: transcript, triggers: triggers) else { return nil }
+        guard
+            self.startsWithTrigger(transcript: transcript, triggers: triggers)
+            || self.hasOnlyFillerBeforeTrigger(transcript: transcript, triggers: triggers)
+        else { return nil }
         let trimmed = trimWake(transcript, triggers)
         guard trimmed.count >= minCommandLength else { return nil }
         return trimmed
