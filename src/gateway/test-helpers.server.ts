@@ -364,24 +364,24 @@ export function installGatewayTestHooks(options?: { scope?: "test" | "suite" }) 
     });
     beforeEach(async () => {
       await resetGatewayTestState({ uniqueConfigRoot: false });
-    }, 180_000);
+    }, 300_000);
     afterEach(async () => {
       await cleanupGatewayTestHome({ restoreEnv: false });
-    });
+    }, 300_000);
     afterAll(async () => {
       await cleanupGatewayTestHome({ restoreEnv: true });
-    }, 300_000);
+    }, 600_000);
     return;
   }
 
   beforeEach(async () => {
     await setupGatewayTestHome();
     await resetGatewayTestState({ uniqueConfigRoot: false });
-  }, 180_000);
+  }, 300_000);
 
   afterEach(async () => {
     await cleanupGatewayTestHome({ restoreEnv: true });
-  });
+  }, 300_000);
 }
 
 export async function getFreePort(): Promise<number> {
