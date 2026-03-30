@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createProcessSupervisor } from "./supervisor.js";
 
 type ProcessSupervisor = ReturnType<typeof createProcessSupervisor>;
@@ -25,6 +25,14 @@ async function spawnChild(supervisor: ProcessSupervisor, options: ChildSpawnOpti
 }
 
 describe("process supervisor", () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("spawns child runs and captures output", async () => {
     const supervisor = createProcessSupervisor();
     const run = await spawnChild(supervisor, {
