@@ -246,9 +246,13 @@ function setupSuccessfulDelivery() {
 
 async function runDelivery(
   opts: Record<string, unknown>,
-  overrides?: { runtime?: ReturnType<typeof createRuntime> },
+  overrides?: {
+    runtime?: ReturnType<typeof createRuntime>;
+    payloads?: { text: string }[];
+  },
 ) {
   const runtime = overrides?.runtime ?? createRuntime();
+  const payloads = overrides?.payloads ?? [{ text: "hello" }];
   const result = await deliverAgentCommandResult({
     cfg: {} as unknown as OpenClawConfig,
     deps: {} as unknown as CliDeps,
@@ -259,8 +263,8 @@ async function runDelivery(
       lastChannel: "discord",
       lastTo: "channel:123456",
     } as unknown as SessionEntry,
-    result: { payloads: [{ text: "hello" }], meta: { durationMs: 1 } },
-    payloads: [{ text: "hello" }],
+    result: { payloads, meta: { durationMs: 1 } },
+    payloads,
   });
   return { runtime, result };
 }
@@ -498,22 +502,30 @@ describe("deliverAgentCommandResult — JSON output includes deliveryStatus", ()
 
   it("emits JSON with deliveryStatus on non-bestEffort throw", async () => {
     deliverSpy.mockRejectedValue(new Error("API timeout"));
+    const runtime = createRuntime();
 
-    const { runtime } = await runDelivery({
-      message: "hello",
-      deliver: true,
-      bestEffortDeliver: false,
-      json: true,
-      channel: "discord",
-      to: "channel:123456",
-    }).catch((err) => {
-      // Re-throw is expected; capture runtime from the closure
-      return { result: null, runtime: err.__runtime };
+    await expect(
+      runDelivery(
+        {
+          message: "hello",
+          deliver: true,
+          bestEffortDeliver: false,
+          json: true,
+          channel: "discord",
+          to: "channel:123456",
+        },
+        { runtime },
+      ),
+    ).rejects.toThrow("API timeout");
+
+    const envelope = parseJsonOutput(runtime);
+    expect(envelope).not.toBeNull();
+    expect(envelope.deliveryStatus).toEqual({
+      requested: true,
+      attempted: true,
+      succeeded: false,
+      error: true,
     });
-
-    // The throw prevents us from getting runtime via normal return.
-    // Instead verify via the test's spy that JSON was logged before the throw.
-    // This test validates the contract — if it fails, JSON was not emitted.
   });
 
   it("suppresses plain-text warning in JSON mode", async () => {
@@ -533,13 +545,16 @@ describe("deliverAgentCommandResult — JSON output includes deliveryStatus", ()
   });
 
   it("includes deliveryStatus for no-payload runs in JSON+deliver mode", async () => {
-    const { runtime } = await runDelivery({
-      message: "",
-      deliver: true,
-      json: true,
-      channel: "discord",
-      to: "channel:123456",
-    });
+    const { runtime } = await runDelivery(
+      {
+        message: "",
+        deliver: true,
+        json: true,
+        channel: "discord",
+        to: "channel:123456",
+      },
+      { payloads: [] },
+    );
 
     const envelope = parseJsonOutput(runtime);
     expect(envelope).not.toBeNull();
