@@ -31,6 +31,10 @@ import {
   parsePluginBindingApprovalCustomId,
   resolvePluginConversationBindingApproval,
 } from "openclaw/plugin-sdk/conversation-runtime";
+import {
+  createOperatorApprovalsGatewayClient,
+  GatewayClient,
+} from "openclaw/plugin-sdk/gateway-runtime";
 import { dispatchPluginInteractiveHandler } from "openclaw/plugin-sdk/plugin-runtime";
 import { resolveAgentRoute } from "openclaw/plugin-sdk/routing";
 import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
@@ -112,6 +116,123 @@ function parseApprovalCallbackId(data: string): string | null {
     return null;
   }
   return tokens[1] ?? null;
+}
+
+function parseApprovalCallbackDecision(
+  data: string,
+): { id: string; decision: "allow-once" | "allow-always" | "deny" } | null {
+  const trimmed = data.trim();
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length < 3) {
+    return null;
+  }
+  const id = tokens[1];
+  const rawDecision = tokens[2]?.toLowerCase();
+  const decision =
+    rawDecision === "allow-once"
+      ? "allow-once"
+      : rawDecision === "always" || rawDecision === "allow-always"
+        ? "allow-always"
+        : rawDecision === "deny"
+          ? "deny"
+          : null;
+  if (!id || !decision) {
+    return null;
+  }
+  return { id, decision };
+}
+
+let approvalGatewayClient: GatewayClient | null = null;
+let approvalGatewayReady: Promise<void> | null = null;
+
+function resetApprovalGatewayClient() {
+  approvalGatewayClient = null;
+  approvalGatewayReady = null;
+}
+
+function createApprovalGatewayReadyPromise() {
+  let resolved = false;
+  let resolveReady!: () => void;
+  let rejectReady!: (err: Error) => void;
+  const promise = new Promise<void>((resolve, reject) => {
+    resolveReady = () => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      resolve();
+    };
+    rejectReady = (err: Error) => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      reject(err);
+    };
+  });
+  return { promise, resolveReady, rejectReady };
+}
+
+async function ensureApprovalGatewayClient(
+  config: Parameters<typeof createOperatorApprovalsGatewayClient>[0]["config"],
+): Promise<GatewayClient> {
+  if (!approvalGatewayClient || !approvalGatewayReady) {
+    const ready = createApprovalGatewayReadyPromise();
+    approvalGatewayReady = ready.promise;
+    approvalGatewayClient = await createOperatorApprovalsGatewayClient({
+      config,
+      clientDisplayName: "Telegram Approval Callback Resolver",
+      onHelloOk: () => {
+        ready.resolveReady();
+      },
+      onConnectError: (err) => {
+        logVerbose(`telegram approval resolver: connect error: ${err.message}`);
+        ready.rejectReady(err);
+        resetApprovalGatewayClient();
+      },
+      onClose: (_code, reason) => {
+        logVerbose(`telegram approval resolver: closed: ${reason || "no reason"}`);
+        resetApprovalGatewayClient();
+      },
+    });
+    approvalGatewayClient.start();
+  }
+
+  await approvalGatewayReady;
+  return approvalGatewayClient;
+}
+
+async function resolveApprovalDirect(
+  config: Parameters<typeof createOperatorApprovalsGatewayClient>[0]["config"],
+  approvalId: string,
+  decision: string,
+  senderId?: string,
+): Promise<boolean> {
+  const method = approvalId.startsWith("plugin:")
+    ? "plugin.approval.resolve"
+    : "exec.approval.resolve";
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const client = await ensureApprovalGatewayClient(config);
+      await client.request(method, {
+        id: approvalId,
+        decision,
+        ...(senderId ? { resolvedBy: `telegram:${senderId}` } : {}),
+      });
+      return true;
+    } catch (err) {
+      logVerbose(
+        `telegram approval resolver: failed to resolve ${approvalId} (attempt ${attempt + 1}): ${String(err)}`,
+      );
+      if (!String(err).includes("gateway not connected")) {
+        return false;
+      }
+      resetApprovalGatewayClient();
+    }
+  }
+
+  return false;
 }
 
 export const registerTelegramHandlers = ({
@@ -1331,6 +1452,20 @@ export const registerTelegramHandlers = ({
           ) {
             logVerbose(`telegram: failed to clear approval callback buttons: ${errStr}`);
           }
+        }
+        // Resolve approval directly via gateway client to avoid session pipeline deadlock.
+        // Plugin approvals block the session pipeline while waiting for a decision, so routing
+        // through processMessage would deadlock. Instead, call the gateway resolve method directly.
+        const parsed = parseApprovalCallbackDecision(data);
+        if (parsed) {
+          const ok = await resolveApprovalDirect(runtimeCfg, parsed.id, parsed.decision, senderId);
+          const label = parsed.decision === "deny" ? "denied" : `allowed (${parsed.decision})`;
+          await replyToCallbackChat(
+            ok
+              ? `✅ Approval ${label}. ID: ${parsed.id}`
+              : `❌ Failed to resolve approval (expired or unknown). ID: ${parsed.id}`,
+          );
+          return;
         }
       }
 
