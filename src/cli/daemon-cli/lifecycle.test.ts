@@ -48,7 +48,7 @@ const probeGateway = vi.fn<
 >();
 const isRestartEnabled = vi.fn<(config?: { commands?: unknown }) => boolean>(() => true);
 const loadConfig = vi.fn(() => ({}));
-const resolveGatewayProbeAuthSafeWithSecretInputs = vi.fn();
+const resolveLocalGatewayProbeAuthSafeWithEnvFallback = vi.fn();
 
 vi.mock("../../config/config.js", () => ({
   loadConfig: () => loadConfig(),
@@ -73,8 +73,8 @@ vi.mock("../../gateway/probe.js", () => ({
 }));
 
 vi.mock("../../gateway/probe-auth.js", () => ({
-  resolveGatewayProbeAuthSafeWithSecretInputs: (params: unknown) =>
-    resolveGatewayProbeAuthSafeWithSecretInputs(params),
+  resolveLocalGatewayProbeAuthSafeWithEnvFallback: (params: unknown) =>
+    resolveLocalGatewayProbeAuthSafeWithEnvFallback(params),
 }));
 
 vi.mock("../../config/commands.js", () => ({
@@ -153,7 +153,7 @@ describe("runDaemonRestart health checks", () => {
     probeGateway.mockReset();
     isRestartEnabled.mockReset();
     loadConfig.mockReset();
-    resolveGatewayProbeAuthSafeWithSecretInputs.mockReset();
+    resolveLocalGatewayProbeAuthSafeWithEnvFallback.mockReset();
 
     service.readCommand.mockResolvedValue({
       programArguments: ["openclaw", "gateway", "--port", "18789"],
@@ -185,7 +185,7 @@ describe("runDaemonRestart health checks", () => {
       configSnapshot: { commands: { restart: true } },
     });
     isRestartEnabled.mockReturnValue(true);
-    resolveGatewayProbeAuthSafeWithSecretInputs.mockResolvedValue({ auth: {} });
+    resolveLocalGatewayProbeAuthSafeWithEnvFallback.mockResolvedValue({});
     signalVerifiedGatewayPidSync.mockImplementation(() => {});
     formatGatewayPidList.mockImplementation((pids) => pids.join(", "));
   });
@@ -289,8 +289,9 @@ describe("runDaemonRestart health checks", () => {
 
   it("passes configured probe auth into unmanaged restart health checks", async () => {
     findVerifiedGatewayListenerPidsOnPortSync.mockReturnValue([4200]);
-    resolveGatewayProbeAuthSafeWithSecretInputs.mockResolvedValue({
-      auth: { token: "cfg-token", password: "cfg-password" },
+    resolveLocalGatewayProbeAuthSafeWithEnvFallback.mockResolvedValue({
+      token: "cfg-token",
+      password: "cfg-password",
     });
     mockUnmanagedRestart({ runPostRestartCheck: true });
 
