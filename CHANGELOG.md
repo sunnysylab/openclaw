@@ -6,11 +6,12 @@ Docs: https://docs.openclaw.ai
 
 ### Breaking
 
-- Nodes/exec: remove the duplicated `nodes.run` shell wrapper from the CLI and agent `nodes` tool so node shell execution always goes through `exec host=node`, keeping node-specific capabilities on `nodes invoke` and the dedicated media/location/notify actions.
-- Background tasks: replace the old JSON task ledger with the SQLite-backed task store, so undocumented tooling or scripts that read `tasks/runs.json` directly must switch to the supported `openclaw tasks` surfaces instead of depending on state-dir internals. Thanks @vincentkoc and @mbelinky.
+- Daemon: increase launchd `ThrottleInterval` from 1s to 10s to prevent gateway process storms when the port isn't released before restart. This prevents 30+ zombie processes from accumulating during rapid restart cycles on macOS. (#58306)
 
 ### Changes
 
+- Nodes/exec: remove the duplicated `nodes.run` shell wrapper from the CLI and agent `nodes` tool so node shell execution always goes through `exec host=node`, keeping node-specific capabilities on `nodes invoke` and the dedicated media/location/notify actions.
+- Background tasks: replace the old JSON task ledger with the SQLite-backed task store, so undocumented tooling or scripts that read `tasks/runs.json` directly must switch to the supported `openclaw tasks` surfaces instead of depending on state-dir internals. Thanks @vincentkoc and @mbelinky.
 - Nostr/inbound DMs: verify inbound event signatures before pairing or sender-authorization side effects, so forged DM events no longer create pairing requests or trigger reply attempts. Thanks @smaeljaish771 and @vincentkoc.
 - LINE/outbound media: add LINE image, video, and audio outbound sends on the LINE-specific delivery path, including explicit preview/tracking handling for videos while keeping generic media sends on the existing image-only route. (#45826) Thanks @masatohoshino.
 - WhatsApp/reactions: agents can now react with emoji on incoming WhatsApp messages, enabling more natural conversational interactions like acknowledging a photo with ❤️ instead of typing a reply. Thanks @mcaxtr.
