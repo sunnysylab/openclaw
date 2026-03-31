@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { resolveStateDir } from "../../config/paths.js";
 import { saveJsonFile } from "../../infra/json-file.js";
 import { resolveUserPath } from "../../utils.js";
 import { resolveOpenClawAgentDir } from "../agent-paths.js";
@@ -30,4 +32,11 @@ export function ensureAuthStoreFile(pathname: string) {
     profiles: {},
   };
   saveJsonFile(pathname, payload);
+}
+
+export function resolveOAuthRefreshLockPath(profileId: string): string {
+  // Hash the full UTF-8 byte sequence so lock ids stay namespace-safe while
+  // keeping the resulting filename length bounded for long profile ids.
+  const safeId = `sha256-${createHash("sha256").update(profileId, "utf8").digest("hex")}`;
+  return path.join(resolveStateDir(), "locks", "oauth-refresh", safeId);
 }
