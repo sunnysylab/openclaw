@@ -45,10 +45,16 @@ async function buildModelsJsonFingerprint(params: {
   sourceConfigForSecrets: OpenClawConfig;
   agentDir: string;
 }): Promise<string> {
+  const targetDir = path.resolve(params.agentDir);
+  const mainAgentDir = path.resolve(resolveOpenClawAgentDir());
   const authProfilesMtimeMs = await readFileMtimeMs(
     path.join(params.agentDir, "auth-profiles.json"),
   );
   const modelsFileMtimeMs = await readFileMtimeMs(path.join(params.agentDir, "models.json"));
+  const mainModelsFileMtimeMs =
+    targetDir === mainAgentDir
+      ? modelsFileMtimeMs
+      : await readFileMtimeMs(path.join(mainAgentDir, "models.json"));
   const envShape = createConfigRuntimeEnv(params.config, {});
   return stableStringify({
     config: params.config,
@@ -56,6 +62,7 @@ async function buildModelsJsonFingerprint(params: {
     envShape,
     authProfilesMtimeMs,
     modelsFileMtimeMs,
+    mainModelsFileMtimeMs,
   });
 }
 
