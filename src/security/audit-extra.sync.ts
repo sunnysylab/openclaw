@@ -332,6 +332,9 @@ function isWebSearchEnabled(cfg: OpenClawConfig, env: NodeJS.ProcessEnv): boolea
   if (enabled === false) {
     return false;
   }
+  if (enabled === true) {
+    return true;
+  }
   const search = cfg.tools?.web?.search;
   const provider =
     search && "provider" in search && typeof search.provider === "string"
