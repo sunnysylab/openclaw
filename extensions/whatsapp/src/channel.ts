@@ -21,6 +21,7 @@ import {
   resolveWhatsAppGroupToolPolicy,
 } from "./group-policy.js";
 import { looksLikeWhatsAppTargetId, normalizeWhatsAppMessagingTarget } from "./normalize.js";
+import { resolveAllowOutboundTo } from "./resolve-allow-outbound.js";
 import {
   createActionGate,
   createWhatsAppOutboundBase,
@@ -74,8 +75,13 @@ export const whatsappPlugin: ChannelPlugin<ResolvedWhatsAppAccount> =
         sendMessageWhatsApp,
         sendPollWhatsApp,
         shouldLogVerbose: () => getWhatsAppRuntime().logging.shouldLogVerbose(),
-        resolveTarget: ({ to, allowFrom, mode }) =>
-          resolveWhatsAppOutboundTarget({ to, allowFrom, mode }),
+        resolveTarget: ({ to, allowFrom, cfg, accountId, mode }) =>
+          resolveWhatsAppOutboundTarget({
+            to,
+            allowFrom,
+            allowOutboundTo: resolveAllowOutboundTo(cfg, accountId),
+            mode,
+          }),
       }),
       normalizePayload: ({ payload }) => ({
         ...payload,
