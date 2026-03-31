@@ -9,40 +9,64 @@ const allowFromEntry = z.union([z.string(), z.number()]);
 /**
  * Zod schema for channels.utopia.* configuration
  */
-export const UtopiaConfigSchema = z.object({
-  /** Account name (optional display name) */
-  name: z.string().optional(),
+export const UtopiaConfigSchema = z
+  .object({
+    /** Account name (optional display name) */
+    name: z.string().optional(),
 
-  /** Optional default account id for routing/account selection */
-  defaultAccount: z.string().optional(),
+    /** Optional default account id for routing/account selection */
+    defaultAccount: z.string().optional(),
 
-  /** Whether this channel is enabled */
-  enabled: z.boolean().optional(),
+    /** Whether this channel is enabled */
+    enabled: z.boolean().optional(),
 
-  /** Markdown formatting overrides (tables) */
-  markdown: MarkdownConfigSchema,
+    /** Markdown formatting overrides (tables) */
+    markdown: MarkdownConfigSchema,
 
-  /** Utopia API host (default: 127.0.0.1) */
-  host: z.string().optional(),
+    /** Utopia API host (default: 127.0.0.1) */
+    host: z.string().optional(),
 
-  /** Utopia API port (default: 22659) */
-  port: z.number().optional(),
+    /** Utopia API port (default: 22659) */
+    port: z.number().optional(),
 
-  /** Utopia API token */
-  apiToken: z.string().optional(),
+    /** Utopia API token */
+    apiToken: z.string().optional(),
 
-  /** WebSocket port for receiving notifications */
-  wsPort: z.number().optional(),
+    /** WebSocket port for receiving notifications */
+    wsPort: z.number().optional(),
 
-  /** Use HTTPS/WSS instead of HTTP/WS */
-  useSsl: z.boolean().optional(),
+    /** Use HTTPS/WSS instead of HTTP/WS */
+    useSsl: z.boolean().optional(),
 
-  /** DM access policy: pairing, allowlist, open, or disabled */
-  dmPolicy: z.enum(["pairing", "allowlist", "open", "disabled"]).optional(),
+    /** DM access policy: pairing, allowlist, open, or disabled */
+    dmPolicy: z.enum(["pairing", "allowlist", "open", "disabled"]).optional(),
 
-  /** Allowed sender pubkeys */
-  allowFrom: z.array(allowFromEntry).optional(),
-});
+    /** Allowed sender pubkeys */
+    allowFrom: z.array(allowFromEntry).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.dmPolicy === "open") {
+      // allow only ["*"] or absence of the field
+      if (data.allowFrom && !(data.allowFrom.length === 1 && data.allowFrom[0] === "*")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "When dmPolicy is 'open', allowFrom must be ['*'] or omitted",
+          path: ["allowFrom"],
+        });
+      }
+    }
+
+    if (data.dmPolicy === "allowlist") {
+      // allowFrom is required and must not be empty
+      if (!data.allowFrom || data.allowFrom.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "When dmPolicy is 'allowlist', allowFrom must be a non-empty array",
+          path: ["allowFrom"],
+        });
+      }
+    }
+  });
 
 export type UtopiaConfig = z.infer<typeof UtopiaConfigSchema>;
 
