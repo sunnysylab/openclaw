@@ -325,6 +325,29 @@ function resolvePluginSubagentIdempotencyKey(params: {
   return `plugin-subagent:${params.method}:${params.sessionKey}:${randomUUID()}`;
 }
 
+function isPendingToolCallShape(
+  value: unknown,
+): value is { id: string; name: string; arguments: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.name === "string" &&
+    typeof record.arguments === "string"
+  );
+}
+
+function sanitizePendingToolCalls(
+  value: unknown,
+): Array<{ id: string; name: string; arguments: string }> | undefined {
+  if (!Array.isArray(value) || value.length === 0) {
+    return undefined;
+  }
+  return value.every((item) => isPendingToolCallShape(item)) ? value : undefined;
+}
+
 export function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
   const getSessionMessages: PluginRuntime["subagent"]["getSessionMessages"] = async (params) => {
     const payload = await dispatchGatewayMethod<{ messages?: unknown[] }>(
@@ -413,14 +436,13 @@ export function createGatewaySubagentRuntime(): PluginRuntime["subagent"] {
       if (status !== "ok" && status !== "error" && status !== "timeout") {
         throw new Error(`Gateway agent.wait returned unexpected status: ${status}`);
       }
+      const pendingToolCalls = sanitizePendingToolCalls(payload?.pendingToolCalls);
       return {
         status,
         ...(typeof payload?.error === "string" && payload.error && { error: payload.error }),
         ...(typeof payload?.stopReason === "string" &&
           payload.stopReason && { stopReason: payload.stopReason }),
-        ...(Array.isArray(payload?.pendingToolCalls) && payload.pendingToolCalls.length > 0
-          ? { pendingToolCalls: payload.pendingToolCalls }
-          : {}),
+        ...(pendingToolCalls ? { pendingToolCalls } : {}),
       };
     },
     getSessionMessages,

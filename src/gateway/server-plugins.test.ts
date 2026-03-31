@@ -528,6 +528,26 @@ describe("loadGatewayPlugins", () => {
     expect(getLastDispatchedClientScopes()).not.toContain("operator.admin");
   });
 
+  test("drops malformed pendingToolCalls from waitForRun responses", async () => {
+    const serverPlugins = serverPluginsModule;
+    const runtime = await createSubagentRuntime(serverPlugins);
+    serverPlugins.setFallbackGatewayContext(createTestContext("malformed-pending-tool-calls"));
+
+    handleGatewayRequest.mockImplementationOnce(async (opts: HandleGatewayRequestOptions) => {
+      opts.respond(true, {
+        status: "ok",
+        pendingToolCalls: [
+          { id: "tool-1", name: "valid_tool", arguments: '{"ok":true}' },
+          { id: "tool-2", name: "invalid_tool", arguments: 123 },
+        ],
+      });
+    });
+
+    await expect(runtime.waitForRun({ runId: "run-malformed" })).resolves.toEqual({
+      status: "ok",
+    });
+  });
+
   test("rejects fallback session deletion without minting admin scope", async () => {
     const serverPlugins = serverPluginsModule;
     const runtime = await createSubagentRuntime(serverPlugins);
