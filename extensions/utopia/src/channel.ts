@@ -1,9 +1,11 @@
+import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
 import {
   buildChannelConfigSchema,
   DEFAULT_ACCOUNT_ID,
   formatPairingApproveHint,
   type ChannelPlugin,
 } from "openclaw/plugin-sdk/core";
+import { resolveInboundDirectDmAccessWithRuntime } from "openclaw/plugin-sdk/direct-dm";
 import { dispatchInboundReplyWithBase } from "openclaw/plugin-sdk/irc";
 import {
   collectStatusIssuesFromLastError,
@@ -176,6 +178,12 @@ export const utopiaPlugin: ChannelPlugin<ResolvedUtopiaAccount> = {
       const account = ctx.account;
       ctx.setStatus({ accountId: account.accountId });
       ctx.log?.info(`[${account.accountId}] starting Utopia provider`);
+      const core = getUtopiaRuntime();
+      const pairing = createChannelPairingController({
+        core,
+        channel: "utopia",
+        accountId: account.accountId,
+      });
 
       if (!account.configured) {
         throw new Error("Utopia API token not configured");
@@ -199,6 +207,56 @@ export const utopiaPlugin: ChannelPlugin<ResolvedUtopiaAccount> = {
 
           if (!ctx.channelRuntime) {
             ctx.log?.warn?.(`[${account.accountId}] channelRuntime not available`);
+            return;
+          }
+
+          const dmPolicy = account.config.dmPolicy ?? "pairing";
+          const allowFrom = account.config.allowFrom ?? [];
+          const normalizedSenderId = senderPubkey.trim().toLowerCase();
+          const access = await resolveInboundDirectDmAccessWithRuntime({
+            cfg: ctx.cfg,
+            channel: "utopia",
+            accountId: account.accountId,
+            dmPolicy,
+            allowFrom,
+            senderId: normalizedSenderId,
+            rawBody: text,
+            isSenderAllowed: (senderId, allowEntries) => {
+              if (allowEntries.includes("*")) {
+                return true;
+              }
+              const normalizedSender = senderId.trim().toLowerCase();
+              return allowEntries.some((entry) => {
+                const normalized = entry
+                  .replace(/^utopia:/i, "")
+                  .trim()
+                  .toLowerCase();
+                return normalized === normalizedSender;
+              });
+            },
+            runtime: core.channel.commands,
+            readStoreAllowFrom: pairing.readStoreForDmPolicy,
+          });
+
+          if (access.access.decision !== "allow") {
+            if (access.access.decision === "pairing") {
+              await pairing.issueChallenge({
+                senderId: normalizedSenderId,
+                senderIdLine: `Your Utopia pubkey: ${senderPubkey}`,
+                meta: { name: senderNick || undefined },
+                sendPairingReply: async (text) => {
+                  await reply(text);
+                },
+                onReplyError: (err) => {
+                  ctx.log?.warn?.(
+                    `[${account.accountId}] pairing reply failed for ${senderPubkey}: ${String(err)}`,
+                  );
+                },
+              });
+            }
+            ctx.log?.info?.(
+              `[${account.accountId}] drop DM from ${senderPubkey} (${access.access.reason})`,
+            );
             return;
           }
 
