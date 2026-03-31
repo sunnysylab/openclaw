@@ -151,16 +151,14 @@ export async function updateSessionStoreAfterAgentRun(params: {
       next.totalTokensEstimate = totalTokens;
     } else {
       next.totalTokensFresh = false;
-      if (!modelChanged) {
+      if (modelChanged) {
+        next.totalTokensEstimate = undefined;
+      } else {
         const fallback = prevEstimate ?? prevTotal;
         if (fallback !== undefined && fallback > 0) {
           next.totalTokensEstimate = fallback;
         }
       }
-    }
-
-    if (modelChanged) {
-      next.totalTokensEstimate = undefined;
     }
     next.cacheRead = usage?.cacheRead ?? (useFallback ? entry.cacheRead : undefined);
     next.cacheWrite = usage?.cacheWrite ?? (useFallback ? entry.cacheWrite : undefined);

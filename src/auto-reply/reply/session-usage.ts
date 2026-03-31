@@ -163,16 +163,15 @@ export async function persistSessionUsageUpdate(params: {
             patch.totalTokensEstimate = totalTokens;
           } else {
             patch.totalTokensFresh = false;
-            if (!modelChanged) {
+            if (modelChanged) {
+              patch.totalTokensEstimate = undefined;
+            } else {
+              // Preserve previous totalTokensEstimate from the best available previous value.
               const fallback = prevEstimate ?? prevTotal;
               if (fallback !== undefined && fallback > 0) {
                 patch.totalTokensEstimate = fallback;
               }
             }
-          }
-
-          if (modelChanged) {
-            patch.totalTokensEstimate = undefined;
           }
           const hasCurrentUsage =
             hasUsage ||

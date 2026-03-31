@@ -708,17 +708,15 @@ export async function runCronIsolatedAgentTurn(params: {
         telemetryUsage.total_tokens = totalTokens;
       } else {
         cronSession.sessionEntry.totalTokensFresh = false;
-        if (!modelChanged) {
+        if (modelChanged) {
+          cronSession.sessionEntry.totalTokensEstimate = undefined;
+        } else {
           const fallback = prevEstimate ?? prevTotal;
           if (fallback !== undefined && fallback > 0) {
             cronSession.sessionEntry.totalTokensEstimate = fallback;
           }
         }
         telemetryUsage.total_tokens = totalTokens === 0 ? 0 : undefined;
-      }
-
-      if (modelChanged) {
-        cronSession.sessionEntry.totalTokensEstimate = undefined;
       }
       cronSession.sessionEntry.cacheRead =
         usage?.cacheRead ?? (useFallback ? cronSession.sessionEntry.cacheRead : undefined);
