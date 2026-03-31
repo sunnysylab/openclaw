@@ -2150,6 +2150,12 @@ export type PluginHookToolContext = {
   toolCallId?: string;
 };
 
+export type PluginHookToolInfo = {
+  name: string;
+  description?: string;
+  parameters?: unknown;
+};
+
 // before_tool_call hook
 export type PluginHookBeforeToolCallEvent = {
   toolName: string;
@@ -2158,6 +2164,12 @@ export type PluginHookBeforeToolCallEvent = {
   runId?: string;
   /** Provider-specific tool call ID when available. */
   toolCallId?: string;
+  /** Effective system prompt currently applied to the session. */
+  systemPrompt?: string;
+  /** Current conversation snapshot visible to the model runtime. */
+  messages?: AgentMessage[];
+  /** Tool definitions currently exposed to the model runtime. */
+  tools?: PluginHookToolInfo[];
 };
 
 export const PluginApprovalResolutions = {

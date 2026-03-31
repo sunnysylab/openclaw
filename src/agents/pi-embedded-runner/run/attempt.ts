@@ -23,6 +23,7 @@ import {
 } from "../../../plugin-sdk/ollama.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import { resolveToolCallArgumentsEncoding } from "../../../plugins/provider-model-compat.js";
+import type { PluginHookToolInfo } from "../../../plugins/types.js";
 import { isSubagentSessionKey } from "../../../routing/session-key.js";
 import { buildTtsSystemPromptHint } from "../../../tts/tts.js";
 import { resolveUserPath } from "../../../utils.js";
@@ -413,6 +414,14 @@ export async function runEmbeddedAttempt(
     let abortSessionForYield: (() => void) | null = null;
     let queueYieldInterruptForSession: (() => void) | null = null;
     let yieldAbortSettled: Promise<void> | null = null;
+    let beforeToolCallSystemPrompt: string | undefined;
+    let beforeToolCallTools: PluginHookToolInfo[] = [];
+    let beforeToolCallMessagesProvider: () => AgentMessage[] = () => [];
+    const beforeToolCallContext = {
+      getSystemPrompt: () => beforeToolCallSystemPrompt,
+      getMessages: () => beforeToolCallMessagesProvider(),
+      getTools: () => beforeToolCallTools,
+    };
     // Check if the model supports native image input
     const modelHasVision = params.model.input?.includes("image") ?? false;
     const toolsRaw = params.disableTools
@@ -458,6 +467,7 @@ export async function runEmbeddedAttempt(
           modelCompat: params.model.compat,
           modelContextWindowTokens: params.model.contextWindow,
           modelAuthMode: resolveModelAuthMode(params.model.provider, params.config),
+          beforeToolCallContext,
           currentChannelId: params.currentChannelId,
           currentThreadTs: params.currentThreadTs,
           currentMessageId: params.currentMessageId,
@@ -684,6 +694,7 @@ export async function runEmbeddedAttempt(
     });
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
     let systemPromptText = systemPromptOverride();
+    beforeToolCallSystemPrompt = systemPromptText;
 
     const sessionLock = await acquireSessionWriteLock({
       sessionFile: params.sessionFile,
@@ -722,6 +733,8 @@ export async function runEmbeddedAttempt(
         allowSyntheticToolResults: transcriptPolicy.allowSyntheticToolResults,
         allowedToolNames,
       });
+      beforeToolCallMessagesProvider = () =>
+        (sessionManager?.buildSessionContext().messages as AgentMessage[]) ?? [];
       trackSessionManagerAccess(params.sessionFile);
 
       await runAttemptContextEngineBootstrap({
@@ -795,6 +808,17 @@ export async function runEmbeddedAttempt(
       const { builtInTools, customTools } = splitSdkTools({
         tools: effectiveTools,
         sandboxEnabled: !!sandbox?.enabled,
+        hookContext: {
+          ...beforeToolCallContext,
+          agentId: sessionAgentId,
+          sessionKey: sandboxSessionKey,
+          sessionId: params.sessionId,
+          runId: params.runId,
+          loopDetection: resolveToolLoopDetectionConfig({
+            cfg: params.config,
+            agentId: sessionAgentId,
+          }),
+        },
       });
 
       // Add client tools (OpenResponses hosted tools) to customTools
@@ -810,6 +834,7 @@ export async function runEmbeddedAttempt(
               clientToolCallDetected = { name: toolName, params: toolParams };
             },
             {
+              ...beforeToolCallContext,
               agentId: sessionAgentId,
               sessionKey: sandboxSessionKey,
               sessionId: params.sessionId,
@@ -820,6 +845,13 @@ export async function runEmbeddedAttempt(
         : [];
 
       const allCustomTools = [...customTools, ...clientToolDefs];
+      beforeToolCallTools = [...builtInTools, ...allCustomTools].map((tool) => ({
+        name: typeof tool.name === "string" && tool.name.trim().length > 0 ? tool.name : "tool",
+        ...(typeof tool.description === "string" && tool.description.trim().length > 0
+          ? { description: tool.description }
+          : {}),
+        ...(tool.parameters !== undefined ? { parameters: tool.parameters } : {}),
+      }));
 
       ({ session } = await createAgentSession({
         cwd: resolvedWorkspace,
@@ -839,6 +871,7 @@ export async function runEmbeddedAttempt(
         throw new Error("Embedded agent session missing");
       }
       const activeSession = session;
+      beforeToolCallMessagesProvider = () => activeSession.messages;
       abortSessionForYield = () => {
         yieldAbortSettled = Promise.resolve(activeSession.abort());
       };
@@ -1438,6 +1471,7 @@ export async function runEmbeddedAttempt(
           }
         }
 
+        beforeToolCallSystemPrompt = systemPromptText;
         log.debug(`embedded run prompt start: runId=${params.runId} sessionId=${params.sessionId}`);
         cacheTrace?.recordStage("prompt:before", {
           prompt: effectivePrompt,
