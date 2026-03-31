@@ -142,6 +142,7 @@ Docs: https://docs.openclaw.ai
 - Config/SecretRef + Control UI: harden SecretRef redaction round-trip restore, block unsafe raw fallback (force Form mode when raw is unavailable), and preflight submitted-config SecretRefs before config write RPC persistence. (#58044) Thanks @joshavant.
 - Config/Telegram: migrate removed `channels.telegram.groupMentionsOnly` into `channels.telegram.groups["*"].requireMention` on load so legacy configs no longer crash at startup. (#55336) thanks @jameslcowan.
 - Gateway/SecretRef: resolve restart token drift checks with merged service/runtime env sources and hard-fail unsupported mutable SecretRef plus OAuth-profile combinations so restart warnings and policy enforcement match runtime behavior. (#58141) Thanks @joshavant.
+- Gateway: honor `agents.defaults.mediaMaxMb` for inbound attachment size validation across all gateway RPC entry points (`chat.send`, `agent.send`, share); previously this config key was ignored and the limit was always 5 MB. Values above the WS transport budget (~18.74 MiB) are clamped automatically. (#50215)
 
 ## 2026.3.28
 

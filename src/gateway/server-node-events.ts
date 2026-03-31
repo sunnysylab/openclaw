@@ -17,7 +17,10 @@ import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";
 import { deleteMediaBuffer } from "../media/store.js";
 import { normalizeMainKey, scopedHeartbeatWakeOptions } from "../routing/session-key.js";
 import { defaultRuntime } from "../runtime.js";
-import { parseMessageWithAttachments } from "./chat-attachments.js";
+import {
+  parseMessageWithAttachments,
+  resolveInboundMediaMaxBytes,
+} from "./chat-attachments.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./server-methods/attachment-normalize.js";
 import type { NodeEvent, NodeEventContext } from "./server-node-events-types.js";
 import {
@@ -390,7 +393,7 @@ export const handleNodeEvent = async (ctx: NodeEventContext, nodeId: string, evt
         });
         try {
           const parsed = await parseMessageWithAttachments(message, normalizedAttachments, {
-            maxBytes: 5_000_000,
+            maxBytes: resolveInboundMediaMaxBytes(cfg),
             log: ctx.logGateway,
             supportsImages,
           });
