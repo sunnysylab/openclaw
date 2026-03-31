@@ -697,6 +697,7 @@ export async function runEmbeddedAttempt(
 
     let sessionManager: ReturnType<typeof guardSessionManager> | undefined;
     let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+    let promptTokens: number | undefined;
     let removeToolResultContextGuard: (() => void) | undefined;
     try {
       await repairSessionFileIfNeeded({
@@ -1127,6 +1128,7 @@ export async function runEmbeddedAttempt(
             if (!assembled) {
               throw new Error("context engine assemble returned no result");
             }
+            promptTokens = assembled.estimatedTokens;
             if (assembled.messages !== activeSession.messages) {
               activeSession.agent.replaceMessages(assembled.messages);
             }
@@ -1858,6 +1860,7 @@ export async function runEmbeddedAttempt(
           lastAssistant?.errorMessage && isCloudCodeAssistFormatError(lastAssistant.errorMessage),
         ),
         attemptUsage: getUsageTotals(),
+        promptTokens,
         compactionCount: getCompactionCount(),
         // Client tool call detected (OpenResponses hosted tools)
         clientToolCall: clientToolCallDetected ?? undefined,

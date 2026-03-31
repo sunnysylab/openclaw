@@ -19,6 +19,7 @@ import { resolveChannelModelOverride } from "../channels/model-overrides.js";
 import { isCommandFlagEnabled } from "../config/commands.js";
 import type { OpenClawConfig } from "../config/config.js";
 import {
+  resolveFreshSessionTotalTokens,
   resolveMainSessionKey,
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
@@ -64,12 +65,10 @@ type QueueStatus = {
   showDetails?: boolean;
 };
 
-type StatusArgs = {
+export type StatusArgs = {
   config?: OpenClawConfig;
   agent: AgentConfig;
   agentId?: string;
-  runtimeContextTokens?: number;
-  explicitConfiguredContextTokens?: number;
   sessionEntry?: SessionEntry;
   sessionKey?: string;
   parentSessionKey?: string;
@@ -87,11 +86,16 @@ type StatusArgs = {
   timeLine?: string;
   queue?: QueueStatus;
   mediaDecisions?: ReadonlyArray<MediaUnderstandingDecision>;
+  /** Explicitly configured context tokens from agent config/selection */
+  explicitConfiguredContextTokens?: number;
+  /** Actual runtime context tokens reported by the model */
+  runtimeContextTokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
   subagentsLine?: string;
   includeTranscriptUsage?: boolean;
   now?: number;
 };
-
 type NormalizedAuthMode = "api-key" | "oauth" | "token" | "aws-sdk" | "mixed" | "unknown";
 
 function normalizeAuthMode(value?: string): NormalizedAuthMode | undefined {
@@ -241,6 +245,7 @@ const readUsageFromSessionLog = (
       output: number;
       promptTokens: number;
       total: number;
+      totalTokensFresh: boolean;
       model?: string;
     }
   | undefined => {
@@ -316,10 +321,7 @@ const readUsageFromSessionLog = (
     output = lastUsage.output ?? 0;
     promptTokens = derivePromptTokens(lastUsage) ?? lastUsage.total ?? input + output;
     const total = lastUsage.total ?? promptTokens + output;
-    if (promptTokens === 0 && total === 0) {
-      return undefined;
-    }
-    return { input, output, promptTokens, total, model };
+    return { input, output, promptTokens, total, totalTokensFresh: true, model };
   } catch {
     return undefined;
   }
@@ -461,15 +463,33 @@ export function buildStatusMessage(args: StatusArgs): string {
     selectedModel,
     sessionEntry: entry,
   });
-  const initialFallbackState = resolveActiveFallbackState({
-    selectedModelRef: modelRefs.selected.label || "unknown",
-    activeModelRef: modelRefs.active.label || "unknown",
-    state: entry,
-  });
   let activeProvider = modelRefs.active.provider;
   let activeModel = modelRefs.active.model;
+
+  const selectedModelLabel = modelRefs.selected.label || "unknown";
+  let activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
+  let fallbackState = resolveActiveFallbackState({
+    selectedModelRef: selectedModelLabel,
+    activeModelRef: activeModelLabel,
+    state: entry,
+  });
+
+  let inputTokens = entry?.inputTokens;
+  let outputTokens = entry?.outputTokens;
+  let cacheRead = entry?.cacheRead;
+  let cacheWrite = entry?.cacheWrite;
+  const freshTotal = resolveFreshSessionTotalTokens(entry);
+  let totalTokens =
+    freshTotal ??
+    entry?.totalTokensEstimate ??
+    entry?.totalTokens ??
+    (args.inputTokens !== undefined && args.outputTokens !== undefined
+      ? args.inputTokens + args.outputTokens
+      : undefined);
+
   let contextLookupProvider: string | undefined = activeProvider;
   let contextLookupModel = activeModel;
+
   const runtimeModelRaw = typeof entry?.model === "string" ? entry.model.trim() : "";
   const runtimeProviderRaw =
     typeof entry?.modelProvider === "string" ? entry.modelProvider.trim() : "";
@@ -478,13 +498,14 @@ export function buildStatusMessage(args: StatusArgs): string {
     const slashIndex = runtimeModelRaw.indexOf("/");
     const embeddedProvider = runtimeModelRaw.slice(0, slashIndex).trim().toLowerCase();
     const fallbackMatchesRuntimeModel =
-      initialFallbackState.active &&
+      fallbackState.active &&
       runtimeModelRaw.toLowerCase() ===
         String(entry?.fallbackNoticeActiveModel ?? "")
           .trim()
           .toLowerCase();
     const runtimeMatchesSelectedModel =
-      runtimeModelRaw.toLowerCase() === (modelRefs.selected.label || "unknown").toLowerCase();
+      runtimeModelRaw.toLowerCase() === selectedModelLabel.toLowerCase();
+
     // Legacy fallback sessions can persist provider-qualified runtime ids
     // without a separate modelProvider field. Preserve provider-aware lookup
     // when the stored slash id is the selected model or the active fallback
@@ -502,12 +523,6 @@ export function buildStatusMessage(args: StatusArgs): string {
     }
   }
 
-  let inputTokens = entry?.inputTokens;
-  let outputTokens = entry?.outputTokens;
-  let cacheRead = entry?.cacheRead;
-  let cacheWrite = entry?.cacheWrite;
-  let totalTokens = entry?.totalTokens ?? (entry?.inputTokens ?? 0) + (entry?.outputTokens ?? 0);
-
   // Prefer prompt-size tokens from the session transcript when it looks larger
   // (cached prompt tokens are often missing from agent meta/store).
   if (args.includeTranscriptUsage) {
@@ -520,7 +535,17 @@ export function buildStatusMessage(args: StatusArgs): string {
     );
     if (logUsage) {
       const candidate = logUsage.promptTokens || logUsage.total;
-      if (!totalTokens || totalTokens === 0 || candidate > totalTokens) {
+      const hasZeroEstimate = entry?.totalTokensEstimate === 0;
+
+      // Session transcript is authoritative — always prefer it over the store
+      // when it provides a larger prompt-size or total tokens.
+      const shouldFallbackToTranscript =
+        (freshTotal === undefined || candidate > freshTotal) &&
+        (entry?.totalTokensEstimate === undefined ||
+          (candidate > 0 && (hasZeroEstimate || candidate > entry.totalTokensEstimate))) &&
+        (!totalTokens || totalTokens === 0 || candidate > totalTokens);
+
+      if (shouldFallbackToTranscript) {
         totalTokens = candidate;
       }
       if (!entry?.model && logUsage.model) {
@@ -539,9 +564,6 @@ export function buildStatusMessage(args: StatusArgs): string {
           }
         } else {
           activeModel = logUsage.model;
-          // Bare transcript model IDs should keep provider-aware lookup when the
-          // active provider is already known so shared model names still resolve
-          // to the correct provider-specific window.
           contextLookupProvider = activeProvider;
           contextLookupModel = logUsage.model;
         }
@@ -555,20 +577,29 @@ export function buildStatusMessage(args: StatusArgs): string {
     }
   }
 
-  const activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
+  activeModelLabel = formatProviderModelRef(activeProvider, activeModel) || "unknown";
   const runtimeDiffersFromSelected = activeModelLabel !== (modelRefs.selected.label || "unknown");
+
+  fallbackState = resolveActiveFallbackState({
+    selectedModelRef: selectedModelLabel,
+    activeModelRef: activeModelLabel,
+    state: entry,
+  });
+
   const selectedContextTokens = resolveContextTokensForModel({
     cfg: contextConfig,
     provider: selectedProvider,
     model: selectedModel,
     allowAsyncLoad: false,
   });
+
   const activeContextTokens = resolveContextTokensForModel({
     cfg: contextConfig,
-    ...(contextLookupProvider ? { provider: contextLookupProvider } : {}),
+    provider: contextLookupProvider,
     model: contextLookupModel,
     allowAsyncLoad: false,
   });
+
   const persistedContextTokens =
     typeof entry?.contextTokens === "number" && entry.contextTokens > 0
       ? entry.contextTokens
@@ -670,8 +701,9 @@ export function buildStatusMessage(args: StatusArgs): string {
     ? (args.groupActivation ?? entry?.groupActivation ?? "mention")
     : undefined;
 
+  const displayTotal = totalTokens;
   const contextLine = [
-    `Context: ${formatTokens(totalTokens, contextTokens ?? null)}`,
+    `Context: ${formatTokens(displayTotal, contextTokens ?? null)}`,
     `🧹 Compactions: ${entry?.compactionCount ?? 0}`,
   ]
     .filter(Boolean)
@@ -719,12 +751,6 @@ export function buildStatusMessage(args: StatusArgs): string {
   const activeAuthLabelValue =
     args.activeModelAuth ??
     (activeAuthMode && activeAuthMode !== "unknown" ? activeAuthMode : undefined);
-  const selectedModelLabel = modelRefs.selected.label || "unknown";
-  const fallbackState = resolveActiveFallbackState({
-    selectedModelRef: selectedModelLabel,
-    activeModelRef: activeModelLabel,
-    state: entry,
-  });
   const effectiveCostAuthMode = fallbackState.active
     ? activeAuthMode
     : (selectedAuthMode ?? activeAuthMode);

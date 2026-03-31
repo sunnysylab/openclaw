@@ -4,7 +4,10 @@ import { loadConfig } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
 import { defaultRuntime } from "../runtime.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
-import { type DeliveryContext, normalizeDeliveryContext } from "../utils/delivery-context.js";
+import {
+  type DeliveryContext,
+  normalizeDeliveryContext,
+} from "../utils/delivery-context.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import {
   buildAnnounceIdFromChildRun,
@@ -93,7 +96,7 @@ export function buildSubagentSystemPrompt(params: {
     "- Complete this task. That's your entire purpose.",
     `- You are NOT the ${parentLabel}. Don't try to be.`,
     "",
-    "## Rules",
+    "## Your Rules",
     "1. **Stay focused** - Do your assigned task, nothing else",
     `2. **Complete the task** - Your final message will be automatically reported to the ${parentLabel}`,
     "3. **Don't initiate** - No heartbeats, no proactive actions, no side quests",

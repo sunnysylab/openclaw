@@ -537,9 +537,10 @@ describe("MatrixClient request hardening", () => {
 });
 
 describe("MatrixClient event bridge", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     matrixJsClient = createMatrixJsClientStub();
     lastCreateClientOpts = null;
+    ({ MatrixClient } = await import("./sdk.js"));
   });
 
   afterEach(() => {
@@ -969,9 +970,10 @@ describe("MatrixClient event bridge", () => {
 });
 
 describe("MatrixClient crypto bootstrapping", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     matrixJsClient = createMatrixJsClientStub();
     lastCreateClientOpts = null;
+    ({ MatrixClient } = await import("./sdk.js"));
   });
 
   afterEach(() => {

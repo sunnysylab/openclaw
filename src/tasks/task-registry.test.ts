@@ -907,7 +907,8 @@ describe("task-registry", () => {
       });
 
       const tasks = reconcileInspectableTasks();
-      expect(tasks[0]).toMatchObject({
+      const lostTask = tasks.find((t) => t.runId === "run-lost");
+      expect(lostTask).toMatchObject({
         runId: "run-lost",
         status: "lost",
         error: "backing session missing",

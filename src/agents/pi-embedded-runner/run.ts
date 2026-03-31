@@ -997,6 +997,7 @@ export async function runEmbeddedPiAgent(
                     lastRunPromptUsage,
                     lastAssistant,
                     lastTurnTotal,
+                    promptTokensOverride: attempt.promptTokens,
                   }),
                   systemPromptReport: attempt.systemPromptReport,
                   error: { kind: "role_ordering", message: errorText },
@@ -1029,6 +1030,7 @@ export async function runEmbeddedPiAgent(
                     lastRunPromptUsage,
                     lastAssistant,
                     lastTurnTotal,
+                    promptTokensOverride: attempt.promptTokens,
                   }),
                   systemPromptReport: attempt.systemPromptReport,
                   error: { kind: "image_size", message: errorText },
@@ -1255,7 +1257,7 @@ export async function runEmbeddedPiAgent(
             model: lastAssistant?.model ?? model.id,
             usage: usageMeta.usage,
             lastCallUsage: usageMeta.lastCallUsage,
-            promptTokens: usageMeta.promptTokens,
+            promptTokens: attempt.promptTokens ?? usageMeta.promptTokens,
             compactionCount: autoCompactionCount > 0 ? autoCompactionCount : undefined,
           };
 

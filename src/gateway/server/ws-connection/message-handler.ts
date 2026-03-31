@@ -425,6 +425,9 @@ export function attachGatewayWsMessageHandler(params: {
             allowHostHeaderOriginFallback: hostHeaderOriginFallbackEnabled,
             isLocalClient,
           });
+          logWsControl.info(
+            `Origin check for ${clientLabel}: ok=${originCheck.ok} isLocalClient=${isLocalClient} origin=${requestOrigin} host=${requestHost} hasBrowserOriginHeader=${hasBrowserOriginHeader}`,
+          );
           if (!originCheck.ok) {
             const errorMessage =
               "origin not allowed (open the Control UI from the gateway host or allow it in gateway.controlUi.allowedOrigins)";
@@ -786,6 +789,9 @@ export function attachGatewayWsMessageHandler(params: {
               isWebchat,
               reason,
             });
+            logWsControl.info(
+              `Silent pairing for ${clientLabel}: allow=${allowSilentLocalPairing} reason=${reason} isLocalClient=${isLocalClient} hasBrowserOriginHeader=${hasBrowserOriginHeader} isControlUi=${isControlUi} isWebchat=${isWebchat}`,
+            );
             const pairing = await requestDevicePairing({
               deviceId: device.id,
               publicKey: devicePublicKey,
@@ -814,6 +820,9 @@ export function attachGatewayWsMessageHandler(params: {
               approved = await approveDevicePairing(pairing.request.requestId, {
                 callerScopes: scopes,
               });
+              logWsControl.info(
+                `Auto-approval result for ${clientLabel}: ${approved?.status === "approved" ? "approved" : "failed"} requestId=${pairing.request.requestId}`,
+              );
               if (approved?.status === "approved") {
                 logGateway.info(
                   `device pairing auto-approved device=${approved.device.deviceId} role=${approved.device.role ?? "unknown"}`,
@@ -844,6 +853,9 @@ export function attachGatewayWsMessageHandler(params: {
             } else if (pairing.created) {
               context.broadcast("device.pair.requested", pairing.request, { dropIfSlow: true });
             }
+            logWsControl.info(
+              `Pairing required for ${clientLabel}: silent=${pairing.request.silent} requestId=${pairing.request.requestId}`,
+            );
             // Re-resolve: another connection may have superseded/approved the request since we created it
             recoveryRequestId = await resolveLivePendingRequestId();
             if (

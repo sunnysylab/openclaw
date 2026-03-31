@@ -1,3 +1,4 @@
+import { streamSimple } from "@mariozechner/pi-ai";
 import {
   definePluginEntry,
   type OpenClawPluginApi,
@@ -12,6 +13,7 @@ import {
 } from "./api.js";
 
 const PROVIDER_ID = "vllm";
+const DEFAULT_API_KEY = "vllm-local";
 
 async function loadProviderSetup() {
   return await import("openclaw/plugin-sdk/provider-setup");
@@ -84,6 +86,30 @@ export default definePluginEntry({
           hint: "Enter vLLM URL + API key + model",
           methodId: "custom",
         },
+      },
+      createStreamFn: ({ config }) => {
+        const providerConfig = config?.models?.providers?.[PROVIDER_ID];
+        const apiKey = providerConfig?.apiKey ?? DEFAULT_API_KEY;
+        return (model, context, options) => {
+          return streamSimple(model, context, {
+            ...options,
+            apiKey: (options?.apiKey ?? apiKey) as any,
+          });
+        };
+      },
+      resolveSyntheticAuth: ({ providerConfig }) => {
+        const hasApiConfig =
+          Boolean(providerConfig?.api?.trim()) ||
+          Boolean(providerConfig?.baseUrl?.trim()) ||
+          (Array.isArray(providerConfig?.models) && providerConfig.models.length > 0);
+        if (!hasApiConfig) {
+          return undefined;
+        }
+        return {
+          apiKey: DEFAULT_API_KEY,
+          source: `models.providers.${PROVIDER_ID} (synthetic local key)`,
+          mode: "api-key",
+        };
       },
       buildUnknownModelHint: () =>
         "vLLM requires authentication to be registered as a provider. " +
