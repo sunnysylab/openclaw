@@ -6,7 +6,7 @@ import {
   shouldAutoApproveDoctorFix,
   type DoctorRepairMode,
 } from "./doctor-repair-mode.js";
-import { guardCancel } from "./onboard-helpers.js";
+import { guardCancel } from "./wizard-core.js";
 
 export type DoctorOptions = {
   workspaceSuggestions?: boolean;
@@ -35,14 +35,15 @@ export function createDoctorPrompter(params: {
 }): DoctorPrompter {
   const repairMode = resolveDoctorRepairMode(params.options);
   const confirmDefault = async (p: Parameters<typeof confirm>[0]) => {
+    if (repairMode.nonInteractive) {
+      // Non-interactive doctor intentionally stays read-only for prompt-backed repairs.
+      return false;
+    }
     if (shouldAutoApproveDoctorFix(repairMode)) {
       return true;
     }
-    if (repairMode.nonInteractive) {
-      return false;
-    }
     if (!repairMode.canPrompt) {
-      return Boolean(p.initialValue ?? false);
+      return false;
     }
     return guardCancel(
       await confirm({
@@ -57,17 +58,17 @@ export function createDoctorPrompter(params: {
     confirm: confirmDefault,
     confirmAutoFix: confirmDefault,
     confirmAggressiveAutoFix: async (p) => {
-      if (shouldAutoApproveDoctorFix(repairMode, { requiresForce: true })) {
-        return true;
-      }
       if (repairMode.nonInteractive) {
         return false;
+      }
+      if (shouldAutoApproveDoctorFix(repairMode, { requiresForce: true })) {
+        return true;
       }
       if (repairMode.shouldRepair && !repairMode.shouldForce) {
         return false;
       }
       if (!repairMode.canPrompt) {
-        return Boolean(p.initialValue ?? false);
+        return false;
       }
       return guardCancel(
         await confirm({
@@ -78,14 +79,14 @@ export function createDoctorPrompter(params: {
       );
     },
     confirmRuntimeRepair: async (p) => {
-      if (shouldAutoApproveDoctorFix(repairMode, { blockDuringUpdate: true })) {
-        return true;
-      }
       if (repairMode.nonInteractive) {
         return false;
       }
+      if (shouldAutoApproveDoctorFix(repairMode, { blockDuringUpdate: true })) {
+        return true;
+      }
       if (!repairMode.canPrompt) {
-        return Boolean(p.initialValue ?? false);
+        return false;
       }
       return guardCancel(
         await confirm({

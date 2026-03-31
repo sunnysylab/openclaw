@@ -265,12 +265,10 @@ describe("runDaemonInstall", () => {
 
     expect(actionState.failed).toEqual([]);
     expect(replaceConfigFileMock).toHaveBeenCalledTimes(1);
-    const writtenConfig = replaceConfigFileMock.mock.calls[0]?.[0] as {
-      nextConfig?: {
-        gateway?: { auth?: { token?: string } };
-      };
+    const persistedRequest = replaceConfigFileMock.mock.calls[0]?.[0] as {
+      nextConfig?: { gateway?: { auth?: { token?: string } } };
     };
-    expect(writtenConfig.nextConfig?.gateway?.auth?.token).toBe("minted-token");
+    expect(persistedRequest.nextConfig?.gateway?.auth?.token).toBe("minted-token");
     expect(buildGatewayInstallPlanMock).toHaveBeenCalledWith(
       expect.objectContaining({ port: 18789 }),
     );

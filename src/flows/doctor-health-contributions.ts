@@ -27,6 +27,7 @@ import { noteMemorySearchHealth } from "../commands/doctor-memory-search.js";
 import {
   noteMacLaunchAgentOverrides,
   noteMacLaunchctlGatewayEnvOverrides,
+  noteWindowsGatewayPlatformNotes,
 } from "../commands/doctor-platform-notes.js";
 import { maybeRepairLegacyPluginManifestContracts } from "../commands/doctor-plugin-manifests.js";
 import type { DoctorOptions, DoctorPrompter } from "../commands/doctor-prompter.js";
@@ -41,7 +42,7 @@ import {
 import { noteWorkspaceStatus } from "../commands/doctor-workspace-status.js";
 import { MEMORY_SYSTEM_PROMPT, shouldSuggestMemorySystem } from "../commands/doctor-workspace.js";
 import { noteOpenAIOAuthTlsPrerequisites } from "../commands/oauth-tls-preflight.js";
-import { applyWizardMetadata, randomToken } from "../commands/onboard-helpers.js";
+import { applyWizardMetadata, randomToken } from "../commands/wizard-core.js";
 import { ensureSystemdUserLingerInteractive } from "../commands/systemd-linger.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { CONFIG_PATH, readConfigFileSnapshot, writeConfigFile } from "../config/config.js";
@@ -50,11 +51,15 @@ import { resolveSecretInputRef } from "../config/types.secrets.js";
 import { resolveGatewayService } from "../daemon/service.js";
 import { hasAmbiguousGatewayAuthModeConfig } from "../gateway/auth-mode-policy.js";
 import { resolveGatewayAuth } from "../gateway/auth.js";
-import { buildGatewayConnectionDetails } from "../gateway/call.js";
+import type { GatewayConnectionDetails } from "../gateway/call.js";
 import { runStartupMatrixMigration } from "../gateway/server-startup-matrix-migration.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { note } from "../terminal/note.js";
 import { shortenHomePath } from "../utils.js";
+import {
+  runDoctorContributionWithTimeout,
+  type TimedDoctorContribution,
+} from "./doctor-contribution-timeout.js";
 import type { FlowContribution } from "./types.js";
 
 export type DoctorFlowMode = "local" | "remote";
@@ -75,7 +80,7 @@ export type DoctorHealthFlowContext = {
   cfgForPersistence: OpenClawConfig;
   sourceConfigValid: boolean;
   configPath: string;
-  gatewayDetails?: ReturnType<typeof buildGatewayConnectionDetails>;
+  gatewayDetails?: GatewayConnectionDetails;
   healthOk?: boolean;
   gatewayMemoryProbe?: Awaited<ReturnType<typeof probeGatewayMemoryStatus>>;
 };
@@ -84,6 +89,14 @@ export type DoctorHealthContribution = FlowContribution & {
   kind: "core";
   surface: "health";
   run: (ctx: DoctorHealthFlowContext) => Promise<void>;
+};
+
+const doctorDebugEnabled = () => process.env.OPENCLAW_DEBUG_DOCTOR === "1";
+const debugDoctor = (message: string) => {
+  if (!doctorDebugEnabled()) {
+    return;
+  }
+  process.stderr.write(`[doctor:debug] ${message}\n`);
 };
 
 export function resolveDoctorMode(cfg: OpenClawConfig): DoctorFlowMode {
@@ -136,14 +149,23 @@ async function runGatewayConfigHealth(ctx: DoctorHealthFlowContext): Promise<voi
 }
 
 async function runAuthProfileHealth(ctx: DoctorHealthFlowContext): Promise<void> {
+  debugDoctor("doctor:auth-profiles:maybeRepairLegacyOAuthProfileIds:start");
   ctx.cfg = await maybeRepairLegacyOAuthProfileIds(ctx.cfg, ctx.prompter);
+  debugDoctor("doctor:auth-profiles:maybeRepairLegacyOAuthProfileIds:done");
+  debugDoctor("doctor:auth-profiles:maybeRemoveDeprecatedCliAuthProfiles:start");
   ctx.cfg = await maybeRemoveDeprecatedCliAuthProfiles(ctx.cfg, ctx.prompter);
+  debugDoctor("doctor:auth-profiles:maybeRemoveDeprecatedCliAuthProfiles:done");
+  debugDoctor("doctor:auth-profiles:noteAuthProfileHealth:start");
   await noteAuthProfileHealth({
     cfg: ctx.cfg,
     prompter: ctx.prompter,
     allowKeychainPrompt: ctx.options.nonInteractive !== true && Boolean(process.stdin.isTTY),
   });
+  debugDoctor("doctor:auth-profiles:noteAuthProfileHealth:done");
+  debugDoctor("doctor:auth-profiles:buildGatewayConnectionDetails:start");
+  const { buildGatewayConnectionDetails } = await import("../gateway/call.js");
   ctx.gatewayDetails = buildGatewayConnectionDetails({ config: ctx.cfg });
+  debugDoctor("doctor:auth-profiles:buildGatewayConnectionDetails:done");
   if (ctx.gatewayDetails.remoteFallbackNote) {
     note(ctx.gatewayDetails.remoteFallbackNote, "Gateway");
   }
@@ -274,6 +296,7 @@ async function runGatewayServicesHealth(ctx: DoctorHealthFlowContext): Promise<v
   );
   await noteMacLaunchAgentOverrides();
   await noteMacLaunchctlGatewayEnvOverrides(ctx.cfg);
+  await noteWindowsGatewayPlatformNotes();
 }
 
 async function runStartupMatrixHealth(ctx: DoctorHealthFlowContext): Promise<void> {
@@ -600,6 +623,10 @@ export function resolveDoctorHealthContributions(): DoctorHealthContribution[] {
 
 export async function runDoctorHealthContributions(ctx: DoctorHealthFlowContext): Promise<void> {
   for (const contribution of resolveDoctorHealthContributions()) {
-    await contribution.run(ctx);
+    await runDoctorContributionWithTimeout(
+      contribution as TimedDoctorContribution<DoctorHealthFlowContext>,
+      ctx,
+      debugDoctor,
+    );
   }
 }

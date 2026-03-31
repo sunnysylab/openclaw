@@ -32,9 +32,11 @@ export function copyStaticExtensionAssets(params = {}) {
   const assets = params.assets ?? STATIC_EXTENSION_ASSETS;
   const fsImpl = params.fs ?? fs;
   const warn = params.warn ?? console.warn;
+
   for (const { src, dest } of assets) {
     const srcPath = path.join(rootDir, src);
     const destPath = path.join(rootDir, dest);
+
     if (fsImpl.existsSync(srcPath)) {
       fsImpl.mkdirSync(path.dirname(destPath), { recursive: true });
       fsImpl.copyFileSync(srcPath, destPath);
@@ -68,10 +70,19 @@ export function writeStableRootRuntimeAliases(params = {}) {
   }
 }
 
-export function runRuntimePostBuild(params = {}) {
+export function runRuntimeMetadataPostBuild(params = {}) {
   copyPluginSdkRootAlias(params);
   copyBundledPluginMetadata(params);
   writeOfficialChannelCatalog(params);
+}
+
+export function runRuntimeNoBuildPostBuild(params = {}) {
+  runRuntimeMetadataPostBuild(params);
+  stageBundledPluginRuntimeDeps(params);
+}
+
+export function runRuntimePostBuild(params = {}) {
+  runRuntimeMetadataPostBuild(params);
   stageBundledPluginRuntimeDeps(params);
   stageBundledPluginRuntime(params);
   writeStableRootRuntimeAliases(params);
@@ -79,5 +90,5 @@ export function runRuntimePostBuild(params = {}) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  runRuntimePostBuild();
+  runRuntimePostBuild({ cwd: process.cwd() });
 }

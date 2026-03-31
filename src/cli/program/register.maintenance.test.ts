@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { registerMaintenanceCommands } from "./register.maintenance.js";
@@ -7,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   dashboardCommand: vi.fn(),
   resetCommand: vi.fn(),
   uninstallCommand: vi.fn(),
+  spawn: vi.fn(),
   runtime: {
     log: vi.fn(),
     error: vi.fn(),
@@ -14,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-const { doctorCommand, dashboardCommand, resetCommand, uninstallCommand, runtime } = mocks;
+const { doctorCommand, dashboardCommand, resetCommand, uninstallCommand, runtime, spawn } = mocks;
 
 vi.mock("../../commands/doctor.js", () => ({
   doctorCommand: mocks.doctorCommand,
@@ -36,6 +38,9 @@ vi.mock("../../runtime.js", () => ({
   defaultRuntime: mocks.runtime,
 }));
 
+vi.mock("node:child_process", () => ({
+  spawn: mocks.spawn,
+}));
 describe("registerMaintenanceCommands doctor action", () => {
   async function runMaintenanceCli(args: string[]) {
     const program = new Command();
@@ -45,6 +50,9 @@ describe("registerMaintenanceCommands doctor action", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    vi.stubEnv("OPENCLAW_DOCTOR_CHILD", "1");
   });
 
   it("exits with code 0 after successful doctor run", async () => {
@@ -83,6 +91,102 @@ describe("registerMaintenanceCommands doctor action", () => {
         repair: true,
       }),
     );
+  });
+
+  it("fails fast when non-interactive doctor exceeds the timeout budget", async () => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    vi.stubEnv("OPENCLAW_DOCTOR_TIMEOUT_MS", "10");
+    const originalDoctorChild = process.env.OPENCLAW_DOCTOR_CHILD;
+    delete process.env.OPENCLAW_DOCTOR_CHILD;
+    const originalArgv = process.argv;
+    process.argv = [process.execPath, "dist/index.js", "doctor", "--non-interactive"];
+    const child = new EventEmitter() as EventEmitter & {
+      kill: ReturnType<typeof vi.fn>;
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+    };
+    child.kill = vi.fn();
+    child.kill.mockImplementation(() => {
+      setTimeout(() => child.emit("exit", null, "SIGTERM"), 0);
+      return true;
+    });
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    spawn.mockReturnValue(child);
+
+    try {
+      const run = runMaintenanceCli(["doctor", "--non-interactive"]);
+      child.stderr.emit(
+        "data",
+        Buffer.from("[doctor-debug] providers.runtime:loadOpenClawPlugins:start\n"),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      await run;
+
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(child.kill).toHaveBeenCalledTimes(1);
+      expect(runtime.error).toHaveBeenCalledWith(
+        expect.stringContaining("Last observed stage: providers.runtime:loadOpenClawPlugins:start."),
+      );
+      expect(runtime.error).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Likely heavy area: provider plugin discovery or plugin loader initialization.",
+        ),
+      );
+      expect(runtime.exit).toHaveBeenCalledWith(1);
+    } finally {
+      if (originalDoctorChild === undefined) {
+        delete process.env.OPENCLAW_DOCTOR_CHILD;
+      } else {
+        process.env.OPENCLAW_DOCTOR_CHILD = originalDoctorChild;
+      }
+      process.argv = originalArgv;
+    }
+  });
+
+  it("keeps internal doctor debug lines out of stderr on successful child runs", async () => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    const originalDoctorChild = process.env.OPENCLAW_DOCTOR_CHILD;
+    delete process.env.OPENCLAW_DOCTOR_CHILD;
+    const originalArgv = process.argv;
+    const stderrWriteSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    process.argv = [process.execPath, "dist/index.js", "doctor", "--non-interactive"];
+    const child = new EventEmitter() as EventEmitter & {
+      kill: ReturnType<typeof vi.fn>;
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+    };
+    child.kill = vi.fn();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    spawn.mockReturnValue(child);
+
+    try {
+      const run = runMaintenanceCli(["doctor", "--non-interactive"]);
+      child.stderr.emit(
+        "data",
+        Buffer.from("[doctor-debug] providers.runtime:loadOpenClawPlugins:start\n"),
+      );
+      child.emit("exit", 0, null);
+      await run;
+
+      expect(stderrWriteSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("[doctor-debug]"),
+      );
+      expect(runtime.exit).toHaveBeenCalledWith(0);
+    } finally {
+      stderrWriteSpy.mockRestore();
+      if (originalDoctorChild === undefined) {
+        delete process.env.OPENCLAW_DOCTOR_CHILD;
+      } else {
+        process.env.OPENCLAW_DOCTOR_CHILD = originalDoctorChild;
+      }
+      process.argv = originalArgv;
+    }
   });
 
   it("passes noOpen to dashboard command", async () => {
