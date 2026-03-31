@@ -26,11 +26,7 @@ import {
   resolveVisibleSessionReference,
   stripToolMessages,
 } from "./sessions-helpers.js";
-import {
-  buildAgentToAgentMessageContext,
-  resolveAnnounceTargetFromKey,
-  resolvePingPongTurns,
-} from "./sessions-send-helpers.js";
+import { buildAgentToAgentMessageContext, resolvePingPongTurns } from "./sessions-send-helpers.js";
 import { type SessionsSendAnnouncePlan, runSessionsSendA2AFlow } from "./sessions-send-tool.a2a.js";
 
 const SessionsSendToolSchema = Type.Object({
@@ -69,15 +65,13 @@ function resolveImmediateFireAndForgetAnnounceDecision(params: {
   sessionKey: string;
   displayKey: string;
 }): AnnounceTargetDecision {
-  const parsedDecision = resolveParsedAnnounceTargetDecision(params.sessionKey);
+  const parsedDecision =
+    resolveParsedAnnounceTargetDecision(params.sessionKey) ??
+    (params.displayKey !== params.sessionKey
+      ? resolveParsedAnnounceTargetDecision(params.displayKey)
+      : null);
   if (parsedDecision) {
     return parsedDecision;
-  }
-  if (resolveAnnounceTargetFromKey(params.sessionKey)) {
-    return { kind: "unknown", reason: "missing_delivery" };
-  }
-  if (params.displayKey !== params.sessionKey && resolveAnnounceTargetFromKey(params.displayKey)) {
-    return { kind: "unknown", reason: "miss" };
   }
   return { kind: "unknown", reason: "miss" };
 }
