@@ -45,8 +45,15 @@ export const UtopiaConfigSchema = z
     allowFrom: z.array(allowFromEntry).optional(),
   })
   .superRefine((data, ctx) => {
+    const normalizedAllowFrom =
+      data.allowFrom?.filter((entry) => {
+        if (typeof entry === "string") {
+          return entry.trim().length > 0;
+        }
+        return true; // числа оставляем
+      }) ?? [];
+
     if (data.dmPolicy === "open") {
-      // allow only ["*"] or absence of the field
       if (data.allowFrom && !(data.allowFrom.length === 1 && data.allowFrom[0] === "*")) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -57,11 +64,11 @@ export const UtopiaConfigSchema = z
     }
 
     if (data.dmPolicy === "allowlist") {
-      // allowFrom is required and must not be empty
-      if (!data.allowFrom || data.allowFrom.length === 0) {
+      if (normalizedAllowFrom.length === 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "When dmPolicy is 'allowlist', allowFrom must be a non-empty array",
+          message:
+            "When dmPolicy is 'allowlist', allowFrom must contain at least one non-empty entry",
           path: ["allowFrom"],
         });
       }
