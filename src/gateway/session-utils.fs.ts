@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { deriveSessionTotalTokens, hasNonzeroUsage, normalizeUsage } from "../agents/usage.js";
+import { MAX_SESSION_USAGE_CACHE_MAX_ENTRIES } from "../config/gateway-sessions-list-limits.js";
 import { jsonUtf8Bytes } from "../infra/json-utf8-bytes.js";
 import { hasInterSessionUserProvenance } from "../sessions/input-provenance.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
@@ -735,8 +736,8 @@ type SessionUsageCacheEntry = {
 
 const sessionUsageCache = new Map<string, SessionUsageCacheEntry>();
 const DEFAULT_SESSION_USAGE_CACHE_MAX_ENTRIES = 5000;
-export const MAX_SESSION_USAGE_CACHE_MAX_ENTRIES = 100_000;
 let configuredSessionUsageCacheMaxEntries: number | undefined;
+export { MAX_SESSION_USAGE_CACHE_MAX_ENTRIES } from "../config/gateway-sessions-list-limits.js";
 
 export function applyConfiguredSessionUsageCacheSettings(config: {
   gateway?: {

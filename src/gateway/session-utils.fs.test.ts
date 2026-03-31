@@ -1124,11 +1124,17 @@ describe("readLatestSessionUsageFromTranscriptAsync", () => {
       | undefined;
     const originalOpen = fs.promises.open.bind(fs.promises);
     const openSpy = vi.spyOn(fs.promises, "open").mockImplementation(async (...args) => {
-      const fileHandle = await originalOpen(...(args as Parameters<typeof fs.promises.open>));
+      const fileHandle = await originalOpen(...args);
       const originalCreateReadStream = fileHandle.createReadStream.bind(fileHandle);
       vi.spyOn(fileHandle, "createReadStream").mockImplementation((options) => {
         capturedOptions =
-          typeof options === "object" && options ? { ...options } : (options as never);
+          typeof options === "object" && options
+            ? {
+                encoding: options.encoding ?? undefined,
+                start: options.start,
+                end: options.end,
+              }
+            : undefined;
         return originalCreateReadStream(options);
       });
       return fileHandle;
@@ -1149,17 +1155,6 @@ describe("readLatestSessionUsageFromTranscriptAsync", () => {
 });
 
 describe("session usage cache settings", () => {
-  let tmpDir: string;
-  let storePath: string;
-
-  registerTempSessionStore(
-    "openclaw-session-usage-guardrails-test-",
-    (nextTmpDir, nextStorePath) => {
-      tmpDir = nextTmpDir;
-      storePath = nextStorePath;
-    },
-  );
-
   afterEach(() => {
     setSessionUsageCacheMaxEntries(undefined);
   });
