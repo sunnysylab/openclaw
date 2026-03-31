@@ -33,6 +33,7 @@ describe("buildInboundMetaSystemPrompt", () => {
       MessageSid: "123",
       MessageSidFull: "123",
       ReplyToId: "99",
+      TrustedSenderPrincipal: "alice",
       OriginatingTo: "telegram:5494292670",
       AccountId: " work ",
       OriginatingChannel: "telegram",
@@ -45,7 +46,12 @@ describe("buildInboundMetaSystemPrompt", () => {
     expect(payload["schema"]).toBe("openclaw.inbound_meta.v1");
     expect(payload["chat_id"]).toBe("telegram:5494292670");
     expect(payload["account_id"]).toBe("work");
+    expect(payload["sender_principal"]).toBe("alice");
     expect(payload["channel"]).toBe("telegram");
+    expect(prompt).toContain("sender_principal is present, it is the canonical trusted identity");
+    expect(prompt).toContain(
+      "Do not ask the user to disambiguate who they are when sender_principal is present",
+    );
   });
 
   it("does not include per-turn message identifiers (cache stability)", () => {
@@ -90,6 +96,7 @@ describe("buildInboundMetaSystemPrompt", () => {
     const prompt = buildInboundMetaSystemPrompt({
       MessageSid: "458",
       SenderId: "   ",
+      TrustedSenderPrincipal: "   ",
       OriginatingTo: "telegram:-1001249586642",
       OriginatingChannel: "telegram",
       Provider: "telegram",
@@ -99,6 +106,7 @@ describe("buildInboundMetaSystemPrompt", () => {
 
     const payload = parseInboundMetaPayload(prompt);
     expect(payload["sender_id"]).toBeUndefined();
+    expect(payload["sender_principal"]).toBeUndefined();
   });
 });
 
