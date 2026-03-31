@@ -662,6 +662,18 @@ describe("buildAssistantMessageFromResponse", () => {
     expect(msg.usage.totalTokens).toBe(275);
   });
 
+  it("falls back to input+output sum when total_tokens is 0", () => {
+    const response = {
+      ...makeResponseObject("resp_5c", "Hello"),
+      usage: { input_tokens: 10, output_tokens: 5, total_tokens: 0 },
+    } as unknown as ResponseObject;
+    const msg = buildAssistantMessageFromResponse(response, modelInfo);
+    expect(msg.usage.input).toBe(10);
+    expect(msg.usage.output).toBe(5);
+    // total_tokens=0 → totalTokens should be computed as input+output = 15
+    expect(msg.usage.totalTokens).toBe(15);
+  });
+
   it("sets model/provider/api from modelInfo", () => {
     const response = makeResponseObject("resp_6", "Hi");
     const msg = buildAssistantMessageFromResponse(response, modelInfo);

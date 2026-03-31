@@ -587,9 +587,10 @@ export function buildAssistantMessageFromResponse(
     stopReason,
     usage: (() => {
       const normalized = normalizeUsage(response.usage);
+      const rawTotal = normalized?.total ?? response.usage?.total_tokens;
       return buildUsageWithNoCost({
         ...normalized,
-        totalTokens: normalized?.total ?? response.usage?.total_tokens,
+        totalTokens: rawTotal && rawTotal > 0 ? rawTotal : undefined,
       });
     })(),
   });
