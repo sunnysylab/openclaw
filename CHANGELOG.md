@@ -4,6 +4,10 @@ Docs: https://docs.openclaw.ai
 
 ## Unreleased
 
+### Fixes
+
+- iOS/canvas: restrict A2UI bridge trust to the bundled scaffold and an explicitly tracked capability URL so generic canvas.navigate/canvas.present loads no longer grant action-dispatch authority. (#58471) Thanks @nexrin.
+
 ## 2026.3.31-beta.1
 
 ### Breaking
