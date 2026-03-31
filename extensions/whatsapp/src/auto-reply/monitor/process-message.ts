@@ -418,21 +418,25 @@ export async function processMessage(params: {
           // web UI only; sending them here leaks chain-of-thought to end users.
           return;
         }
-        await deliverWebReply({
+        const deliveryResult = await deliverWebReply({
           replyResult: payload,
           msg: params.msg,
           mediaLocalRoots,
           maxMediaBytes: params.maxMediaBytes,
           textLimit,
           chunkMode,
+          accountId: params.route.accountId,
           replyLogger: params.replyLogger,
           connectionId: params.connectionId,
           skipLog: false,
           tableMode,
         });
+        // Use hook-rewritten text for echo suppression so outbound echoes are keyed
+        // on the actual sent content, not the pre-hook original.
+        const sentText = deliveryResult?.sentText ?? payload.text;
         didSendReply = true;
-        const shouldLog = payload.text ? true : undefined;
-        params.rememberSentText(payload.text, {
+        const shouldLog = sentText ? true : undefined;
+        params.rememberSentText(sentText, {
           combinedBody,
           combinedBodySessionKey: params.route.sessionKey,
           logVerboseMessage: shouldLog,

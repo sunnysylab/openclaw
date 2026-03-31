@@ -1,4 +1,5 @@
 import type { MarkdownTableMode } from "openclaw/plugin-sdk/config-runtime";
+import { runOutboundMessageHook } from "openclaw/plugin-sdk/plugin-runtime";
 import {
   resolveOutboundMediaUrls,
   sendMediaWithLeadingCaption,
@@ -36,6 +37,7 @@ export async function deliverWebReply(params: {
   maxMediaBytes: number;
   textLimit: number;
   chunkMode?: ChunkMode;
+  accountId?: string;
   replyLogger: {
     info: (obj: unknown, msg: string) => void;
     warn: (obj: unknown, msg: string) => void;
@@ -43,8 +45,17 @@ export async function deliverWebReply(params: {
   connectionId?: string;
   skipLog?: boolean;
   tableMode?: MarkdownTableMode;
-}) {
-  const { replyResult, msg, maxMediaBytes, textLimit, replyLogger, connectionId, skipLog } = params;
+}): Promise<{ sentText: string | null } | undefined> {
+  const {
+    replyResult,
+    msg,
+    maxMediaBytes,
+    textLimit,
+    replyLogger,
+    connectionId,
+    skipLog,
+    accountId,
+  } = params;
   const replyStarted = Date.now();
   if (shouldSuppressReasoningReply(replyResult)) {
     whatsappOutboundLog.debug(`Suppressed reasoning payload to ${msg.from}`);
@@ -52,9 +63,16 @@ export async function deliverWebReply(params: {
   }
   const tableMode = params.tableMode ?? "code";
   const chunkMode = params.chunkMode ?? "length";
-  const convertedText = markdownToWhatsApp(
-    convertMarkdownTables(replyResult.text || "", tableMode),
-  );
+  const hookResult = await runOutboundMessageHook({
+    to: msg.from,
+    content: replyResult.text ?? "",
+    channel: "whatsapp",
+    accountId,
+    mediaUrls: replyResult.mediaUrls ?? (replyResult.mediaUrl ? [replyResult.mediaUrl] : undefined),
+  });
+  if (hookResult === null) return;
+  const effectiveSentText = hookResult.content !== (replyResult.text ?? "") ? hookResult.content : null;
+  const convertedText = markdownToWhatsApp(convertMarkdownTables(hookResult.content, tableMode));
   const textChunks = chunkMarkdownTextWithMode(convertedText, textLimit, chunkMode);
   const mediaList = resolveOutboundMediaUrls(replyResult);
 
@@ -108,7 +126,7 @@ export async function deliverWebReply(params: {
       },
       "auto-reply sent (text)",
     );
-    return;
+    return { sentText: effectiveSentText };
   }
 
   const remainingText = [...textChunks];
@@ -214,4 +232,5 @@ export async function deliverWebReply(params: {
   for (const chunk of remainingText) {
     await msg.reply(chunk);
   }
+  return { sentText: effectiveSentText };
 }

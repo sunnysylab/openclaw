@@ -1,4 +1,5 @@
 import type { MarkdownTableMode } from "openclaw/plugin-sdk/config-runtime";
+import { runOutboundMessageHook } from "openclaw/plugin-sdk/plugin-runtime";
 import {
   deliverTextOrMediaReply,
   resolveSendableOutboundReplyParts,
@@ -34,7 +35,19 @@ export async function deliverReplies(params: {
     // must not force threading.
     const inlineReplyToId = params.replyToMode === "off" ? undefined : payload.replyToId;
     const threadTs = inlineReplyToId ?? params.replyThreadTs;
-    const reply = resolveSendableOutboundReplyParts(payload);
+    const hookResult = await runOutboundMessageHook({
+      to: params.target,
+      content: payload.text ?? "",
+      channel: "slack",
+      accountId: params.accountId,
+      mediaUrls: payload.mediaUrls ?? (payload.mediaUrl ? [payload.mediaUrl] : undefined),
+    });
+    if (hookResult === null) continue;
+    const reply = resolveSendableOutboundReplyParts(
+      hookResult.content !== (payload.text ?? "")
+        ? { ...payload, text: hookResult.content }
+        : payload,
+    );
     const slackBlocks = readSlackReplyBlocks(payload);
     if (!reply.hasContent && !slackBlocks?.length) {
       continue;
