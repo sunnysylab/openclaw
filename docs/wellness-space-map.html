@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenBodhi — Wellness Space Map</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #030508;
+  --panel: rgba(6, 10, 20, 0.88);
+  --border: rgba(255,255,255,0.06);
+  --text: #dde2f0;
+  --dim: rgba(221,226,240,0.38);
+  --muted: rgba(221,226,240,0.16);
+  --live: #00ff88;
+  --c-wellness:     #00d4b4;
+  --c-fitness:      #ff6b35;
+  --c-health:       #7fff6b;
+  --c-mental:       #c47aff;
+  --c-cognitive:    #4ab8ff;
+  --c-bridge:       #ffd166;
+  --mono: 'Space Mono', monospace;
+  --serif: 'Cormorant Garamond', serif;
+}
+html, body { width:100%; height:100%; background:var(--bg); overflow:hidden; font-family:var(--mono); color:var(--text); font-size:11px; }
+
+body::before {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(ellipse 55% 45% at 28% 38%, rgba(0,212,180,0.05) 0%, transparent 65%),
+    radial-gradient(ellipse 40% 55% at 72% 62%, rgba(196,122,255,0.05) 0%, transparent 65%),
+    radial-gradient(ellipse 30% 30% at 60% 25%, rgba(74,184,255,0.04) 0%, transparent 60%);
+}
+
+/* HEADER */
+#hdr {
+  position:fixed; top:0; left:0; right:0; height:38px;
+  display:flex; align-items:center; justify-content:space-between; padding:0 16px;
+  background:rgba(3,5,8,0.92); border-bottom:1px solid var(--border);
+  backdrop-filter:blur(16px); z-index:100; letter-spacing:.12em;
+}
+#hdr .brand { font-size:10px; font-weight:700; letter-spacing:.22em; text-transform:uppercase; }
+#hdr .subtitle { font-size:9px; color:var(--dim); letter-spacing:.18em; text-transform:uppercase; }
+#hdr .live { display:flex; align-items:center; gap:6px; font-size:9px; color:var(--live); letter-spacing:.12em; }
+.live-dot { width:6px; height:6px; border-radius:50%; background:var(--live); animation:blink 2s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+/* GRAPH */
+#graph { position:fixed; inset:38px 0 0 0; z-index:1; }
+#graph svg { width:100%; height:100%; }
+
+/* PANEL BASE */
+.panel {
+  position:fixed; background:var(--panel); border:1px solid var(--border);
+  border-radius:8px; backdrop-filter:blur(22px); z-index:50;
+}
+
+/* CONTROL PANEL */
+#ctrl { top:52px; left:12px; width:196px; padding:14px; display:flex; flex-direction:column; gap:14px; }
+
+.sec-label { font-size:8px; letter-spacing:.26em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+.divider { height:1px; background:var(--border); }
+
+/* Domain filters */
+.df {
+  display:flex; align-items:center; gap:8px; padding:3px 6px; border-radius:4px;
+  border:1px solid transparent; cursor:pointer; user-select:none; transition:all .14s;
+}
+.df:hover { background:rgba(255,255,255,.04); }
+.df.on { border-color:currentColor; background:rgba(255,255,255,.03); }
+.df-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.df-name { flex:1; font-size:10px; color:var(--text); }
+.df-n { font-size:9px; color:var(--muted); }
+
+/* Range / toggles */
+.ctrl-row { display:flex; flex-direction:column; gap:5px; }
+.ctrl-lbl { display:flex; justify-content:space-between; font-size:9px; color:var(--dim); letter-spacing:.08em; }
+input[type=range] {
+  width:100%; -webkit-appearance:none; height:2px; border-radius:1px;
+  background:rgba(255,255,255,.1); outline:none; cursor:pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:10px; height:10px; border-radius:50%;
+  background:var(--text); cursor:pointer;
+}
+.tog { display:flex; align-items:center; gap:7px; font-size:9px; color:var(--dim); cursor:pointer; user-select:none; letter-spacing:.06em; }
+.togbox {
+  width:11px; height:11px; border:1px solid rgba(255,255,255,.2); border-radius:2px;
+  display:flex; align-items:center; justify-content:center; transition:all .14s; flex-shrink:0;
+}
+.togbox.on { background:var(--c-bridge); border-color:var(--c-bridge); }
+.togbox.on::after { content:'✓'; font-size:8px; color:#000; line-height:1; }
+
+/* SOC status */
+.soc-item { display:flex; gap:8px; padding:6px 8px; border-radius:4px; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.04); }
+.soc-icon { font-size:11px; flex-shrink:0; }
+.soc-txt { font-size:8.5px; color:var(--dim); line-height:1.55; }
+.soc-txt b { display:block; color:var(--text); font-size:9px; margin-bottom:1px; }
+
+/* DETAIL PANEL */
+#detail {
+  bottom:12px; right:12px; width:272px; padding:16px;
+  display:none; flex-direction:column; gap:9px;
+}
+#detail.on { display:flex; }
+.det-meta { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.det-badge { font-size:8px; letter-spacing:.14em; text-transform:uppercase; padding:2px 6px; border-radius:3px; border:1px solid; }
+.det-type { font-size:8px; color:var(--muted); letter-spacing:.08em; }
+.det-energy { margin-left:auto; display:flex; gap:2px; align-items:center; }
+.ep { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.12); }
+.ep.on { background:currentColor; }
+.det-content {
+  font-family:var(--serif); font-size:15px; font-style:italic; line-height:1.55;
+  color:var(--text); border-left:2px solid rgba(255,255,255,.1); padding-left:10px;
+}
+.det-tags { display:flex; flex-wrap:wrap; gap:4px; }
+.det-tag { font-size:8px; padding:2px 7px; background:rgba(255,255,255,.05); border-radius:10px; color:var(--muted); }
+.ai-section {
+  background:rgba(196,122,255,.06); border:1px solid rgba(196,122,255,.15);
+  border-radius:5px; padding:9px 10px; display:flex; flex-direction:column; gap:5px;
+}
+.ai-label { font-size:8px; color:rgba(196,122,255,.7); letter-spacing:.14em; text-transform:uppercase; }
+.ai-paper { font-size:8.5px; color:var(--dim); line-height:1.5; }
+
+/* TOOLTIP */
+#tip {
+  position:fixed; background:rgba(3,5,8,.96); border:1px solid rgba(255,255,255,.1);
+  border-radius:6px; padding:9px 11px; font-size:10px; max-width:210px;
+  pointer-events:none; z-index:200; display:none; line-height:1.5;
+}
+
+/* STATS */
+#stats {
+  position:fixed; bottom:12px; left:12px; font-size:9px; color:var(--muted);
+  letter-spacing:.1em; line-height:2.1; z-index:50;
+}
+
+/* SVG domain label */
+.dom-lbl { font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; fill:rgba(255,255,255,.12); pointer-events:none; }
+
+/* Pulse rings */
+@keyframes soc-out {
+  0%   { opacity:.55; transform:scale(1); }
+  100% { opacity:0;   transform:scale(3.2); }
+}
+.pulse-ring {
+  fill:none; stroke:white; stroke-width:.8;
+  transform-box:fill-box; transform-origin:center;
+  animation:soc-out 2.6s ease-out infinite;
+}
+.pulse-ring.delay { animation-delay:1.3s; }
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <div class="brand">OpenBodhi</div>
+  <div class="subtitle">Wellness Space Map</div>
+  <div class="live">
+    <div class="live-dot"></div>
+    <span>Live</span>
+    <span style="color:var(--muted);margin-left:10px" id="dt"></span>
+  </div>
+</div>
+
+<div id="graph"><svg id="svg"></svg></div>
+
+<div class="panel" id="ctrl">
+  <div>
+    <div class="sec-label">Domains</div>
+    <div id="dom-filters" style="display:flex;flex-direction:column;gap:3px"></div>
+  </div>
+  <div class="divider"></div>
+  <div>
+    <div class="sec-label">Filters</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div class="ctrl-row">
+        <div class="ctrl-lbl"><span>Energy minimum</span><span id="e-val">1</span></div>
+        <input type="range" id="e-slider" min="1" max="5" value="1" step="1">
+      </div>
+      <label class="tog" id="tog-bridges"><div class="togbox" id="tb-bridges"></div>Show bridges only</label>
+      <label class="tog" id="tog-soc"><div class="togbox" id="tb-soc"></div>Highlight SOC clusters</label>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div>
+    <div class="sec-label">SOC Status</div>
+    <div id="soc-list" style="display:flex;flex-direction:column;gap:5px"></div>
+  </div>
+</div>
+
+<div class="panel" id="detail">
+  <div class="det-meta" id="d-meta"></div>
+  <div class="det-content" id="d-content"></div>
+  <div class="det-tags" id="d-tags"></div>
+  <div class="ai-section" id="d-ai" style="display:none">
+    <div class="ai-label">✦ AI context</div>
+    <div class="ai-paper" id="d-papers"></div>
+  </div>
+</div>
+
+<div id="tip"></div>
+<div id="stats">
+  <div id="st-nodes"></div>
+  <div id="st-edges"></div>
+</div>
+
+<script>
+// ── DATA ─────────────────────────────────────────────────────────────────────
+
+const DOM = {
+  wellness:      { color:'#00d4b4', label:'Wellness',      cnt:0 },
+  fitness:       { color:'#ff6b35', label:'Fitness',       cnt:0 },
+  health:        { color:'#7fff6b', label:'Health',        cnt:0 },
+  'mental-health':{ color:'#c47aff', label:'Mental Health', cnt:0 },
+  cognitive:     { color:'#4ab8ff', label:'Cognitive',     cnt:0 },
+};
+
+const PAPERS = {
+  sleep:       'Beggs & Plenz 2003 — neuronal avalanches in sleep-wake transitions',
+  meditation:  'Chialvo 2010 — critical brain dynamics, sustained attention networks',
+  hiit:        'Ratey 2008 — exercise as anxiolytic, BDNF pathway activation',
+  gut:         'Cryan et al. 2019 — gut-brain axis, microbiome-mood signaling',
+  circadian:   'Walker 2017 — circadian rhythm as master regulator of cognition',
+  deepwork:    'Newport 2016 — sustained attention and deliberate practice theory',
+};
+
+const RAW = [
+  // Wellness (12)
+  { id:'w01', c:'Sleep 8h — felt completely restored', d:'wellness',      t:'Pattern',     e:5, tags:['sleep','recovery'],    w:4, soc:true,  papers:'sleep' },
+  { id:'w02', c:'Morning sunlight 10min before screens', d:'wellness',   t:'Practice',    e:4, tags:['circadian','light'],    w:3 },
+  { id:'w03', c:'Evening walk lowers next-day anxiety', d:'wellness',    t:'Pattern',     e:4, tags:['routine','stress'],     w:3 },
+  { id:'w04', c:'Hydration: 3L days feel different',    d:'wellness',    t:'Idea',        e:3, tags:['hydration'],            w:2 },
+  { id:'w05', c:'Cold shower — zero grogginess',        d:'wellness',    t:'Practice',    e:4, tags:['cold','morning'],       w:4 },
+  { id:'w06', c:'Blue light glasses after 8pm',         d:'wellness',    t:'Practice',    e:3, tags:['light','sleep'],        w:2 },
+  { id:'w07', c:'Body scan before bed — 3 min',         d:'wellness',    t:'Practice',    e:3, tags:['body','sleep'],         w:1 },
+  { id:'w08', c:'Nature time 20min — mood reset',       d:'wellness',    t:'Pattern',     e:4, tags:['nature','mood'],        w:3 },
+  { id:'w09', c:'Breath work 4-7-8 method works',       d:'wellness',    t:'Practice',    e:3, tags:['breathing','calm'],     w:2 },
+  { id:'w10', c:'Sleep cycle: 6h or 7.5h not 7h',      d:'wellness',    t:'Idea',        e:4, tags:['sleep','circadian'],    w:3, soc:true,  papers:'circadian' },
+  { id:'w11', c:'Room temp 18°C for deep sleep',        d:'wellness',    t:'Decision',    e:4, tags:['sleep','environment'],  w:3, soc:true },
+  { id:'w12', c:'Daily rhythm matters more than quantity', d:'wellness', t:'Synthesis',   e:5, tags:['circadian','rhythm'],   w:5, soc:true,  papers:'circadian' },
+  // Fitness (10)
+  { id:'f01', c:'5K in 22 min — new baseline',          d:'fitness',     t:'Pattern',     e:4, tags:['running','cardio'],    w:3 },
+  { id:'f02', c:'Morning runs beat evening for energy', d:'fitness',     t:'Pattern',     e:3, tags:['running','timing'],    w:2 },
+  { id:'f03', c:'Strength 3×/week beats 5×',            d:'fitness',     t:'Decision',    e:4, tags:['strength','recovery'], w:4 },
+  { id:'f04', c:'HIIT drops anxiety fast',              d:'fitness',     t:'Pattern',     e:5, tags:['hiit','anxiety'],      w:4, near:true, papers:'hiit' },
+  { id:'f05', c:'Yoga 30min → next day mobility',       d:'fitness',     t:'Practice',    e:3, tags:['yoga','mobility'],     w:2 },
+  { id:'f06', c:'Rest days feel guilty but necessary',  d:'fitness',     t:'Idea',        e:2, tags:['recovery','rest'],     w:1 },
+  { id:'f07', c:'10k steps baseline for mood',          d:'fitness',     t:'Pattern',     e:3, tags:['steps','movement'],    w:3 },
+  { id:'f08', c:'Zone 2 cardio: sustainable, mood-lifting', d:'fitness', t:'Practice',    e:4, tags:['cardio','zone2'],      w:3 },
+  { id:'f09', c:'Swimming resets nervous system',       d:'fitness',     t:'Pattern',     e:4, tags:['swimming','ns'],       w:2 },
+  { id:'f10', c:'Movement is medicine — not exercise',  d:'fitness',     t:'Synthesis',   e:5, tags:['movement','reframe'],  w:5, near:true },
+  // Health (10)
+  { id:'h01', c:'Fermented foods daily — gut clear',   d:'health',      t:'Practice',    e:3, tags:['gut','fermented'],     w:3 },
+  { id:'h02', c:'Omega-3 fish oil — joint difference', d:'health',      t:'Practice',    e:3, tags:['supplements','joints'],w:2 },
+  { id:'h03', c:'Protein 1.6g/kg/day for recovery',    d:'health',      t:'Decision',    e:4, tags:['protein','nutrition'], w:4 },
+  { id:'h04', c:'Vit D was 28 — supplemented',         d:'health',      t:'Decision',    e:4, tags:['vitd','bloodwork'],    w:3 },
+  { id:'h05', c:'Whole foods — less inflammation',      d:'health',      t:'Pattern',     e:4, tags:['diet','inflammation'], w:4 },
+  { id:'h06', c:'16:8 fasting — clarity in mornings',  d:'health',      t:'Practice',    e:3, tags:['fasting','clarity'],   w:2 },
+  { id:'h07', c:'Meal prep Sunday = no decisions weekdays', d:'health',  t:'Practice',    e:3, tags:['meal-prep','routine'], w:3 },
+  { id:'h08', c:'Sugar crash pattern identified',       d:'health',      t:'Idea',        e:3, tags:['sugar','energy'],      w:1 },
+  { id:'h09', c:'Gut health → mood link is real',       d:'health',      t:'Synthesis',   e:5, tags:['gut','mood'],          w:4, papers:'gut' },
+  { id:'h10', c:'Creatine for cognitive performance too', d:'health',    t:'Idea',        e:3, tags:['creatine','cognitive'],w:1 },
+  // Mental Health (9)
+  { id:'mh01', c:'Morning meditation 10min — day changes', d:'mental-health', t:'Practice', e:5, tags:['meditation','morning'], w:5, near:true, papers:'meditation' },
+  { id:'mh02', c:'Gratitude journal: 3 things, no pressure', d:'mental-health', t:'Practice', e:4, tags:['gratitude','journaling'], w:4, near:true },
+  { id:'mh03', c:'Therapy: naming emotions reduces intensity', d:'mental-health', t:'Pattern', e:4, tags:['therapy','emotions'], w:3 },
+  { id:'mh04', c:'Anxiety trigger: undefined open time', d:'mental-health', t:'Idea', e:3, tags:['anxiety','structure'], w:2 },
+  { id:'mh05', c:'Cognitive reframe takes 15 min, not hours', d:'mental-health', t:'Pattern', e:4, tags:['cbt','reframe'], w:3 },
+  { id:'mh06', c:'Social battery: 3h max extroversion', d:'mental-health', t:'Idea', e:3, tags:['introvert','energy'], w:2 },
+  { id:'mh07', c:'Boundaries reduce resentment immediately', d:'mental-health', t:'Pattern', e:4, tags:['boundaries','relationships'], w:3 },
+  { id:'mh08', c:'Stress and gut are bidirectional',    d:'mental-health', t:'Synthesis', e:5, tags:['stress','gut'], w:4, papers:'gut' },
+  { id:'mh09', c:'Mindfulness: noticing, not emptiness', d:'mental-health', t:'Idea', e:4, tags:['mindfulness','reframe'], w:3 },
+  // Cognitive (9)
+  { id:'c01', c:'Deep work: 90min blocks before noon', d:'cognitive', t:'Practice', e:5, tags:['deepwork','focus'], w:5, soc:true, papers:'deepwork' },
+  { id:'c02', c:'Spaced repetition: Anki for language', d:'cognitive', t:'Practice', e:3, tags:['memory','learning'], w:3 },
+  { id:'c03', c:'Note synthesis > note taking',         d:'cognitive', t:'Idea',     e:4, tags:['pkm','synthesis'],  w:3 },
+  { id:'c04', c:'Reading 30min before bed — retention better', d:'cognitive', t:'Pattern', e:3, tags:['reading','retention'], w:2 },
+  { id:'c05', c:'Mental models reduce decision fatigue', d:'cognitive', t:'Synthesis', e:4, tags:['mental-models','decisions'], w:4 },
+  { id:'c06', c:'Focus: no notifications until 11am',  d:'cognitive', t:'Practice', e:4, tags:['focus','distraction'], w:4 },
+  { id:'c07', c:'Teaching = fastest learning method',  d:'cognitive', t:'Idea',     e:3, tags:['learning','teaching'], w:2 },
+  { id:'c08', c:'Sleep deprivation kills working memory', d:'cognitive', t:'Pattern', e:5, tags:['sleep','memory'], w:3, soc:true, papers:'sleep' },
+  { id:'c09', c:'Meditation improves sustained attention', d:'cognitive', t:'Pattern', e:5, tags:['meditation','attention'], w:4, soc:true, papers:'meditation' },
+];
+
+const RAW_EDGES = [
+  // wellness
+  {s:'w01',t:'w10'}, {s:'w01',t:'w11'}, {s:'w02',t:'w10'}, {s:'w06',t:'w01'},
+  {s:'w05',t:'w02'}, {s:'w07',t:'w01'}, {s:'w09',t:'w03'}, {s:'w12',t:'w10'},
+  {s:'w12',t:'w02'}, {s:'w08',t:'w03'},
+  // fitness
+  {s:'f01',t:'f02'}, {s:'f03',t:'f06'}, {s:'f08',t:'f01'}, {s:'f10',t:'f07'},
+  {s:'f10',t:'f03'}, {s:'f05',t:'f06'}, {s:'f04',t:'f01'}, {s:'f09',t:'f08'},
+  // health
+  {s:'h09',t:'h01'}, {s:'h05',t:'h03'}, {s:'h06',t:'h05'}, {s:'h07',t:'h05'},
+  {s:'h09',t:'h08'}, {s:'h04',t:'h02'}, {s:'h03',t:'h02'},
+  // mental-health
+  {s:'mh01',t:'mh09'}, {s:'mh02',t:'mh01'}, {s:'mh03',t:'mh05'}, {s:'mh08',t:'mh04'},
+  {s:'mh07',t:'mh04'}, {s:'mh09',t:'mh03'},
+  // cognitive
+  {s:'c01',t:'c06'}, {s:'c05',t:'c03'}, {s:'c09',t:'c01'}, {s:'c08',t:'c01'},
+  {s:'c02',t:'c04'}, {s:'c07',t:'c03'},
+  // BRIDGES — cross-domain, gold
+  {s:'f04', t:'mh04', bridge:true},
+  {s:'w01', t:'c08',  bridge:true},
+  {s:'w12', t:'c09',  bridge:true},
+  {s:'mh01',t:'c09',  bridge:true},
+  {s:'h09', t:'mh08', bridge:true},
+  {s:'w03', t:'mh04', bridge:true},
+  {s:'h05', t:'f10',  bridge:true},
+  {s:'h10', t:'c01',  bridge:true},
+  {s:'f08', t:'mh05', bridge:true},
+];
+
+const SOC_CLUSTERS = [
+  { label:'Sleep × Cognition', detail:'5 wks · avg energy 4.6 · ⚡ Critical', critical:true },
+  { label:'Meditation × Attention', detail:'4 wks · avg energy 4.7 · ⚡ Critical', critical:true },
+  { label:'HIIT × Anxiety bridge', detail:'3 wks · building · ◯ Near', critical:false },
+  { label:'Movement as Medicine', detail:'2 wks · emerging · ◯ Near', critical:false },
+];
+
+// Count
+RAW.forEach(n => DOM[n.d].cnt++);
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let activeDomains = new Set(Object.keys(DOM));
+let eMin = 1, showBridges = false, showSoc = false;
+
+// ── DOM SETUP ─────────────────────────────────────────────────────────────────
+document.getElementById('dt').textContent =
+  new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+
+// Domain filters
+const dfContainer = document.getElementById('dom-filters');
+Object.entries(DOM).forEach(([k, d]) => {
+  const el = document.createElement('div');
+  el.className = 'df on'; el.dataset.k = k; el.style.color = d.color;
+  el.innerHTML = `<div class="df-dot" style="background:${d.color}"></div><span class="df-name">${d.label}</span><span class="df-n">${d.cnt}</span>`;
+  el.addEventListener('click', () => {
+    if (activeDomains.has(k)) { if (activeDomains.size > 1) { activeDomains.delete(k); el.classList.remove('on'); } }
+    else { activeDomains.add(k); el.classList.add('on'); }
+    refresh();
+  });
+  dfContainer.appendChild(el);
+});
+
+// Energy slider
+document.getElementById('e-slider').addEventListener('input', function() {
+  eMin = +this.value; document.getElementById('e-val').textContent = eMin; refresh();
+});
+
+// Toggles
+function mkToggle(togId, boxId, cb) {
+  let on = false;
+  document.getElementById(togId).addEventListener('click', () => {
+    on = !on; document.getElementById(boxId).classList.toggle('on', on); cb(on);
+  });
+}
+mkToggle('tog-bridges','tb-bridges', v => { showBridges = v; refresh(); });
+mkToggle('tog-soc',    'tb-soc',     v => { showSoc = v; refresh(); });
+
+// SOC list
+const socList = document.getElementById('soc-list');
+SOC_CLUSTERS.forEach(s => {
+  const el = document.createElement('div'); el.className = 'soc-item';
+  el.innerHTML = `<span class="soc-icon">${s.critical ? '⚡' : '◯'}</span><div class="soc-txt"><b>${s.label}</b>${s.detail}</div>`;
+  socList.appendChild(el);
+});
+
+// ── D3 ────────────────────────────────────────────────────────────────────────
+const W = window.innerWidth, H = window.innerHeight - 38;
+const cx = W / 2, cy = H / 2;
+
+// Pentagon cluster centers
+const domKeys = Object.keys(DOM);
+const clusterR = Math.min(W, H) * 0.27;
+const centers = {};
+domKeys.forEach((k, i) => {
+  const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+  centers[k] = { x: cx + clusterR * Math.cos(a), y: cy + clusterR * Math.sin(a) };
+});
+
+const svg = d3.select('#svg');
+const defs = svg.append('defs');
+
+// Glow filter
+const gf = defs.append('filter').attr('id','glow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+gf.append('feGaussianBlur').attr('stdDeviation','3.5').attr('result','blur');
+const fm = gf.append('feMerge');
+fm.append('feMergeNode').attr('in','blur');
+fm.append('feMergeNode').attr('in','SourceGraphic');
+
+// Bridge glow
+const bg = defs.append('filter').attr('id','bglow').attr('x','-80%').attr('y','-80%').attr('width','260%').attr('height','260%');
+bg.append('feGaussianBlur').attr('stdDeviation','2').attr('result','blur');
+const fm2 = bg.append('feMerge');
+fm2.append('feMergeNode').attr('in','blur');
+fm2.append('feMergeNode').attr('in','SourceGraphic');
+
+// Nodes + edges
+const nodeById = {};
+const nodes = RAW.map(n => {
+  const nd = { ...n, x: centers[n.d].x + (Math.random()-.5)*70, y: centers[n.d].y + (Math.random()-.5)*70 };
+  nodeById[n.id] = nd; return nd;
+});
+const edges = RAW_EDGES.map(e => ({ ...e, source: nodeById[e.s], target: nodeById[e.t] }));
+
+// Bridge node set
+const bridgeNodeIds = new Set();
+edges.filter(e => e.bridge).forEach(e => {
+  bridgeNodeIds.add(e.source.id); bridgeNodeIds.add(e.target.id);
+});
+
+function nr(d) { return 3.5 + (d.e - 1) * 3.6; }
+
+// Custom cluster force
+function clusterForce(str) {
+  let _nodes;
+  function force(alpha) {
+    _nodes.forEach(n => {
+      const c = centers[n.d];
+      n.vx -= (n.x - c.x) * str * alpha;
+      n.vy -= (n.y - c.y) * str * alpha;
+    });
+  }
+  force.initialize = ns => { _nodes = ns; };
+  return force;
+}
+
+const sim = d3.forceSimulation(nodes)
+  .force('link', d3.forceLink(edges).id(d => d.id).distance(d => d.bridge ? 130 : 38).strength(d => d.bridge ? 0.18 : 0.42))
+  .force('charge', d3.forceManyBody().strength(-175))
+  .force('center', d3.forceCenter(cx, cy).strength(0.025))
+  .force('cluster', clusterForce(0.11))
+  .force('collide', d3.forceCollide().radius(d => nr(d) + 5));
+
+const root = svg.append('g');
+
+// Subtle orbit rings per cluster (atmosphere)
+const orbitLayer = root.append('g');
+Object.values(centers).forEach(c => {
+  [45, 80].forEach(r => {
+    orbitLayer.append('circle')
+      .attr('cx', c.x).attr('cy', c.y).attr('r', r)
+      .attr('fill','none').attr('stroke','rgba(255,255,255,0.025)').attr('stroke-width',1)
+      .attr('stroke-dasharray','3,8');
+  });
+});
+
+// Domain labels
+const lblLayer = root.append('g');
+Object.entries(centers).forEach(([k, c]) => {
+  lblLayer.append('text').attr('class','dom-lbl')
+    .attr('x', c.x).attr('y', c.y - clusterR * 0.44)
+    .attr('text-anchor','middle')
+    .attr('fill', DOM[k].color).attr('fill-opacity', 0.22)
+    .text(DOM[k].label.toUpperCase());
+});
+
+// Edges
+const edgeG = root.append('g');
+const linkEls = edgeG.selectAll('line').data(edges).join('line')
+  .attr('stroke', e => e.bridge ? '#ffd166' : 'rgba(255,255,255,0.1)')
+  .attr('stroke-width', e => e.bridge ? 1.4 : 0.7)
+  .attr('stroke-dasharray', e => e.bridge ? '5,4' : 'none')
+  .attr('filter', e => e.bridge ? 'url(#bglow)' : 'none')
+  .attr('opacity', e => e.bridge ? 0.65 : 0.45);
+
+// Nodes
+const nodeG = root.append('g');
+const nodeGrps = nodeG.selectAll('g').data(nodes).join('g')
+  .attr('cursor','pointer')
+  .call(d3.drag()
+    .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+    .on('drag',  (ev, d) => { d.fx=ev.x; d.fy=ev.y; })
+    .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }))
+  .on('mouseenter', showTip)
+  .on('mousemove',  moveTip)
+  .on('mouseleave', hideTip)
+  .on('click', (ev, d) => { ev.stopPropagation(); selectNode(d); });
+
+// SOC pulse rings
+nodeGrps.filter(d => d.soc).append('circle').attr('class','pulse-ring').attr('r', d => nr(d)).attr('stroke', d => DOM[d.d].color).attr('stroke-opacity',.5);
+nodeGrps.filter(d => d.soc).append('circle').attr('class','pulse-ring delay').attr('r', d => nr(d)).attr('stroke', d => DOM[d.d].color).attr('stroke-opacity',.3);
+
+// Near-critical softer ring
+nodeGrps.filter(d => d.near).append('circle').attr('r', d => nr(d) + 5)
+  .attr('fill','none').attr('stroke','rgba(255,255,255,0.18)').attr('stroke-width',.8).attr('stroke-dasharray','2,4');
+
+// Bridge outer ring
+nodeGrps.filter(d => bridgeNodeIds.has(d.id)).append('circle')
+  .attr('r', d => nr(d) + 5).attr('fill','none')
+  .attr('stroke','#ffd166').attr('stroke-width',.7).attr('stroke-opacity',.35).attr('stroke-dasharray','2,3');
+
+// Main circle
+nodeGrps.append('circle').attr('class','node-c')
+  .attr('r', d => nr(d))
+  .attr('fill', d => DOM[d.d].color)
+  .attr('fill-opacity', d => 0.12 + (d.e/5)*0.62)
+  .attr('stroke', d => DOM[d.d].color)
+  .attr('stroke-width', d => d.soc ? 1.8 : 1)
+  .attr('stroke-opacity', d => 0.55 + (d.e/5)*0.45)
+  .attr('filter', d => d.e >= 4 ? 'url(#glow)' : 'none');
+
+// Tick
+sim.on('tick', () => {
+  linkEls.attr('x1',e=>e.source.x).attr('y1',e=>e.source.y).attr('x2',e=>e.target.x).attr('y2',e=>e.target.y);
+  nodeGrps.attr('transform', d => `translate(${d.x},${d.y})`);
+});
+
+// Zoom
+svg.call(d3.zoom().scaleExtent([0.25,5]).on('zoom', ev => root.attr('transform', ev.transform)));
+svg.on('click', deselect);
+
+// ── TOOLTIP ───────────────────────────────────────────────────────────────────
+const tip = document.getElementById('tip');
+function showTip(ev, d) {
+  tip.style.display = 'block';
+  tip.innerHTML = `<div style="color:${DOM[d.d].color};font-size:8px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:5px">${DOM[d.d].label} · ${d.t}</div><div style="font-family:var(--serif);font-style:italic;font-size:13px;line-height:1.5">${d.c}</div><div style="margin-top:5px;display:flex;gap:3px;flex-wrap:wrap">${d.tags.map(x=>`<span style="font-size:8px;padding:1px 5px;background:rgba(255,255,255,.06);border-radius:8px;color:var(--muted)">${x}</span>`).join('')}</div>`;
+  moveTip(ev);
+}
+function moveTip(ev) {
+  tip.style.left = `${Math.min(ev.clientX+14, W-225)}px`;
+  tip.style.top  = `${Math.min(ev.clientY-10, H-110)}px`;
+}
+function hideTip() { tip.style.display='none'; }
+
+// ── SELECTION ─────────────────────────────────────────────────────────────────
+function selectNode(d) {
+  const col = DOM[d.d].color;
+  const isBridge = bridgeNodeIds.has(d.id);
+  const pips = Array.from({length:5},(_,i)=>`<div class="ep ${i<d.e?'on':''}" style="color:${col}"></div>`).join('');
+  document.getElementById('d-meta').innerHTML =
+    `<div class="det-badge" style="color:${col};border-color:${col}">${DOM[d.d].label}</div>
+     <div class="det-type">${d.t}${isBridge?' · ✦':''  }${d.soc?' · ⚡':d.near?' · ◯':''}</div>
+     <div class="det-energy" style="color:${col}">${pips}</div>`;
+  document.getElementById('d-content').textContent = d.c;
+  document.getElementById('d-tags').innerHTML = d.tags.map(x=>`<span class="det-tag">#${x}</span>`).join('');
+  const aiEl = document.getElementById('d-ai');
+  if (d.papers && PAPERS[d.papers]) {
+    document.getElementById('d-papers').textContent = PAPERS[d.papers];
+    aiEl.style.display = 'flex';
+  } else { aiEl.style.display = 'none'; }
+  document.getElementById('detail').classList.add('on');
+
+  const conn = new Set([d.id]);
+  edges.forEach(e => { if (e.source===d||e.target===d) { conn.add(e.source.id); conn.add(e.target.id); }});
+  nodeGrps.selectAll('.node-c')
+    .attr('fill-opacity', nd => conn.has(nd.id) ? 0.88 : 0.06)
+    .attr('stroke-opacity', nd => conn.has(nd.id) ? 0.95 : 0.1);
+  linkEls.attr('opacity', e => (e.source===d||e.target===d) ? 1 : 0.06);
+}
+
+function deselect() {
+  document.getElementById('detail').classList.remove('on');
+  nodeGrps.selectAll('.node-c')
+    .attr('fill-opacity', d => 0.12 + (d.e/5)*0.62)
+    .attr('stroke-opacity', d => 0.55 + (d.e/5)*0.45);
+  linkEls.attr('opacity', e => e.bridge ? 0.65 : 0.45);
+}
+
+// ── VISIBILITY FILTER ─────────────────────────────────────────────────────────
+function refresh() {
+  const vis = new Set();
+  nodes.forEach(n => {
+    if (activeDomains.has(n.d) && n.e >= eMin && (!showSoc || n.soc || n.near)) vis.add(n.id);
+  });
+  nodeGrps.attr('display', d => vis.has(d.id) ? null : 'none');
+  linkEls.attr('display', e => {
+    if (!vis.has(e.source.id) || !vis.has(e.target.id)) return 'none';
+    if (showBridges && !e.bridge) return 'none';
+    return null;
+  });
+  const ve = edges.filter(e => vis.has(e.source.id) && vis.has(e.target.id));
+  document.getElementById('st-nodes').textContent = `${vis.size} nodes`;
+  document.getElementById('st-edges').textContent = `${ve.length} edges · ${ve.filter(e=>e.bridge).length} bridges`;
+}
+refresh();
+</script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 node_modules
 **/node_modules/
 .env
+fly.private.toml
 docker-compose.override.yml
 docker-compose.extra.yml
 dist
@@ -22,6 +23,9 @@ ui/playwright-report/
 ui/test-results/
 packages/dashboard-next/.next/
 packages/dashboard-next/out/
+
+# OpenClaw workspace state (auto-created in soul dirs on bodhi1)
+souls/**/.openclaw/
 
 # Mise configuration files
 mise.toml

@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenBodhi Architecture — Final Form</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Barlow:wght@400;500;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0a;
+    color: #e8e0d0;
+    font-family: 'Barlow', sans-serif;
+    overflow-x: hidden;
+  }
+
+  .header {
+    text-align: center;
+    padding: 48px 24px 24px;
+  }
+  .header h1 {
+    font-size: 2.4rem;
+    font-weight: 700;
+    color: #d4941a;
+    letter-spacing: -1px;
+  }
+  .header p {
+    color: #8a8070;
+    font-size: 0.95rem;
+    margin-top: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .tabs {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    padding: 24px;
+    flex-wrap: wrap;
+  }
+  .tab {
+    padding: 10px 20px;
+    background: #1a1a18;
+    border: 1px solid #2a2a25;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+    color: #8a8070;
+    transition: all 0.2s;
+  }
+  .tab:hover { border-color: #d4941a; color: #d4941a; }
+  .tab.active { background: #d4941a; color: #0a0a0a; border-color: #d4941a; font-weight: 600; }
+
+  .view { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .view.active { display: block; }
+
+  /* ─── ARCHITECTURE VIEW ─── */
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .arch-layer {
+    background: #111110;
+    border: 1px solid #1a1a18;
+    border-radius: 12px;
+    padding: 24px;
+    position: relative;
+  }
+  .arch-layer::before {
+    content: attr(data-label);
+    position: absolute;
+    top: -10px;
+    left: 16px;
+    background: #0a0a0a;
+    padding: 0 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    color: #d4941a;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .arch-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .arch-node {
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+    min-width: 140px;
+    position: relative;
+  }
+
+  .arch-arrow {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0;
+    color: #3a3a30;
+    font-size: 1.4rem;
+  }
+
+  .n-telegram { background: #1a2a3a; border: 1px solid #2a4a6a; color: #5a9aca; }
+  .n-gateway { background: #2a1a0a; border: 1px solid #4a3a1a; color: #d4941a; }
+  .n-skill { background: #1a2a1a; border: 1px solid #2a4a2a; color: #5a8a75; }
+  .n-vault { background: #1a1a2a; border: 1px solid #3a3a5a; color: #8c64aa; }
+  .n-ai { background: #2a1a2a; border: 1px solid #4a2a4a; color: #cca329; }
+  .n-embed { background: #1a2a2a; border: 1px solid #2a4a4a; color: #508cb4; }
+  .n-nudge { background: #2a2a1a; border: 1px solid #4a4a2a; color: #d4941a; }
+
+  .arch-node .sub {
+    display: block;
+    font-size: 0.7rem;
+    font-family: 'IBM Plex Mono', monospace;
+    opacity: 0.6;
+    margin-top: 4px;
+  }
+
+  /* ─── VAULT ONTOLOGY VIEW ─── */
+  .ontology-container {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .ont-section {
+    flex: 1;
+    min-width: 300px;
+  }
+
+  .ont-section h3 {
+    font-size: 1.1rem;
+    color: #d4941a;
+    margin-bottom: 16px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .node-type {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: #111110;
+    border-radius: 10px;
+    border-left: 4px solid;
+  }
+  .node-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .node-type .name {
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .node-type .desc {
+    font-size: 0.8rem;
+    color: #8a8070;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .edge-type {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    background: #111110;
+    border-radius: 8px;
+  }
+  .edge-arrow {
+    font-family: 'IBM Plex Mono', monospace;
+    color: #d4941a;
+    font-size: 0.8rem;
+    min-width: 24px;
+    text-align: center;
+  }
+  .edge-type .name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .edge-type .desc {
+    font-size: 0.8rem;
+    color: #8a8070;
+    margin-left: auto;
+  }
+
+  /* ─── WORKERS VIEW ─── */
+  .timeline {
+    position: relative;
+    padding-left: 80px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 36px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #2a2a25;
+  }
+
+  .worker-card {
+    position: relative;
+    background: #111110;
+    border: 1px solid #1a1a18;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .worker-card::before {
+    content: '';
+    position: absolute;
+    left: -52px;
+    top: 28px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 3px solid;
+  }
+
+  .worker-card h3 {
+    font-size: 1.2rem;
+    margin-bottom: 4px;
+  }
+  .worker-card .schedule {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    color: #8a8070;
+    margin-bottom: 12px;
+  }
+  .worker-card .flow {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: #b0a890;
+  }
+  .worker-card .flow code {
+    background: #1a1a18;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    color: #d4941a;
+  }
+
+  .w-curator::before { border-color: #d4941a; background: #d4941a33; }
+  .w-curator h3 { color: #d4941a; }
+
+  .w-distiller::before { border-color: #cca329; background: #cca32933; }
+  .w-distiller h3 { color: #cca329; }
+
+  .w-janitor::before { border-color: #5a8a75; background: #5a8a7533; }
+  .w-janitor h3 { color: #5a8a75; }
+
+  .w-surveyor::before { border-color: #8c64aa; background: #8c64aa33; }
+  .w-surveyor h3 { color: #8c64aa; }
+
+  .w-nudge::before { border-color: #508cb4; background: #508cb433; }
+  .w-nudge h3 { color: #508cb4; }
+
+  /* ─── DATA FLOW VIEW ─── */
+  .flow-section {
+    background: #111110;
+    border: 1px solid #1a1a18;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .flow-section h3 {
+    font-size: 1rem;
+    margin-bottom: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .flow-chain {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+  }
+  .flow-step {
+    padding: 6px 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .flow-arrow { color: #3a3a30; font-size: 1rem; }
+
+  /* ─── PHASES VIEW ─── */
+  .phase-card {
+    background: #111110;
+    border: 1px solid #1a1a18;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+  }
+  .phase-num {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #d4941a;
+    font-family: 'IBM Plex Mono', monospace;
+    min-width: 48px;
+    opacity: 0.4;
+  }
+  .phase-num.done { opacity: 1; }
+  .phase-card h3 { font-size: 1rem; margin-bottom: 8px; }
+  .phase-card .tasks {
+    font-size: 0.85rem;
+    line-height: 1.8;
+    color: #8a8070;
+  }
+  .phase-card .tasks li { list-style: none; }
+  .phase-card .tasks li::before { content: '[ ] '; font-family: 'IBM Plex Mono', monospace; color: #3a3a30; }
+  .phase-card .tasks li.done::before { content: '[x] '; color: #5a8a75; }
+  .phase-card .tasks li.done { color: #5a8a75; text-decoration: line-through; opacity: 0.5; }
+  .phase-card .outcome {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #d4941a;
+    opacity: 0.7;
+  }
+
+  /* ─── SOC MODEL VIEW ─── */
+  .soc-container { max-width: 800px; margin: 0 auto; }
+  .soc-section {
+    background: #111110;
+    border: 1px solid #1a1a18;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .soc-section h3 {
+    color: #d4941a;
+    font-size: 1rem;
+    margin-bottom: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .soc-section p {
+    font-size: 0.9rem;
+    line-height: 1.7;
+    color: #b0a890;
+  }
+  .soc-formula {
+    background: #0a0a0a;
+    padding: 16px;
+    border-radius: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+    color: #cca329;
+    margin: 12px 0;
+    text-align: center;
+  }
+
+  /* ─── SECURITY VIEW ─── */
+  .sec-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .sec-card {
+    background: #111110;
+    border: 1px solid #1a1a18;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .sec-card h4 {
+    color: #d4941a;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .sec-card .threat {
+    font-size: 0.8rem;
+    color: #aa4444;
+    margin-bottom: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .sec-card .mitigation {
+    font-size: 0.85rem;
+    color: #5a8a75;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 768px) {
+    .ontology-container { flex-direction: column; }
+    .timeline { padding-left: 50px; }
+    .timeline::before { left: 16px; }
+    .worker-card::before { left: -42px; }
+    .phase-card { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>OpenBodhi</h1>
+  <p>final form architecture</p>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="show('arch')">Architecture</div>
+  <div class="tab" onclick="show('flow')">Data Flow</div>
+  <div class="tab" onclick="show('vault')">Vault Ontology</div>
+  <div class="tab" onclick="show('workers')">Workers</div>
+  <div class="tab" onclick="show('soc')">SOC Model</div>
+  <div class="tab" onclick="show('phases')">Build Phases</div>
+  <div class="tab" onclick="show('security')">Security</div>
+</div>
+
+<!-- ═══════════ ARCHITECTURE ═══════════ -->
+<div id="arch" class="view active">
+  <div class="arch-grid">
+
+    <div class="arch-layer" data-label="input">
+      <div class="arch-row">
+        <div class="arch-node n-telegram">Telegram<span class="sub">primary channel</span></div>
+        <div class="arch-node n-telegram" style="opacity:0.4">Signal<span class="sub">future</span></div>
+        <div class="arch-node n-telegram" style="opacity:0.4">WhatsApp<span class="sub">future</span></div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">&#x25BC;</div>
+
+    <div class="arch-layer" data-label="gateway">
+      <div class="arch-row">
+        <div class="arch-node n-gateway">OpenClaw Gateway<span class="sub">localhost only / message routing / session state</span></div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">&#x25BC;</div>
+
+    <div class="arch-layer" data-label="workers">
+      <div class="arch-row">
+        <div class="arch-node n-skill">Curator<span class="sub">real-time capture</span></div>
+        <div class="arch-node n-skill">Distiller<span class="sub">6am daily digest</span></div>
+        <div class="arch-node n-skill">Janitor<span class="sub">sun 3am hygiene</span></div>
+        <div class="arch-node n-skill">Surveyor<span class="sub">sat 2am clustering</span></div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">&#x25BC;</div>
+
+    <div class="arch-layer" data-label="storage">
+      <div class="arch-row">
+        <div class="arch-node n-vault">Vault<span class="sub">JSON nodes + edges / local filesystem</span></div>
+        <div class="arch-node n-embed">ChromaDB<span class="sub">vector embeddings / similarity</span></div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">&#x25BC;</div>
+
+    <div class="arch-layer" data-label="intelligence">
+      <div class="arch-row">
+        <div class="arch-node n-ai">Claude Sonnet 4.6<span class="sub">classification / tagging</span></div>
+        <div class="arch-node n-ai">Claude Opus 4.6<span class="sub">synthesis / digest</span></div>
+        <div class="arch-node n-embed">Ollama<span class="sub">nomic-embed-text / local</span></div>
+        <div class="arch-node n-embed" style="opacity:0.4">Qwen3-8B<span class="sub">local router / optional</span></div>
+      </div>
+    </div>
+
+    <div class="arch-arrow">&#x25BC;</div>
+
+    <div class="arch-layer" data-label="output">
+      <div class="arch-row">
+        <div class="arch-node n-nudge">Nudge System<span class="sub">SOC threshold / "Ready to act?"</span></div>
+        <div class="arch-node n-nudge" style="opacity:0.4">SiYuan<span class="sub">long-form notes / future</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════ DATA FLOW ═══════════ -->
+<div id="flow" class="view">
+
+  <div class="flow-section">
+    <h3 style="color:#d4941a">Capture (real-time)</h3>
+    <div class="flow-chain">
+      <span class="flow-step n-telegram">Telegram msg</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-gateway">Gateway</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-skill">Curator</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-ai">Sonnet classify</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-vault">Vault write</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-embed">ChromaDB embed</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-telegram">ACK</span>
+    </div>
+  </div>
+
+  <div class="flow-section">
+    <h3 style="color:#cca329">Digest (6am daily)</h3>
+    <div class="flow-chain">
+      <span class="flow-step n-nudge">cron 6am</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-skill">Distiller</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-vault">7-day query</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-ai">Opus synthesize</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-telegram">digest msg</span>
+    </div>
+  </div>
+
+  <div class="flow-section">
+    <h3 style="color:#5a8a75">Hygiene (Sunday 3am)</h3>
+    <div class="flow-chain">
+      <span class="flow-step n-nudge">cron sun 3am</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-skill">Janitor</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-vault">full scan</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-embed">cosine sim</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-telegram">report</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-gateway">await approval</span>
+    </div>
+  </div>
+
+  <div class="flow-section">
+    <h3 style="color:#8c64aa">Surveyor (Saturday 2am)</h3>
+    <div class="flow-chain">
+      <span class="flow-step n-nudge">cron sat 2am</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-skill">Surveyor</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-embed">embed all nodes</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-embed">HDBSCAN cluster</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-ai">Sonnet label</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-vault">Synthesis nodes</span>
+    </div>
+  </div>
+
+  <div class="flow-section">
+    <h3 style="color:#508cb4">Nudge (SOC threshold)</h3>
+    <div class="flow-chain">
+      <span class="flow-step n-skill">Surveyor SOC</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-nudge">energy > 3.5</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-nudge">3+ weeks</span>
+      <span class="flow-arrow">></span>
+      <span class="flow-step n-telegram">"Ready to act?"</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ VAULT ONTOLOGY ═══════════ -->
+<div id="vault" class="view">
+  <div class="ontology-container">
+
+    <div class="ont-section">
+      <h3>Node Types</h3>
+      <div class="node-type" style="border-color:#d4941a">
+        <div class="node-dot" style="background:#d4941a"></div>
+        <div><div class="name">Idea</div><div class="desc">raw insight, captured as it arrived</div></div>
+      </div>
+      <div class="node-type" style="border-color:#cca329">
+        <div class="node-dot" style="background:#cca329"></div>
+        <div><div class="name">Pattern</div><div class="desc">recurring theme, discovered by Distiller</div></div>
+      </div>
+      <div class="node-type" style="border-color:#5a8a75">
+        <div class="node-dot" style="background:#5a8a75"></div>
+        <div><div class="name">Practice</div><div class="desc">intentional behavior, crystallized from idea</div></div>
+      </div>
+      <div class="node-type" style="border-color:#508cb4">
+        <div class="node-dot" style="background:#508cb4"></div>
+        <div><div class="name">Decision</div><div class="desc">choice made, with context preserved</div></div>
+      </div>
+      <div class="node-type" style="border-color:#8c64aa">
+        <div class="node-dot" style="background:#8c64aa"></div>
+        <div><div class="name">Synthesis</div><div class="desc">AI-discovered bridge between clusters</div></div>
+      </div>
+      <div class="node-type" style="border-color:#558c55">
+        <div class="node-dot" style="background:#558c55"></div>
+        <div><div class="name">Integration</div><div class="desc">embodied insight, only humans assign this</div></div>
+      </div>
+    </div>
+
+    <div class="ont-section">
+      <h3>Edge Types</h3>
+      <div class="edge-type">
+        <span class="edge-arrow">-></span>
+        <span class="name">LEADS_TO</span>
+        <span class="desc">A develops into B over time</span>
+      </div>
+      <div class="edge-type">
+        <span class="edge-arrow">-></span>
+        <span class="name">GENERATES</span>
+        <span class="desc">A directly produced B</span>
+      </div>
+      <div class="edge-type">
+        <span class="edge-arrow">-></span>
+        <span class="name">SURFACES_FROM</span>
+        <span class="desc">A became visible because of B</span>
+      </div>
+      <div class="edge-type">
+        <span class="edge-arrow"><></span>
+        <span class="name">CONTRADICTS</span>
+        <span class="desc">A and B are in productive tension</span>
+      </div>
+      <div class="edge-type">
+        <span class="edge-arrow"><></span>
+        <span class="name">ASSOCIATED_WITH</span>
+        <span class="desc">related, no causal claim</span>
+      </div>
+      <div class="edge-type">
+        <span class="edge-arrow">-></span>
+        <span class="name">INFORMS</span>
+        <span class="desc">A provides context for B</span>
+      </div>
+
+      <h3 style="margin-top:24px">Node Schema</h3>
+      <div style="background:#0a0a0a;border-radius:8px;padding:16px;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:#8a8070;line-height:1.8">
+        <span style="color:#d4941a">id</span>: uuid-v4<br>
+        <span style="color:#d4941a">type</span>: Idea | Pattern | Practice | Decision | Synthesis | Integration<br>
+        <span style="color:#d4941a">content</span>: string (user's words, unedited)<br>
+        <span style="color:#d4941a">energy_level</span>: 1-5 (inferred from language)<br>
+        <span style="color:#d4941a">created_at</span>: ISO 8601<br>
+        <span style="color:#d4941a">source</span>: telegram<br>
+        <span style="color:#d4941a">tags</span>: string[] (AI-generated)
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════ WORKERS ═══════════ -->
+<div id="workers" class="view">
+  <div class="timeline">
+
+    <div class="worker-card w-curator">
+      <h3>Curator</h3>
+      <div class="schedule">real-time / every incoming message</div>
+      <div class="flow">
+        Message arrives. Curator checks complexity.<br>
+        Simple thought: classify <code>type</code>, generate <code>tags</code>, infer <code>energy</code> from language.<br>
+        Complex thought: ask 1-2 clarifying questions, then classify.<br>
+        Question directed at Bodhi: route to Claude, do not file.<br>
+        Write node to vault. Embed in ChromaDB. Send <code>&#10003;</code>.
+      </div>
+    </div>
+
+    <div class="worker-card w-distiller">
+      <h3>Distiller</h3>
+      <div class="schedule">cron 0 6 * * * / daily at 6am</div>
+      <div class="flow">
+        Query last 7 days of vault nodes.<br>
+        Group by tag frequency. Compute energy averages per theme.<br>
+        Find tags appearing 3+ times: pattern candidates.<br>
+        Claude Opus synthesizes digest. Send via Telegram.<br>
+        If &lt; 3 nodes in window: silence. No message sent.
+      </div>
+    </div>
+
+    <div class="worker-card w-janitor">
+      <h3>Janitor</h3>
+      <div class="schedule">cron 0 3 * * 0 / Sunday 3am</div>
+      <div class="flow">
+        Full vault scan. Find orphan nodes (zero edges, older than 7 days).<br>
+        Cosine similarity on all embeddings. Flag pairs > 0.92.<br>
+        Detect broken edges (missing node references).<br>
+        Send hygiene report. <strong>Wait for human approval before any action.</strong><br>
+        Never deletes. Archives to <code>vault/archive/</code>.
+      </div>
+    </div>
+
+    <div class="worker-card w-surveyor">
+      <h3>Surveyor</h3>
+      <div class="schedule">cron 0 2 * * 6 / Saturday 2am</div>
+      <div class="flow">
+        Embed all nodes via Ollama <code>nomic-embed-text</code>.<br>
+        HDBSCAN clustering: <code>min_cluster_size=5</code>, <code>min_samples=3</code>, <code>metric=cosine</code>.<br>
+        Claude labels each cluster (3-5 words).<br>
+        Betweenness centrality: find bridge nodes between clusters.<br>
+        Generate <code>Synthesis</code> nodes with <code>SURFACES_FROM</code> edges.<br>
+        Run SOC analysis: energy distribution, power law check.<br>
+        Send weekly insight summary.
+      </div>
+    </div>
+
+    <div class="worker-card w-nudge">
+      <h3>Nudge System</h3>
+      <div class="schedule">triggered by Surveyor SOC analysis</div>
+      <div class="flow">
+        Cluster avg <code>energy_level</code> > 3.5 for 3+ consecutive weeks?<br>
+        Pattern appeared in 3+ Distiller reports?<br>
+        <strong>One message: "Ready to act?"</strong><br>
+        No scheduling. No reminders. No guilt. The idea reached its own readiness.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════ SOC MODEL ═══════════ -->
+<div id="soc" class="view">
+  <div class="soc-container">
+
+    <div class="soc-section">
+      <h3>Self-Organized Criticality</h3>
+      <p>Per Bak (1987). Grains of sand accumulate on a pile. When a local threshold is exceeded, a cascade occurs. The system naturally evolves toward a critical state where avalanches of all sizes are possible. No central controller. No schedule. Emergence.</p>
+      <div class="soc-formula">P(s) ~ s^(-tau) where tau ~ 1.5</div>
+      <p>The distribution of avalanche sizes follows a power law. Small cascades are frequent. Large ones are rare but inevitable. This is the mathematical signature of a system at criticality.</p>
+    </div>
+
+    <div class="soc-section">
+      <h3>Applied to Cognition</h3>
+      <p>Ideas are grains. The vault is the sandpile. Energy accumulates through recurrence. The same insight surfaces in different contexts. The same problem shows up wearing different clothes. At some threshold, the cognitive cascade occurs: a decision becomes obvious, an action becomes necessary, a pattern becomes undeniable.</p>
+      <div class="soc-formula">cluster_energy = avg(energy_level) across nodes in cluster<br>cascade_threshold = 3.5 sustained over 3+ weeks</div>
+    </div>
+
+    <div class="soc-section">
+      <h3>What Surveyor Measures</h3>
+      <p>
+        Power law distribution of <code style="color:#d4941a">energy_level</code> across all vault nodes. If the distribution approaches power law, the vault is at criticality: patterns can emerge at any scale.<br><br>
+        Cluster energy averages and week-over-week change. Rising energy in a cluster means accumulation. Sustained high energy means approaching threshold.<br><br>
+        Betweenness centrality of individual nodes. Bridge ideas carry the most cascade potential because they connect otherwise-separate clusters.
+      </p>
+    </div>
+
+    <div class="soc-section">
+      <h3>Spaced Repetition Layer</h3>
+      <p>
+        Ebbinghaus forgetting curve applied to ideas, not flashcards. High-energy nodes that have not been acted on surface at increasing intervals: 1 day, 3 days, 7 days, 21 days, 60 days.<br><br>
+        This is not a reminder system. It is a mirror. The thought surfaces because it has energy, not because a calendar says so. If you dismiss it, the interval extends. If you engage, it feeds back into the Distiller.
+      </p>
+    </div>
+
+    <div class="soc-section">
+      <h3>Minimal Intervention Principle</h3>
+      <p>
+        Bodhi does not advise. Bodhi does not coach. Bodhi does not act as a therapist.<br><br>
+        It is a data structure that reflects your own thinking. It notices what you keep returning to. It finds connections you did not see. It tells you when a cluster of ideas has been building energy long enough to act on.<br><br>
+        One question at the right time: "Ready to act?"<br><br>
+        The human decides. Always.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════ PHASES ═══════════ -->
+<div id="phases" class="view">
+
+  <div class="phase-card">
+    <div class="phase-num done">0</div>
+    <div>
+      <h3>Foundation</h3>
+      <ul class="tasks">
+        <li class="done">Fork OpenClaw</li>
+        <li class="done">Documentation, architecture, ontology specs</li>
+        <li class="done">Vault schema (nodes.json, edges.json)</li>
+        <li class="done">Skill specs (Curator, Distiller, Janitor, Surveyor)</li>
+        <li class="done">GitHub repo public, branded</li>
+        <li>Community: GitHub Discussions, contribution guidelines</li>
+      </ul>
+      <div class="outcome">Outcome: public repo that communicates the full vision</div>
+    </div>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-num">1</div>
+    <div>
+      <h3>Local Gateway</h3>
+      <ul class="tasks">
+        <li>Acquire + set up dedicated Ubuntu 24.04 LTS machine</li>
+        <li>Install OpenClaw Gateway (localhost only)</li>
+        <li>Connect Telegram bridge</li>
+        <li>Configure Anthropic API key + environment</li>
+        <li>Set up Ollama with nomic-embed-text</li>
+        <li>Docker Compose for isolated deployment</li>
+        <li>Apply 4 security patches to OpenClaw core</li>
+        <li>End-to-end test: Telegram message > Gateway > Claude > response</li>
+      </ul>
+      <div class="outcome">Outcome: working local AI gateway responding to Telegram</div>
+    </div>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-num">2</div>
+    <div>
+      <h3>Curator + Vault</h3>
+      <ul class="tasks">
+        <li>Build packages/bodhi-vault/ shared module</li>
+        <li>Scaffold skills/bodhi-curator/ as OpenClaw skill</li>
+        <li>Capture pipeline: message > classify > tag > infer energy > vault write</li>
+        <li>ChromaDB embedding on every write</li>
+        <li>Question detection (route to Claude, do not file)</li>
+        <li>Complex thought detection (clarifying questions)</li>
+        <li>JSON Schema validation on write</li>
+        <li>Tests for every handler path</li>
+      </ul>
+      <div class="outcome">Outcome: every Telegram thought becomes a vault node</div>
+    </div>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-num">3</div>
+    <div>
+      <h3>Distiller</h3>
+      <ul class="tasks">
+        <li>Scaffold skills/bodhi-distiller/ as cron skill</li>
+        <li>7-day rolling window vault query</li>
+        <li>Tag frequency analysis + energy averages</li>
+        <li>Pattern candidate detection (3+ occurrences)</li>
+        <li>Claude Opus digest generation</li>
+        <li>Telegram delivery of morning digest</li>
+        <li>Pattern promotion conversation handler</li>
+      </ul>
+      <div class="outcome">Outcome: 6am daily synthesis of what your mind is working on</div>
+    </div>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-num">4</div>
+    <div>
+      <h3>Janitor + Surveyor</h3>
+      <ul class="tasks">
+        <li>Scaffold bodhi-janitor/ as weekly cron skill</li>
+        <li>Orphan detection, duplicate detection (cosine > 0.92), broken edges</li>
+        <li>Hygiene report with human approval gate</li>
+        <li>Scaffold bodhi-surveyor/ as weekly cron skill</li>
+        <li>Full vault embedding pipeline via Ollama</li>
+        <li>HDBSCAN clustering (Python subprocess)</li>
+        <li>Cluster labeling via Claude Sonnet</li>
+        <li>Betweenness centrality + bridge Synthesis nodes</li>
+        <li>SOC energy distribution analysis</li>
+        <li>Weekly insight summary via Telegram</li>
+      </ul>
+      <div class="outcome">Outcome: vault self-organizes, bridges appear, orphans cleaned</div>
+    </div>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-num">5</div>
+    <div>
+      <h3>Nudge System</h3>
+      <ul class="tasks">
+        <li>SOC threshold detection (energy > 3.5 sustained 3+ weeks)</li>
+        <li>Spaced repetition surfacing (un-acted high-energy ideas)</li>
+        <li>"Message from past self" (60-90 day old high-energy ideas)</li>
+        <li>Configurable nudge frequency (prevent fatigue)</li>
+        <li>One question: "Ready to act?"</li>
+      </ul>
+      <div class="outcome">Outcome: ideas reach their own readiness, Bodhi notices</div>
+    </div>
+  </div>
+
+  <div class="phase-card">
+    <div class="phase-num">6</div>
+    <div>
+      <h3>Platform</h3>
+      <ul class="tasks">
+        <li>SiYuan integration for long-form structured notes</li>
+        <li>Bodhi as a Service architecture (multi-tenant vault isolation)</li>
+        <li>Additional channels: Signal, WhatsApp</li>
+        <li>Public synthesis sharing</li>
+        <li>Advanced SOC modeling (predictive cognitive state)</li>
+        <li>Network isolation (Docker egress whitelist)</li>
+      </ul>
+      <div class="outcome">Outcome: from personal tool to product</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════ SECURITY ═══════════ -->
+<div id="security" class="view">
+  <div class="sec-grid">
+
+    <div class="sec-card">
+      <h4>Network Isolation</h4>
+      <div class="threat">Threat: gateway exposed to internet</div>
+      <div class="mitigation">Gateway binds 127.0.0.1 only. UFW blocks port externally. Startup assertion rejects non-loopback binding. Docker network with egress whitelist (api.anthropic.com only).</div>
+    </div>
+
+    <div class="sec-card">
+      <h4>Telegram Auth</h4>
+      <div class="threat">Threat: unauthorized message injection</div>
+      <div class="mitigation">User ID whitelist. Only the owner's Telegram ID is accepted. All other messages are silently dropped. No response, no acknowledgment, no error.</div>
+    </div>
+
+    <div class="sec-card">
+      <h4>Vault Isolation</h4>
+      <div class="threat">Threat: other processes reading vault files</div>
+      <div class="mitigation">chmod 700 on vault directory. Owned by dedicated bodhi OS user. Docker volume mounted with uid/gid. No other process can read vault data.</div>
+    </div>
+
+    <div class="sec-card">
+      <h4>Token Leakage</h4>
+      <div class="threat">Threat: API keys visible in UI or logs</div>
+      <div class="mitigation">Core patch to OpenClaw: redact token-pattern strings before rendering in WebChat UI. Environment variables never logged. .env in .gitignore.</div>
+    </div>
+
+    <div class="sec-card">
+      <h4>Message Deduplication</h4>
+      <div class="threat">Threat: duplicate message flooding</div>
+      <div class="mitigation">Circuit breaker with 60-second TTL Map. Same message ID within window is dropped. Prevents duplicate vault writes from Telegram retry behavior.</div>
+    </div>
+
+    <div class="sec-card">
+      <h4>Data Sovereignty</h4>
+      <div class="threat">Threat: thinking data in someone else's cloud</div>
+      <div class="mitigation">All vault data local filesystem. Anthropic receives message text only for classification. Graph structure, energy levels, tags, edges never leave the machine. No cloud sync. No remote backup unless user configures it.</div>
+    </div>
+
+    <div class="sec-card">
+      <h4>Remote Access</h4>
+      <div class="threat">Threat: SSH brute force or open ports</div>
+      <div class="mitigation">SSH key-only authentication. Password auth disabled. Tailscale for secure remote access without exposing any ports. UFW denies all except SSH.</div>
+    </div>
+
+    <div class="sec-card">
+      <h4>Supply Chain</h4>
+      <div class="threat">Threat: malicious dependencies</div>
+      <div class="mitigation">pnpm lockfile pinned. OpenClaw upstream vetted (277k stars, active maintenance). Bodhi skills are the only custom code. Minimal dependency surface.</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

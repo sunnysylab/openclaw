@@ -1,4 +1,4 @@
-# 🦞 OpenClaw — Personal AI Assistant
+<div align="center">
 
 <p align="center">
     <picture>
@@ -7,21 +7,14 @@
     </picture>
 </p>
 
-<p align="center">
-  <strong>EXFOLIATE! EXFOLIATE!</strong>
-</p>
+# OpenBodhi
 
-<p align="center">
-  <a href="https://github.com/openclaw/openclaw/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/openclaw/openclaw/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/openclaw/openclaw/releases"><img src="https://img.shields.io/github/v/release/openclaw/openclaw?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
-  <a href="https://discord.gg/clawd"><img src="https://img.shields.io/discord/1456350064065904867?label=Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Discord"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
-</p>
+A thinking partner that learns how you think. Your consciousness, organized.
 
 **OpenClaw** is a _personal AI assistant_ you run on your own devices.
 It answers you on the channels you already use (WhatsApp, Telegram, Slack, Discord, Google Chat, Signal, iMessage, BlueBubbles, IRC, Microsoft Teams, Matrix, Feishu, LINE, Mattermost, Nextcloud Talk, Nostr, Synology Chat, Tlon, Twitch, Zalo, Zalo Personal, WeChat, WebChat). It can speak and listen on macOS/iOS/Android, and can render a live Canvas you control. The Gateway is just the control plane — the product is the assistant.
 
-If you want a personal, single-user assistant that feels local, fast, and always-on, this is it.
+<img src="docs/bodhi/assets/banner.webp" width="100%" alt="OpenBodhi knowledge graph" />
 
 [Website](https://openclaw.ai) · [Docs](https://docs.openclaw.ai) · [Vision](VISION.md) · [DeepWiki](https://deepwiki.com/openclaw/openclaw) · [Getting Started](https://docs.openclaw.ai/start/getting-started) · [Updating](https://docs.openclaw.ai/install/updating) · [Showcase](https://docs.openclaw.ai/start/showcase) · [FAQ](https://docs.openclaw.ai/help/faq) · [Onboarding](https://docs.openclaw.ai/start/wizard) · [Nix](https://github.com/openclaw/nix-openclaw) · [Docker](https://docs.openclaw.ai/install/docker) · [Discord](https://discord.gg/clawd)
 
@@ -30,22 +23,19 @@ OpenClaw Onboard guides you step by step through setting up the gateway, workspa
 Works with npm, pnpm, or bun.
 New install? Start here: [Getting started](https://docs.openclaw.ai/start/getting-started)
 
-## Sponsors
+Thinking is not linear. It arrives in fragments, clusters around invisible attractors, and bridges across domains you never expected to connect. You capture a thought. You return to it later, transformed, arriving from a different angle. Then it appears again, in a third context. That is not repetition. That is your mind organizing itself.
 
-| OpenAI                                                            | Vercel                                                            | Blacksmith                                                                   | Convex                                                                |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [![OpenAI](docs/assets/sponsors/openai.svg)](https://openai.com/) | [![Vercel](docs/assets/sponsors/vercel.svg)](https://vercel.com/) | [![Blacksmith](docs/assets/sponsors/blacksmith.svg)](https://blacksmith.sh/) | [![Convex](docs/assets/sponsors/convex.svg)](https://www.convex.dev/) |
+OpenBodhi watches this process. It catches what you think about. It holds it without judgment or urgency. Over time, it clusters what belongs together. It finds the bridges—the moments when separate threads of thought reveal they were always part of the same larger pattern. When the pattern is dense enough, when the bridges are clear, it says so.
 
-**Subscriptions (OAuth):**
+This is not a task manager with AI features. It is a consciousness partner. Built on [OpenClaw](https://github.com/openclaw/openclaw), an open-source personal AI gateway, with a wellness knowledge layer on top. Four background workers. A local vault that stores everything as plain files. And a model for understanding when your thinking has reached critical mass.
 
-- **[OpenAI](https://openai.com/)** (ChatGPT/Codex)
+Drop a thought. Move on. Bodhi organizes while you sleep.
 
-Model note: while many providers/models are supported, for the best experience and lower prompt-injection risk use the strongest latest-generation model available to you. See [Onboarding](https://docs.openclaw.ai/start/onboarding).
+---
 
-## Models (selection + auth)
+## What happens when you think
 
-- Models config + CLI: [Models](https://docs.openclaw.ai/concepts/models)
-- Auth profile rotation (OAuth vs API keys) + fallbacks: [Model failover](https://docs.openclaw.ai/concepts/model-failover)
+You send a message. Bodhi sends back a checkmark.
 
 ## Install (recommended)
 
@@ -57,6 +47,7 @@ npm install -g openclaw@latest
 
 openclaw onboard --install-daemon
 ```
+You: "rest is not laziness, I keep forgetting this"
 
 OpenClaw Onboard installs the Gateway daemon (launchd/systemd user service) so it stays running.
 
@@ -78,7 +69,7 @@ openclaw message send --to +1234567890 --message "Hello from OpenClaw"
 openclaw agent --message "Ship checklist" --thinking high
 ```
 
-Upgrading? [Updating guide](https://docs.openclaw.ai/install/updating) (and run `openclaw doctor`).
+No forms. No "rate your energy." No friction. Bodhi infers the energy from your language. Your somatic state from word choice. The readiness of the thought from context. The thought is captured, classified, stored as plain text, and waiting.
 
 ## Development channels
 
@@ -107,23 +98,26 @@ pnpm openclaw onboard --install-daemon
 pnpm gateway:watch
 ```
 
-Note: `pnpm openclaw ...` runs TypeScript directly (via `tsx`). `pnpm build` produces `dist/` for running via Node / the packaged `openclaw` binary.
+Four background workers organize your thinking while you sleep:
 
-## Security defaults (DM access)
+| Worker | Runs | What it does |
+|--------|------|-------------|
+| **Curator** | Every message | Captures the thought, reads energy, stores to vault |
+| **Distiller** | Daily 6am | Reads the last week, surfaces what your mind keeps returning to |
+| **Janitor** | Sunday 3am | Finds duplicates and orphans, asks before deleting |
+| **Surveyor** | Saturday 2am | Clusters ideas by density, finds bridges between clusters |
 
-OpenClaw connects to real messaging surfaces. Treat inbound DMs as **untrusted input**.
+The vault grows. Duplicates get caught. Clusters form. Then one day you notice: the thing you've been thinking about in three different ways is actually one problem. Or one opportunity. That is Surveyor. That is emergence.
 
-Full security guide: [Security](https://docs.openclaw.ai/gateway/security)
+---
 
-Default behavior on Telegram/WhatsApp/Signal/iMessage/Microsoft Teams/Discord/Google Chat/Slack:
+## The science behind it
 
-- **DM pairing** (`dmPolicy="pairing"` / `channels.discord.dmPolicy="pairing"` / `channels.slack.dmPolicy="pairing"`; legacy: `channels.discord.dm.policy`, `channels.slack.dm.policy`): unknown senders receive a short pairing code and the bot does not process their message.
-- Approve with: `openclaw pairing approve <channel> <code>` (then the sender is added to a local allowlist store).
-- Public inbound DMs require an explicit opt-in: set `dmPolicy="open"` and include `"*"` in the channel allowlist (`allowFrom` / `channels.discord.allowFrom` / `channels.slack.allowFrom`; legacy: `channels.discord.dm.allowFrom`, `channels.slack.dm.allowFrom`).
+This is built on real neuroscience and cognitive architecture, not wishful thinking.
 
-Run `openclaw doctor` to surface risky/misconfigured DM policies.
+**Self-Organized Criticality** (Per Bak, 1987): consciousness reaches readiness through density, not force. You capture the same insight in three different forms. Months apart. Each time it surfaces, the system energy increases. At some point the cascade occurs. A decision becomes obvious. An action becomes necessary. Bodhi watches for that threshold. It doesn't schedule breakthroughs. It notices when you are standing at the edge.
 
-## Highlights
+**Density-based clustering** (HDBSCAN): Your thinking naturally organizes into clusters. Not by your categories. By the actual density of recurrence. Bodhi finds where ideas cluster together and names what they're about.
 
 - **[Local-first Gateway](https://docs.openclaw.ai/gateway)** — single control plane for sessions, channels, tools, and events.
 - **[Multi-channel inbox](https://docs.openclaw.ai/channels)** — WhatsApp, Telegram, Slack, Discord, Google Chat, Signal, BlueBubbles (iMessage), iMessage (legacy), IRC, Microsoft Teams, Matrix, Feishu, LINE, Mattermost, Nextcloud Talk, Nostr, Synology Chat, Tlon, Twitch, Zalo, Zalo Personal, WeChat, WebChat, macOS, iOS/Android.
@@ -134,11 +128,11 @@ Run `openclaw doctor` to surface risky/misconfigured DM policies.
 - **[Companion apps](https://docs.openclaw.ai/platforms/macos)** — macOS menu bar app + iOS/Android [nodes](https://docs.openclaw.ai/nodes).
 - **[Onboarding](https://docs.openclaw.ai/start/wizard) + [skills](https://docs.openclaw.ai/tools/skills)** — onboarding-driven setup with bundled/managed/workspace skills.
 
-## Star History
+**Spaced emergence**: Not spaced repetition. Your breakthrough surfaces automatically at the moment you're most ready to see it, because density naturally rises to that point.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=openclaw/openclaw&type=date&legend=top-left)](https://www.star-history.com/#openclaw/openclaw&type=date&legend=top-left)
+---
 
-## Everything we built so far
+## Your vault is yours
 
 ### Core platform
 
@@ -201,107 +195,91 @@ WhatsApp / Telegram / Slack / Discord / Google Chat / Signal / iMessage / BlueBu
                └─ iOS / Android nodes
 ```
 
-## Key subsystems
+When you send a message, Bodhi reads it to understand energy and context. That understanding stays on your machine. The text goes to Anthropic for classification. Nothing else. No behavioral tracking. No inference about what you might want. Only: "Is this person okay? What energy is this? What kind of thinking is this?"
 
-- **[Gateway WebSocket network](https://docs.openclaw.ai/concepts/architecture)** — single WS control plane for clients, tools, and events (plus ops: [Gateway runbook](https://docs.openclaw.ai/gateway)).
-- **[Tailscale exposure](https://docs.openclaw.ai/gateway/tailscale)** — Serve/Funnel for the Gateway dashboard + WS (remote access: [Remote](https://docs.openclaw.ai/gateway/remote)).
-- **[Browser control](https://docs.openclaw.ai/tools/browser)** — openclaw‑managed Chrome/Chromium with CDP control.
-- **[Canvas + A2UI](https://docs.openclaw.ai/platforms/mac/canvas)** — agent‑driven visual workspace (A2UI host: [Canvas/A2UI](https://docs.openclaw.ai/platforms/mac/canvas#canvas-a2ui)).
-- **[Voice Wake](https://docs.openclaw.ai/nodes/voicewake) + [Talk Mode](https://docs.openclaw.ai/nodes/talk)** — wake words on macOS/iOS plus continuous voice on Android.
-- **[Nodes](https://docs.openclaw.ai/nodes)** — Canvas, camera snap/clip, screen record, `location.get`, notifications, plus macOS‑only `system.run`/`system.notify`.
+Your vault belongs to you.
 
-## Tailscale access (Gateway dashboard)
+---
 
-OpenClaw can auto-configure Tailscale **Serve** (tailnet-only) or **Funnel** (public) while the Gateway stays bound to loopback. Configure `gateway.tailscale.mode`:
+## Six kinds of thinking
 
-- `off`: no Tailscale automation (default).
-- `serve`: tailnet-only HTTPS via `tailscale serve` (uses Tailscale identity headers by default).
-- `funnel`: public HTTPS via `tailscale funnel` (requires shared password auth).
+Every thought Bodhi captures becomes one of six types. This is how it organizes consciousness:
 
-Notes:
+| Type | What it means |
+|------|--------------|
+| **Idea** | A raw thought, unfiltered. Captured as it arrived. Most of what you send. |
+| **Pattern** | A recurring theme. Distiller finds these—not you. Something your mind keeps reaching for. |
+| **Practice** | Something you do intentionally, repeatedly. The work that embodies your values. |
+| **Decision** | A choice made, with context preserved. Why you chose. What you were considering. |
+| **Synthesis** | A connection between separate ideas. Surveyor finds these. Two clusters revealing they were one. |
+| **Integration** | An insight you have actually embodied. You changed because of it. The rarest one. |
 
-- `gateway.bind` must stay `loopback` when Serve/Funnel is enabled (OpenClaw enforces this).
-- Serve can be forced to require a password by setting `gateway.auth.mode: "password"` or `gateway.auth.allowTailscale: false`.
-- Funnel refuses to start unless `gateway.auth.mode: "password"` is set.
-- Optional: `gateway.tailscale.resetOnExit` to undo Serve/Funnel on shutdown.
+The vault fills with Ideas. Over time, Patterns emerge. Practices accumulate. Decisions get made. Synthesized connections reshape your thinking. Integration happens when you stop thinking and start being.
 
-Details: [Tailscale guide](https://docs.openclaw.ai/gateway/tailscale) · [Web surfaces](https://docs.openclaw.ai/web)
+---
 
-## Remote Gateway (Linux is great)
+## What's here now (Alpha 0.0.1)
 
-It’s perfectly fine to run the Gateway on a small Linux instance. Clients (macOS app, CLI, WebChat) can connect over **Tailscale Serve/Funnel** or **SSH tunnels**, and you can still pair device nodes (macOS/iOS/Android) to execute device‑local actions when needed.
+**Available:**
+- OpenClaw gateway (Telegram, multi-channel)
+- Curator skill (capture thoughts, infer energy, classify)
+- Vault schema (nodes, edges, plain JSON)
+- Security layer (local-first, privacy-by-default)
+- Design system (color tokens, typography, animation)
 
-- **Gateway host** runs the exec tool and channel connections by default.
-- **Device nodes** run device‑local actions (`system.run`, camera, screen recording, notifications) via `node.invoke`.
-  In short: exec runs where the Gateway lives; device actions run where the device lives.
+**In flight:**
+- Janitor (duplicate detection, graph cleanup)
+- Surveyor (HDBSCAN clustering, bridge finding)
+- Distiller (daily synthesis, pattern surfacing)
 
-Details: [Remote access](https://docs.openclaw.ai/gateway/remote) · [Nodes](https://docs.openclaw.ai/nodes) · [Security](https://docs.openclaw.ai/gateway/security)
+**Future:**
+- Nudge system (readiness-based interventions)
+- Web interface (optional, for analysis)
+- Mobile capture (if needed)
+- Model sync (if you want to run locally)
 
-## macOS permissions via the Gateway protocol
+---
 
-The macOS app can run in **node mode** and advertises its capabilities + permission map over the Gateway WebSocket (`node.list` / `node.describe`). Clients can then execute local actions via `node.invoke`:
+## Stack
 
-- `system.run` runs a local command and returns stdout/stderr/exit code; set `needsScreenRecording: true` to require screen-recording permission (otherwise you’ll get `PERMISSION_MISSING`).
-- `system.notify` posts a user notification and fails if notifications are denied.
-- `canvas.*`, `camera.*`, `screen.record`, and `location.get` are also routed via `node.invoke` and follow TCC permission status.
+- **Runtime:** Node.js 22+, TypeScript 5.x
+- **Package manager:** pnpm
+- **Gateway:** [OpenClaw](https://github.com/openclaw/openclaw) (MIT)
+- **AI:** Claude Opus 4.6 (synthesis) / Claude Sonnet 4.6 (classification)
+- **Embeddings:** nomic-embed-text via Ollama (local, no API cost)
+- **Vector store:** ChromaDB (embedded mode)
+- **Clustering:** HDBSCAN (Python subprocess)
+- **Messaging:** Telegram via OpenClaw
 
-Elevated bash (host permissions) is separate from macOS TCC:
+---
 
-- Use `/elevated on|off` to toggle per‑session elevated access when enabled + allowlisted.
-- Gateway persists the per‑session toggle via `sessions.patch` (WS method) alongside `thinkingLevel`, `verboseLevel`, `model`, `sendPolicy`, and `groupActivation`.
+## The aesthetic
 
-Details: [Nodes](https://docs.openclaw.ai/nodes) · [macOS app](https://docs.openclaw.ai/platforms/macos) · [Gateway protocol](https://docs.openclaw.ai/concepts/architecture)
+OpenBodhi's design reflects its philosophy. Contemplative. Trustworthy. Warm without urgency.
 
-## Agent to Agent (sessions\_\* tools)
+The color language: **Amber** for energy and attention (the Bodhi tree's golden hour). **Sage** for grounded practice (the tree's leaves). **Warm white** for connections (clarity, trust, the highest contrast). **Muted stone** for low-energy states (thinking-in-progress, not urgency).
 
-- Use these to coordinate work across sessions without jumping between chat surfaces.
-- `sessions_list` — discover active sessions (agents) and their metadata.
-- `sessions_history` — fetch transcript logs for a session.
-- `sessions_send` — message another session; optional reply‑back ping‑pong + announce step (`REPLY_SKIP`, `ANNOUNCE_SKIP`).
+The grain texture and breathing animations create life and depth without noise. This is not a startup dashboard. It is a tool for consciousness. The design reinforces that.
 
-Details: [Session tools](https://docs.openclaw.ai/concepts/session-tool)
+See the [Design System](docs/bodhi/DESIGN-SYSTEM.md) for the complete token reference. Watch the [Contemplative Emergence](docs/bodhi/assets/contemplative-emergence.html) visualization to see how clustering actually looks.
 
-## Skills registry (ClawHub)
+---
 
-ClawHub is a minimal skill registry. With ClawHub enabled, the agent can search for skills automatically and pull in new ones as needed.
+## Built on OpenClaw
 
-[ClawHub](https://clawhub.com)
+OpenBodhi is a fork of [openclaw/openclaw](https://github.com/openclaw/openclaw). OpenClaw provides the infrastructure: multi-channel messaging, skills system, worker orchestration. The Bodhi workers and vault live in `skills/bodhi-*/` and `packages/bodhi-vault/`. Everything else is OpenClaw upstream.
 
-## Chat commands
+---
 
-Send these in WhatsApp/Telegram/Slack/Google Chat/Microsoft Teams/WebChat (group commands are owner-only):
-
-- `/status` — compact session status (model + tokens, cost when available)
-- `/new` or `/reset` — reset the session
-- `/compact` — compact session context (summary)
-- `/think <level>` — off|minimal|low|medium|high|xhigh (GPT-5.2 + Codex models only)
-- `/verbose on|off`
-- `/usage off|tokens|full` — per-response usage footer
-- `/restart` — restart the gateway (owner-only in groups)
-- `/activation mention|always` — group activation toggle (groups only)
-
-## Apps (optional)
-
-The Gateway alone delivers a great experience. All apps are optional and add extra features.
-
-If you plan to build/run companion apps, follow the platform runbooks below.
-
-### macOS (OpenClaw.app) (optional)
-
-- Menu bar control for the Gateway and health.
-- Voice Wake + push-to-talk overlay.
-- WebChat + debug tools.
-- Remote gateway control over SSH.
+## Follow the build
 
 Note: signed builds required for macOS permissions to stick across rebuilds (see [macOS Permissions](https://docs.openclaw.ai/platforms/mac/permissions)).
 
-### iOS node (optional)
+---
 
-- Pairs as a node over the Gateway WebSocket (device pairing).
-- Voice trigger forwarding + Canvas surface.
-- Controlled via `openclaw nodes …`.
+## License
 
-Runbook: [iOS connect](https://docs.openclaw.ai/platforms/ios).
+MIT, same as OpenClaw.
 
 ### Android node (optional)
 
