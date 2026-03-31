@@ -277,10 +277,17 @@ export const utopiaPlugin: ChannelPlugin<ResolvedUtopiaAccount> = {
 
           const ctxPayload = ctx.channelRuntime.reply.finalizeInboundContext({
             Body: text,
+            // NOTE: Utopia inbound payload must include routing fields so session delivery
+            // persistence (resolveLastChannelRaw/resolveLastToRaw) can record a stable DM route,
+            // especially when `session.dmScope` uses the default "main" session.
             From: senderPubkey,
+            To: senderPubkey,
+            OriginatingChannel: "utopia",
+            OriginatingTo: senderPubkey,
             SenderName: senderNick,
             AccountId: account.accountId,
             Provider: "utopia",
+            Surface: "utopia",
             ChatType: "direct",
             SessionKey: route.sessionKey,
             CommandAuthorized: access.commandAuthorized,
