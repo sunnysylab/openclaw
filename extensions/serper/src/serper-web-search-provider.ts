@@ -67,28 +67,31 @@ function missingSerperKeyPayload() {
 }
 
 function createSerperSchema() {
-  return Type.Object({
-    query: Type.String({ description: "Search query string." }),
-    count: Type.Optional(
-      Type.Number({
-        description: "Number of results to return (1-10).",
-        minimum: 1,
-        maximum: MAX_SEARCH_COUNT,
-      }),
-    ),
-    country: Type.Optional(
-      Type.String({
-        description:
-          "2-letter country code for region-specific results (e.g., 'de', 'us'). Maps to Google's gl parameter.",
-      }),
-    ),
-    language: Type.Optional(
-      Type.String({
-        description:
-          "ISO language code for search results (e.g., 'en', 'de', 'fr'). Maps to Google's hl parameter.",
-      }),
-    ),
-  });
+  return Type.Object(
+    {
+      query: Type.String({ description: "Search query string." }),
+      count: Type.Optional(
+        Type.Number({
+          description: "Number of results to return (1-10).",
+          minimum: 1,
+          maximum: MAX_SEARCH_COUNT,
+        }),
+      ),
+      country: Type.Optional(
+        Type.String({
+          description:
+            "2-letter country code for region-specific results (e.g., 'de', 'us'). Maps to Google's gl parameter.",
+        }),
+      ),
+      language: Type.Optional(
+        Type.String({
+          description:
+            "ISO language code for search results (e.g., 'en', 'de', 'fr'). Maps to Google's hl parameter.",
+        }),
+      ),
+    },
+    { additionalProperties: false },
+  );
 }
 
 async function runSerperSearch(params: {
