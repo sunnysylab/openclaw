@@ -20,6 +20,7 @@ const mockState = vi.hoisted(() => ({
   mainSessionKey: "main",
   finalText: "[[reply_to_current]]",
   dispatchError: null as Error | null,
+  resolveSupportsImagesWait: null as Promise<void> | null,
   triggerAgentRunStart: false,
   agentRunId: "run-agent-1",
   sessionEntry: {} as Record<string, unknown>,
@@ -71,6 +72,14 @@ vi.mock("../session-utils.js", async (importOriginal) => {
           ? mockState.sessionEntry.canonicalKey
           : rawKey || "main",
     }),
+    resolveGatewayModelSupportsImages: vi.fn(
+      async (...args: Parameters<typeof original.resolveGatewayModelSupportsImages>) => {
+        if (mockState.resolveSupportsImagesWait) {
+          await mockState.resolveSupportsImagesWait;
+        }
+        return original.resolveGatewayModelSupportsImages(...args);
+      },
+    ),
   };
 });
 
@@ -510,6 +519,67 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       runId: "idem-chat-agent-collision",
     });
     expect(mockState.lastDispatchCtx).toBeUndefined();
+  });
+
+  it("rechecks runId ownership after attachment parsing before registering the chat entry", async () => {
+    createTranscriptFixture("openclaw-chat-send-post-parse-collision-");
+    mockState.finalText = "ok";
+    let releaseSupportsImages = () => {};
+    mockState.resolveSupportsImagesWait = new Promise<void>((resolve) => {
+      releaseSupportsImages = resolve;
+    });
+    const firstRespond = vi.fn();
+    const context = createChatContext();
+    const replacementEntry = {
+      kind: "agent" as const,
+      controller: new AbortController(),
+      sessionId: "sess-agent-replacement",
+      sessionKey: "main",
+      startedAtMs: Date.now(),
+      expiresAtMs: Date.now() + 10_000,
+      ownerConnId: "agent-conn",
+    };
+
+    const firstSend = runNonStreamingChatSend({
+      context,
+      respond: firstRespond,
+      idempotencyKey: "idem-chat-post-parse-collision",
+      requestParams: {
+        attachments: [
+          {
+            mimeType: "image/png",
+            content:
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aYoYAAAAASUVORK5CYII=",
+          },
+        ],
+      },
+      expectBroadcast: false,
+      waitForCompletion: false,
+    });
+
+    await waitForAssertion(() => {
+      expect(context.chatAbortControllers.has("idem-chat-post-parse-collision")).toBe(false);
+    });
+    context.chatAbortControllers.set("idem-chat-post-parse-collision", replacementEntry);
+
+    releaseSupportsImages();
+    await firstSend;
+
+    const [ok, payload, error, meta] = firstRespond.mock.calls.at(-1) ?? [];
+    expect(ok).toBe(false);
+    expect(payload).toBeUndefined();
+    expect(error).toMatchObject({
+      code: ErrorCodes.INVALID_REQUEST,
+      message: "runId already in use by another active operation",
+    });
+    expect(meta).toMatchObject({
+      runId: "idem-chat-post-parse-collision",
+    });
+    expect(mockState.lastDispatchCtx).toBeUndefined();
+    expect(context.chatAbortControllers.get("idem-chat-post-parse-collision")).toBe(
+      replacementEntry,
+    );
+    expect(context.dedupe.get("chat:idem-chat-post-parse-collision")).toBeUndefined();
   });
 
   it("preserves a replacement tracked entry when an aborted chat send settles later", async () => {
