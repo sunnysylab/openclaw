@@ -1,5 +1,9 @@
 import { resolveExternalBestEffortDeliveryTarget } from "../infra/outbound/best-effort-delivery.js";
-import { isGatewayMessageChannel, normalizeMessageChannel } from "../utils/message-channel.js";
+import {
+  INTERNAL_MESSAGE_CHANNEL,
+  isInternalMessageChannel,
+  normalizeMessageChannel,
+} from "../utils/message-channel.js";
 import { callGatewayTool } from "./tools/gateway.js";
 
 type ExecApprovalFollowupParams = {
@@ -62,10 +66,16 @@ export async function sendExecApprovalFollowup(
     threadId: params.turnSourceThreadId,
   });
   const normalizedTurnSourceChannel = normalizeMessageChannel(params.turnSourceChannel);
-  const sessionOnlyOriginChannel =
-    normalizedTurnSourceChannel && isGatewayMessageChannel(normalizedTurnSourceChannel)
-      ? normalizedTurnSourceChannel
-      : undefined;
+  const isInternal = isInternalMessageChannel(normalizedTurnSourceChannel);
+
+  // Webchat (internal channel) has no outbound delivery route — the gateway
+  // would try to remap it to a configured external channel and fail.  Skip
+  // `deliver` for internal channels and explicitly route the agent run to
+  // INTERNAL_MESSAGE_CHANNEL.  For external channels, only request delivery
+  // when a concrete deliverable route was resolved (channel + target); when
+  // the route is incomplete or the origin channel is unknown, stay
+  // session-only so the gateway does not fall back to an unrelated default.
+  const deliver = deliveryTarget.deliver && !isInternal;
 
   await callGatewayTool(
     "agent",
@@ -73,24 +83,12 @@ export async function sendExecApprovalFollowup(
     {
       sessionKey,
       message: buildExecApprovalFollowupPrompt(resultText),
-      deliver: deliveryTarget.deliver,
-      ...(deliveryTarget.deliver ? { bestEffortDeliver: true as const } : {}),
-      channel: deliveryTarget.deliver ? deliveryTarget.channel : sessionOnlyOriginChannel,
-      to: deliveryTarget.deliver
-        ? deliveryTarget.to
-        : sessionOnlyOriginChannel
-          ? params.turnSourceTo
-          : undefined,
-      accountId: deliveryTarget.deliver
-        ? deliveryTarget.accountId
-        : sessionOnlyOriginChannel
-          ? params.turnSourceAccountId
-          : undefined,
-      threadId: deliveryTarget.deliver
-        ? deliveryTarget.threadId
-        : sessionOnlyOriginChannel
-          ? params.turnSourceThreadId
-          : undefined,
+      deliver,
+      ...(deliver ? { bestEffortDeliver: true as const } : {}),
+      channel: deliver ? deliveryTarget.channel : isInternal ? INTERNAL_MESSAGE_CHANNEL : undefined,
+      to: deliver ? deliveryTarget.to : undefined,
+      accountId: deliver ? deliveryTarget.accountId : undefined,
+      threadId: deliver ? deliveryTarget.threadId : undefined,
       idempotencyKey: `exec-approval-followup:${params.approvalId}`,
     },
     { expectFinal: true },
