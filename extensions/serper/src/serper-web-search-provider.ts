@@ -167,6 +167,23 @@ function createSerperToolDefinition(
       }
 
       const params = args as Record<string, unknown>;
+
+      const unsupportedFilter = (["freshness", "date_after", "date_before"] as const).find(
+        (name) => typeof params[name] === "string" && (params[name] as string).trim(),
+      );
+      if (unsupportedFilter) {
+        const label = unsupportedFilter.startsWith("date_")
+          ? "date_after/date_before filtering"
+          : "freshness filtering";
+        return {
+          error: unsupportedFilter.startsWith("date_")
+            ? "unsupported_date_filter"
+            : `unsupported_${unsupportedFilter}`,
+          message: `${label} is not supported by the serper provider. Only Brave and Perplexity support ${label}.`,
+          docs: "https://docs.openclaw.ai/tools/web",
+        };
+      }
+
       const query = readStringParam(params, "query", { required: true });
       const count =
         readNumberParam(params, "count", { integer: true }) ??
