@@ -128,6 +128,7 @@ type DebounceBuffer<T> = {
   releaseReady: () => void;
   readyReleased: boolean;
   task: Promise<void>;
+  deliveredSuccessfully: boolean;
 };
 
 const DEFAULT_MAX_TRACKED_KEYS = 2048;
@@ -156,9 +157,10 @@ export function createInboundDebouncer<T>(params: InboundDebounceCreateParams<T>
     return Math.max(0, Math.trunc(resolved));
   };
 
-  const runFlush = async (items: T[]) => {
+  const runFlush = async (items: T[]): Promise<boolean> => {
     try {
       await params.onFlush(items);
+      return true;
     } catch (err) {
       try {
         params.onError?.(err, items);
@@ -166,6 +168,7 @@ export function createInboundDebouncer<T>(params: InboundDebounceCreateParams<T>
         // Flush failures are reported via onError, but this helper stays
         // non-throwing so keyed chains can continue processing later items.
       }
+      return false;
     }
   };
 
@@ -225,7 +228,7 @@ export function createInboundDebouncer<T>(params: InboundDebounceCreateParams<T>
     // arrives, so later same-key work cannot overtake a timer-backed flush.
     releaseBuffer(buffer);
     await buffer.task;
-    return hadMessages;
+    return hadMessages && buffer.deliveredSuccessfully;
   };
 
   const flushKey = async (key: string) => {
@@ -309,7 +312,7 @@ export function createInboundDebouncer<T>(params: InboundDebounceCreateParams<T>
       if (buffer.items.length === 0) {
         return;
       }
-      await runFlush(buffer.items);
+      buffer.deliveredSuccessfully = await runFlush(buffer.items);
     });
     buffer = {
       items: [item],
@@ -318,6 +321,7 @@ export function createInboundDebouncer<T>(params: InboundDebounceCreateParams<T>
       releaseReady: reservedTask.release,
       readyReleased: false,
       task: reservedTask.task,
+      deliveredSuccessfully: false,
     };
     buffers.set(key, buffer);
     scheduleFlush(key, buffer);
