@@ -25,6 +25,7 @@ import {
   shouldPreserveTransientCooldownProbeSlot,
   shouldUseTransientCooldownProbeSlot,
 } from "./failover-policy.js";
+import type { LiveSessionModelSwitchError } from "./live-model-switch.js";
 import { logModelFallbackDecision } from "./model-fallback-observation.js";
 import type { FallbackAttempt, ModelCandidate } from "./model-fallback.types.js";
 import {
@@ -39,6 +40,22 @@ import type { FailoverReason } from "./pi-embedded-helpers.js";
 import { isLikelyContextOverflowError } from "./pi-embedded-helpers.js";
 
 const log = createSubsystemLogger("model-fallback");
+
+/**
+ * Structural check for {@link LiveSessionModelSwitchError} that works across
+ * module-boundary duplicates and serialized/rehydrated errors where
+ * `instanceof` would fail.  Mirrors the pattern used in
+ * `src/process/command-queue.ts` (`isExpectedNonErrorLaneFailure`).
+ */
+export function isLiveSessionModelSwitchError(err: unknown): err is LiveSessionModelSwitchError {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as Record<string, unknown>).name === "LiveSessionModelSwitchError" &&
+    typeof (err as Record<string, unknown>).provider === "string" &&
+    typeof (err as Record<string, unknown>).model === "string"
+  );
+}
 
 /**
  * Structured error thrown when all model fallback candidates have been
@@ -162,6 +179,7 @@ async function runFallbackCandidate<T>(params: {
   provider: string;
   model: string;
   options?: ModelFallbackRunOptions;
+  rethrowLiveSwitch?: boolean;
 }): Promise<{ ok: true; result: T } | { ok: false; error: unknown }> {
   try {
     const result = params.options
@@ -172,6 +190,16 @@ async function runFallbackCandidate<T>(params: {
       result,
     };
   } catch (err) {
+    // LiveSessionModelSwitchError indicates the session store was updated
+    // (e.g. via /model) while the run was in progress.  This is NOT a model
+    // availability failure and must not be swallowed by the fallback loop;
+    // the outer retry layer (agent-runner-execution) handles it by restarting
+    // the run with the updated model selection.  Letting it fall through here
+    // would cause the fallback loop to skip the current candidate and try the
+    // next one, effectively inverting the intended model order (#57063).
+    if (params.rethrowLiveSwitch && isLiveSessionModelSwitchError(err)) {
+      throw err;
+    }
     // Normalize abort-wrapped rate-limit errors (e.g. Google Vertex RESOURCE_EXHAUSTED)
     // so they become FailoverErrors and continue the fallback loop instead of aborting.
     const normalizedFailover = coerceToFailoverError(err, {
@@ -191,12 +219,14 @@ async function runFallbackAttempt<T>(params: {
   model: string;
   attempts: FallbackAttempt[];
   options?: ModelFallbackRunOptions;
+  rethrowLiveSwitch?: boolean;
 }): Promise<{ success: ModelFallbackRunResult<T> } | { error: unknown }> {
   const runResult = await runFallbackCandidate({
     run: params.run,
     provider: params.provider,
     model: params.model,
     options: params.options,
+    rethrowLiveSwitch: params.rethrowLiveSwitch,
   });
   if (runResult.ok) {
     return {
@@ -594,6 +624,14 @@ export async function runWithModelFallback<T>(params: {
   fallbacksOverride?: string[];
   run: ModelFallbackRunFn<T>;
   onError?: ModelFallbackErrorHandler;
+  /**
+   * When true, `LiveSessionModelSwitchError` thrown inside `run` is re-thrown
+   * immediately instead of being treated as a candidate failure.  Only callers
+   * that have their own restart loop (e.g. `agent-runner-execution`) should
+   * enable this; other callers (followup-runner, cron, memory-flush) rely on
+   * the fallback loop absorbing the error gracefully.
+   */
+  rethrowLiveSwitch?: boolean;
 }): Promise<ModelFallbackRunResult<T>> {
   const candidates = resolveFallbackCandidates({
     cfg: params.cfg,
@@ -733,6 +771,7 @@ export async function runWithModelFallback<T>(params: {
       ...candidate,
       attempts,
       options: runOptions,
+      rethrowLiveSwitch: params.rethrowLiveSwitch,
     });
     if ("success" in attemptRun) {
       if (i > 0 || attempts.length > 0 || attemptedDuringCooldown) {

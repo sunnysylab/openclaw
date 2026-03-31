@@ -1579,3 +1579,83 @@ describe("isAnthropicBillingError", () => {
     }
   });
 });
+
+describe("LiveSessionModelSwitchError in fallback loop (#57063)", () => {
+  it("rethrows LiveSessionModelSwitchError when rethrowLiveSwitch is true", async () => {
+    const { LiveSessionModelSwitchError } = await import("./live-model-switch.js");
+    const cfg = makeCfg();
+    const switchErr = new LiveSessionModelSwitchError({
+      provider: "openai",
+      model: "gpt-5.4",
+    });
+    const run = vi.fn().mockRejectedValueOnce(switchErr).mockResolvedValueOnce("ok");
+
+    await expect(
+      runWithModelFallback({
+        cfg,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        run,
+        rethrowLiveSwitch: true,
+      }),
+    ).rejects.toThrow(switchErr);
+
+    // The run should have been called only once; the error must not cause
+    // the fallback loop to try the next candidate.
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("absorbs LiveSessionModelSwitchError when rethrowLiveSwitch is not set", async () => {
+    const { LiveSessionModelSwitchError } = await import("./live-model-switch.js");
+    const cfg = makeCfg();
+    const switchErr = new LiveSessionModelSwitchError({
+      provider: "openai",
+      model: "gpt-5.4",
+    });
+    const run = vi.fn().mockRejectedValueOnce(switchErr).mockResolvedValueOnce("ok");
+
+    // Without rethrowLiveSwitch, the error is treated as a candidate failure
+    // and the fallback loop continues to the next candidate (the same model
+    // in this single-candidate case resolves via the second mock).
+    const result = await runWithModelFallback({
+      cfg,
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      run,
+    });
+
+    expect(result.result).toBe("ok");
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("rethrows LiveSessionModelSwitchError with multiple fallback candidates when opt-in", async () => {
+    const { LiveSessionModelSwitchError } = await import("./live-model-switch.js");
+    const cfg = makeCfg({
+      agents: {
+        defaults: {
+          model: {
+            primary: "anthropic/claude-opus-4-6",
+            fallbacks: ["openai/gpt-5.4", "google/gemini-3-flash-preview"],
+          },
+        },
+      },
+    });
+    const switchErr = new LiveSessionModelSwitchError({
+      provider: "google",
+      model: "gemini-3-flash-preview",
+    });
+    const run = vi.fn().mockRejectedValueOnce(switchErr).mockResolvedValueOnce("ok");
+
+    await expect(
+      runWithModelFallback({
+        cfg,
+        provider: "anthropic",
+        model: "claude-opus-4-6",
+        run,
+        rethrowLiveSwitch: true,
+      }),
+    ).rejects.toThrow(switchErr);
+
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});

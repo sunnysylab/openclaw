@@ -7,8 +7,11 @@ import {
 import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
 import { runCliAgent } from "../../agents/cli-runner.js";
 import { getCliSessionBinding } from "../../agents/cli-session.js";
-import { LiveSessionModelSwitchError } from "../../agents/live-model-switch.js";
-import { runWithModelFallback, isFallbackSummaryError } from "../../agents/model-fallback.js";
+import {
+  runWithModelFallback,
+  isFallbackSummaryError,
+  isLiveSessionModelSwitchError,
+} from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import {
   BILLING_ERROR_USER_MESSAGE,
@@ -183,6 +186,13 @@ export async function runAgentTurnWithFallback(params: {
     params.getActiveSessionEntry()?.systemPromptReport,
   );
 
+  // Cap the number of restarts caused by LiveSessionModelSwitchError to prevent
+  // unbounded retry loops (CWE-835).  A small jittered backoff is applied on
+  // each restart to avoid hot-looping when the session model is being changed
+  // rapidly (e.g. by a buggy or malicious client).
+  const MAX_MODEL_SWITCH_RESTARTS = 3;
+  let modelSwitchRestarts = 0;
+
   while (true) {
     try {
       const normalizeStreamingText = (payload: ReplyPayload): { text?: string; skip: boolean } => {
@@ -261,6 +271,7 @@ export async function runAgentTurnWithFallback(params: {
       const fallbackResult = await runWithModelFallback({
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
+        rethrowLiveSwitch: true,
         run: (provider, model, runOptions) => {
           // Notify that model selection is complete (including after fallback).
           // This allows responsePrefix template interpolation with the actual model.
@@ -613,7 +624,17 @@ export async function runAgentTurnWithFallback(params: {
 
       break;
     } catch (err) {
-      if (err instanceof LiveSessionModelSwitchError) {
+      if (isLiveSessionModelSwitchError(err)) {
+        modelSwitchRestarts++;
+        if (modelSwitchRestarts > MAX_MODEL_SWITCH_RESTARTS) {
+          throw new Error(
+            `Too many model switches during a single run (>${MAX_MODEL_SWITCH_RESTARTS}). ` +
+              `Please try again after the model selection has stabilised.`,
+            { cause: err },
+          );
+        }
+        // Small jittered backoff to avoid hot-looping.
+        await new Promise((r) => setTimeout(r, 200 * modelSwitchRestarts + Math.random() * 100));
         params.followupRun.run.provider = err.provider;
         params.followupRun.run.model = err.model;
         params.followupRun.run.authProfileId = err.authProfileId;
