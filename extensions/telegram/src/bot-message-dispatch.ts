@@ -572,7 +572,9 @@ export const dispatchTelegramMessage = async ({
     void statusReactionController.setThinking();
   }
 
-  const { onModelSelected, ...replyPipeline } = createChannelReplyPipeline({
+  const { onModelSelected, ...replyPipeline } = (
+    telegramDeps.createChannelReplyPipeline ?? createChannelReplyPipeline
+  )({
     cfg,
     agentId: route.agentId,
     channel: "telegram",
@@ -945,7 +947,8 @@ export const dispatchTelegramMessage = async ({
       removeAfterReply: removeAckAfterReply,
       ackReactionPromise,
       ackReactionValue: ackReactionPromise ? "ack" : null,
-      remove: () => reactionApi?.(chatId, msg.message_id ?? 0, []) ?? Promise.resolve(),
+      remove: () =>
+        (reactionApi?.(chatId, msg.message_id ?? 0, []) ?? Promise.resolve()).then(() => {}),
       onError: (err) => {
         if (!msg.message_id) {
           return;
