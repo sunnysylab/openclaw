@@ -154,7 +154,7 @@ async function waitForAcpBackendHealthy(timeoutMs = 60_000): Promise<void> {
       backend.runtime &&
       "doctor" in backend.runtime &&
       typeof backend.runtime.doctor === "function"
-        ? await backend.runtime.doctor()
+        ? await backend.runtime.doctor().catch(() => null)
         : null;
     const detail = !backend
       ? "backend not registered"
