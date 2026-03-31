@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { appendAssistantMessageToSessionTranscript } from "../config/sessions/transcript.js";
+import { performGatewaySessionReset } from "./session-reset-service.js";
 import { emitSessionLifecycleEvent } from "../sessions/session-lifecycle-events.js";
 import { emitSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { testState } from "./test-helpers.mocks.js";
@@ -131,6 +132,63 @@ describe("session.message websocket events", () => {
             subagentRole: "orchestrator",
             subagentControlScope: "children",
             displayName: "Ops Child",
+          });
+        });
+      } finally {
+        await harness.close();
+      }
+    } finally {
+      if (previousMinimalGateway === undefined) {
+        delete process.env.OPENCLAW_TEST_MINIMAL_GATEWAY;
+      } else {
+        process.env.OPENCLAW_TEST_MINIMAL_GATEWAY = previousMinimalGateway;
+      }
+    }
+  });
+
+  test("direct session resets broadcast sessions.changed to operator subscribers", async () => {
+    const previousMinimalGateway = process.env.OPENCLAW_TEST_MINIMAL_GATEWAY;
+    delete process.env.OPENCLAW_TEST_MINIMAL_GATEWAY;
+    try {
+      const storePath = await createSessionStoreFile();
+      await writeSessionStore({
+        entries: {
+          main: {
+            sessionId: "sess-main",
+            updatedAt: Date.now(),
+            displayName: "Ops Main",
+          },
+        },
+        storePath,
+      });
+
+      const harness = await createGatewaySuiteHarness();
+      try {
+        await withOperatorSessionSubscriber(harness, async (ws) => {
+          const changedEvent = onceMessage(
+            ws,
+            (message) =>
+              message.type === "event" &&
+              message.event === "sessions.changed" &&
+              (message.payload as { sessionKey?: string; reason?: string } | undefined)
+                ?.sessionKey === "agent:main:main" &&
+              (message.payload as { sessionKey?: string; reason?: string } | undefined)
+                ?.reason === "reset",
+          );
+
+          const reset = await performGatewaySessionReset({
+            key: "main",
+            reason: "reset",
+            commandSource: "plugin:test-plugin",
+          });
+
+          expect(reset.ok).toBe(true);
+          const event = await changedEvent;
+          expect(event.payload).toMatchObject({
+            sessionKey: "agent:main:main",
+            reason: "reset",
+            displayName: "Ops Main",
+            sessionId: reset.entry.sessionId,
           });
         });
       } finally {
