@@ -31,12 +31,12 @@ fi
 lint_files=()
 while IFS= read -r -d '' file; do
   lint_files+=("$file")
-done < <("$RUN_NODE_TOOL" --node-script "$FILTER_FILES" lint -- "${files[@]}")
+done < <(node "$FILTER_FILES" lint -- "${files[@]}")
 
 format_files=()
 while IFS= read -r -d '' file; do
   format_files+=("$file")
-done < <("$RUN_NODE_TOOL" --node-script "$FILTER_FILES" format -- "${files[@]}")
+done < <(node "$FILTER_FILES" format -- "${files[@]}")
 
 if [ "${#lint_files[@]}" -gt 0 ]; then
   "$RUN_NODE_TOOL" oxlint --type-aware --fix -- "${lint_files[@]}"
@@ -46,7 +46,7 @@ if [ "${#format_files[@]}" -gt 0 ]; then
   "$RUN_NODE_TOOL" oxfmt --write --no-error-on-unmatched-pattern "${format_files[@]}"
 fi
 
-git add --force -- "${files[@]}"
+git add -- "${files[@]}"
 
 # This hook is also exercised from lightweight temp repos in tests, where the
 # staged-file safety behavior matters but the full OpenClaw workspace does not
