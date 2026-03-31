@@ -35,6 +35,12 @@ import {
   getMemoryRuntime,
   restoreMemoryPluginState,
 } from "./memory-state.js";
+import {
+  clearOperationsRuntimeState,
+  getRegisteredOperationsRuntime,
+  getRegisteredOperationsRuntimeOwner,
+  restoreOperationsRuntimeState,
+} from "./operations-state.js";
 import { isPathInside, safeStatSync } from "./path-safety.js";
 import { createPluginRegistry, type PluginRecord, type PluginRegistry } from "./registry.js";
 import { resolvePluginCacheInputs } from "./roots.js";
@@ -59,6 +65,7 @@ import {
   resolvePluginSdkScopedAliasMap,
   shouldPreferNativeJiti,
 } from "./sdk-alias.js";
+import { hasKind, kindsEqual } from "./slots.js";
 import type {
   OpenClawPluginDefinition,
   OpenClawPluginModule,
@@ -115,6 +122,8 @@ type CachedPluginState = {
   memoryFlushPlanResolver: ReturnType<typeof getMemoryFlushPlanResolver>;
   memoryPromptBuilder: ReturnType<typeof getMemoryPromptSectionBuilder>;
   memoryRuntime: ReturnType<typeof getMemoryRuntime>;
+  operationsRuntime: ReturnType<typeof getRegisteredOperationsRuntime>;
+  operationsRuntimeOwner: ReturnType<typeof getRegisteredOperationsRuntimeOwner>;
 };
 
 const MAX_PLUGIN_REGISTRY_CACHE_ENTRIES = 128;
@@ -135,6 +144,7 @@ const LAZY_RUNTIME_REFLECTION_KEYS = [
   "logging",
   "state",
   "modelAuth",
+  "operations",
 ] as const satisfies readonly (keyof PluginRuntime)[];
 
 export function clearPluginLoaderCache(): void {
@@ -142,6 +152,7 @@ export function clearPluginLoaderCache(): void {
   openAllowlistWarningCache.clear();
   clearMemoryEmbeddingProviders();
   clearMemoryPluginState();
+  clearOperationsRuntimeState();
 }
 
 const defaultLogger = () => createSubsystemLogger("plugins");
@@ -842,6 +853,10 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
         flushPlanResolver: cached.memoryFlushPlanResolver,
         runtime: cached.memoryRuntime,
       });
+      restoreOperationsRuntimeState({
+        runtime: cached.operationsRuntime,
+        ownerPluginId: cached.operationsRuntimeOwner,
+      });
       if (shouldActivate) {
         activatePluginRegistry(cached.registry, cacheKey, runtimeSubagentMode);
       }
@@ -1162,11 +1177,11 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     if (
       registrationMode === "full" &&
       candidate.origin === "bundled" &&
-      manifestRecord.kind === "memory"
+      hasKind(manifestRecord.kind, "memory")
     ) {
       const earlyMemoryDecision = resolveMemorySlotDecision({
         id: record.id,
-        kind: "memory",
+        kind: manifestRecord.kind,
         slot: memorySlot,
         selectedId: selectedMemoryPluginId,
       });
@@ -1262,19 +1277,19 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     record.name = definition?.name ?? record.name;
     record.description = definition?.description ?? record.description;
     record.version = definition?.version ?? record.version;
-    const manifestKind = record.kind as string | undefined;
-    const exportKind = definition?.kind as string | undefined;
-    if (manifestKind && exportKind && exportKind !== manifestKind) {
+    const manifestKind = record.kind;
+    const exportKind = definition?.kind;
+    if (manifestKind && exportKind && !kindsEqual(manifestKind, exportKind)) {
       registry.diagnostics.push({
         level: "warn",
         pluginId: record.id,
         source: record.source,
-        message: `plugin kind mismatch (manifest uses "${manifestKind}", export uses "${exportKind}")`,
+        message: `plugin kind mismatch (manifest uses "${String(manifestKind)}", export uses "${String(exportKind)}")`,
       });
     }
     record.kind = definition?.kind ?? record.kind;
 
-    if (record.kind === "memory" && memorySlot === record.id) {
+    if (hasKind(record.kind, "memory") && memorySlot === record.id) {
       memorySlotMatched = true;
     }
 
@@ -1295,8 +1310,9 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
         continue;
       }
 
-      if (memoryDecision.selected && record.kind === "memory") {
+      if (memoryDecision.selected && hasKind(record.kind, "memory")) {
         selectedMemoryPluginId = record.id;
+        record.memorySlotSelected = true;
       }
     }
 
@@ -1334,6 +1350,8 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     const previousMemoryFlushPlanResolver = getMemoryFlushPlanResolver();
     const previousMemoryPromptBuilder = getMemoryPromptSectionBuilder();
     const previousMemoryRuntime = getMemoryRuntime();
+    const previousOperationsRuntime = getRegisteredOperationsRuntime();
+    const previousOperationsRuntimeOwner = getRegisteredOperationsRuntimeOwner();
 
     try {
       const result = register(api);
@@ -1353,6 +1371,10 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
           flushPlanResolver: previousMemoryFlushPlanResolver,
           runtime: previousMemoryRuntime,
         });
+        restoreOperationsRuntimeState({
+          runtime: previousOperationsRuntime,
+          ownerPluginId: previousOperationsRuntimeOwner,
+        });
       }
       registry.plugins.push(record);
       seenIds.set(pluginId, candidate.origin);
@@ -1362,6 +1384,10 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
         promptBuilder: previousMemoryPromptBuilder,
         flushPlanResolver: previousMemoryFlushPlanResolver,
         runtime: previousMemoryRuntime,
+      });
+      restoreOperationsRuntimeState({
+        runtime: previousOperationsRuntime,
+        ownerPluginId: previousOperationsRuntimeOwner,
       });
       recordPluginError({
         logger,
@@ -1402,6 +1428,8 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       memoryFlushPlanResolver: getMemoryFlushPlanResolver(),
       memoryPromptBuilder: getMemoryPromptSectionBuilder(),
       memoryRuntime: getMemoryRuntime(),
+      operationsRuntime: getRegisteredOperationsRuntime(),
+      operationsRuntimeOwner: getRegisteredOperationsRuntimeOwner(),
     });
   }
   if (shouldActivate) {
@@ -1626,14 +1654,14 @@ export async function loadOpenClawPluginCliRegistry(
     record.name = definition?.name ?? record.name;
     record.description = definition?.description ?? record.description;
     record.version = definition?.version ?? record.version;
-    const manifestKind = record.kind as string | undefined;
-    const exportKind = definition?.kind as string | undefined;
-    if (manifestKind && exportKind && exportKind !== manifestKind) {
+    const manifestKind = record.kind;
+    const exportKind = definition?.kind;
+    if (manifestKind && exportKind && !kindsEqual(manifestKind, exportKind)) {
       registry.diagnostics.push({
         level: "warn",
         pluginId: record.id,
         source: record.source,
-        message: `plugin kind mismatch (manifest uses "${manifestKind}", export uses "${exportKind}")`,
+        message: `plugin kind mismatch (manifest uses "${String(manifestKind)}", export uses "${String(exportKind)}")`,
       });
     }
     record.kind = definition?.kind ?? record.kind;
@@ -1652,8 +1680,9 @@ export async function loadOpenClawPluginCliRegistry(
       seenIds.set(pluginId, candidate.origin);
       continue;
     }
-    if (memoryDecision.selected && record.kind === "memory") {
+    if (memoryDecision.selected && hasKind(record.kind, "memory")) {
       selectedMemoryPluginId = record.id;
+      record.memorySlotSelected = true;
     }
 
     if (typeof register !== "function") {
