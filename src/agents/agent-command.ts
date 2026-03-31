@@ -930,7 +930,7 @@ async function agentCommandInternal(
               phase: "error",
               startedAt,
               endedAt: Date.now(),
-              error: "Agent run failed",
+              error: err instanceof Error ? err.message : "Agent run failed",
             },
           });
         }
