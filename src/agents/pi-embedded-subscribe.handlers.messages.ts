@@ -151,6 +151,25 @@ export function handleMessageStart(
   // a new message_start arrives before the previous message_stop. Detect this and
   // synthesize a message_end for the previous message to maintain stream integrity.
   if (ctx.state.inAssistantMessage) {
+    const staleVisibleText = normalizeTextForComparison(
+      ctx.state.lastStreamedAssistantCleaned ??
+        ctx
+          .stripBlockTags(ctx.state.deltaBuffer, {
+            thinking: false,
+            final: false,
+            inlineCode: createInlineCodeState(),
+          })
+          .trim(),
+    );
+    if (staleVisibleText) {
+      ctx.state.staleSyntheticMessageEndTexts.push(staleVisibleText);
+      if (ctx.state.staleSyntheticMessageEndTexts.length > 8) {
+        ctx.state.staleSyntheticMessageEndTexts.splice(
+          0,
+          ctx.state.staleSyntheticMessageEndTexts.length - 8,
+        );
+      }
+    }
     // Synthesize a message_end for the previous message to properly close it out.
     // This prevents the "message_start before receiving message_stop" error.
     // First flush any buffered block replies to ensure text is not lost.
@@ -158,8 +177,10 @@ export function handleMessageStart(
     const syntheticEndEvt = {
       type: "message_end" as const,
       // Minimal message object — content is intentionally empty since we already
-      // flushed buffered text above. Downstream code handles missing content gracefully.
+      // flushed buffered text above. Wrapped in try/catch below because downstream
+      // helpers are not contractually guaranteed to handle a bare role-only message.
       message: { role: "assistant" } as AgentMessage,
+      synthetic: true,
     };
     try {
       handleMessageEnd(ctx, syntheticEndEvt);
@@ -364,11 +385,33 @@ export function handleMessageUpdate(
 
 export function handleMessageEnd(
   ctx: EmbeddedPiSubscribeContext,
-  evt: AgentEvent & { message: AgentMessage },
+  evt: AgentEvent & { message: AgentMessage; synthetic?: boolean },
 ) {
   const msg = evt.message;
   if (msg?.role !== "assistant" || isTranscriptOnlyOpenClawAssistantMessage(msg)) {
     return;
+  }
+  if (!evt.synthetic && ctx.state.staleSyntheticMessageEndTexts.length > 0) {
+    const rawText = extractAssistantText(msg);
+    const normalizedVisibleText = normalizeTextForComparison(
+      (
+        parseReplyDirectives(
+          stripTrailingDirective(
+            ctx.stripBlockTags(rawText, {
+              thinking: false,
+              final: false,
+              inlineCode: createInlineCodeState(),
+            }),
+          ),
+        )?.text ?? rawText
+      ).trim(),
+    );
+    const staleIndex = ctx.state.staleSyntheticMessageEndTexts.indexOf(normalizedVisibleText);
+    if (staleIndex >= 0) {
+      ctx.state.staleSyntheticMessageEndTexts.splice(staleIndex, 1);
+      ctx.log.debug("Skipping stale assistant message_end after synthetic close");
+      return;
+    }
   }
 
   const assistantMessage = msg;

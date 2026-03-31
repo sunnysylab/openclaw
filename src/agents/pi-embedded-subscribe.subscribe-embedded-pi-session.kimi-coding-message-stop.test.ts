@@ -52,7 +52,7 @@ describe("subscribeEmbeddedPiSession KimiCodingPlan workaround", () => {
 
   it("properly tracks inAssistantMessage state through message lifecycle", () => {
     const onAssistantMessageStart = vi.fn();
-    const { emit } = createSubscribedSessionHarness({
+    const { emit, subscription } = createSubscribedSessionHarness({
       runId: "run",
       onAssistantMessageStart,
       blockReplyBreak: "message_end",
@@ -72,5 +72,46 @@ describe("subscribeEmbeddedPiSession KimiCodingPlan workaround", () => {
     // New message starts - should NOT synthesize message_end since previous ended properly
     emit({ type: "message_start", message: { role: "assistant" } });
     expect(onAssistantMessageStart).toHaveBeenCalledTimes(2);
+    expect(subscription.assistantTexts).toEqual(["Hello"]);
+  });
+
+  it("ignores stale real message_end after a synthetic close", () => {
+    const onBlockReply = vi.fn();
+    const { emit, subscription } = createSubscribedSessionHarness({
+      runId: "run",
+      onBlockReply,
+      blockReplyBreak: "message_end",
+    });
+
+    emit({ type: "message_start", message: { role: "assistant" } });
+    emit({
+      type: "message_update",
+      message: { role: "assistant" },
+      assistantMessageEvent: { type: "text_delta", delta: "First message" },
+    });
+
+    emit({ type: "message_start", message: { role: "assistant" } });
+    emit({
+      type: "message_update",
+      message: { role: "assistant" },
+      assistantMessageEvent: { type: "text_delta", delta: "Second message" },
+    });
+
+    emit({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "First message" }],
+      } as AssistantMessage,
+    });
+    emit({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Second message" }],
+      } as AssistantMessage,
+    });
+
+    expect(subscription.assistantTexts).toEqual(["First message", "Second message"]);
   });
 });

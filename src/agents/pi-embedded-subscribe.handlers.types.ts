@@ -86,6 +86,11 @@ export type EmbeddedPiSubscribeState = {
    * Used to detect malformed streams where message_start arrives before the previous message_end.
    */
   inAssistantMessage: boolean;
+  /**
+   * Normalized assistant texts that were already force-closed after an out-of-order
+   * message_start and whose later real message_end should be ignored once.
+   */
+  staleSyntheticMessageEndTexts: string[];
 };
 
 export type EmbeddedPiSubscribeContext = {
