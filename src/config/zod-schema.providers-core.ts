@@ -1560,3 +1560,53 @@ export const MSTeamsConfigSchema = z
         'channels.msteams.dmPolicy="allowlist" requires channels.msteams.allowFrom to contain at least one sender ID',
     });
   });
+
+// ---------------------------------------------------------------------------
+// DingTalk
+// ---------------------------------------------------------------------------
+
+const DingTalkDmSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    policy: DmPolicySchema.optional(),
+    allowFrom: z.array(z.union([z.string(), z.number()])).optional(),
+  })
+  .strict()
+  .optional();
+
+const DingTalkGroupSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    requireMention: z.boolean().optional(),
+    users: z.array(z.union([z.string(), z.number()])).optional(),
+    systemPrompt: z.string().optional(),
+  })
+  .strict();
+
+export const DingTalkAccountSchema = z
+  .object({
+    name: z.string().optional(),
+    enabled: z.boolean().optional(),
+    clientId: z.string().optional().register(sensitive),
+    clientSecret: z.string().optional().register(sensitive),
+    appKey: z.string().optional().register(sensitive),
+    appSecret: z.string().optional().register(sensitive),
+    robotCode: z.string().optional(),
+    webhookPath: z.string().optional(),
+    webhookUrl: z.string().optional(),
+    defaultTo: z.string().optional(),
+    groupPolicy: GroupPolicySchema.optional().default("allowlist"),
+    groups: z.record(z.string(), DingTalkGroupSchema.optional()).optional(),
+    dm: DingTalkDmSchema,
+    dms: z.record(z.string(), DmConfigSchema.optional()).optional(),
+    textChunkLimit: z.number().int().positive().optional(),
+    blockStreaming: z.boolean().optional(),
+    mediaMaxMb: z.number().positive().optional(),
+    healthMonitor: ChannelHealthMonitorSchema,
+  })
+  .strict();
+
+export const DingTalkConfigSchema = DingTalkAccountSchema.extend({
+  accounts: z.record(z.string(), DingTalkAccountSchema.optional()).optional(),
+  defaultAccount: z.string().optional(),
+});

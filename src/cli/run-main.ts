@@ -118,12 +118,8 @@ function shouldLoadCliDotEnv(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 export async function runCli(argv: string[] = process.argv) {
-  const originalArgv = normalizeWindowsArgv(argv);
-  const parsedContainer = parseCliContainerArgs(originalArgv);
-  if (!parsedContainer.ok) {
-    throw new Error(parsedContainer.error);
-  }
-  const parsedProfile = parseCliProfileArgs(parsedContainer.argv);
+  const parsedProfile = parseCliProfileArgs(normalizeWindowsArgv(argv));
+
   if (!parsedProfile.ok) {
     throw new Error(parsedProfile.error);
   }
@@ -150,6 +146,7 @@ export async function runCli(argv: string[] = process.argv) {
     loadCliDotEnv({ quiet: true });
   }
   normalizeEnv();
+  console.log("[DEBUG] shouldEnsureCliPath:", shouldEnsureCliPath(normalizedArgv));
   if (shouldEnsureCliPath(normalizedArgv)) {
     ensureOpenClawCliOnPath();
   }
@@ -159,6 +156,7 @@ export async function runCli(argv: string[] = process.argv) {
 
   try {
     if (shouldUseRootHelpFastPath(normalizedArgv)) {
+      console.log("#### ", normalizedArgv);
       const { outputRootHelp } = await import("./program/root-help.js");
       await outputRootHelp();
       return;
@@ -188,6 +186,8 @@ export async function runCli(argv: string[] = process.argv) {
     // Register the primary command (builtin or subcli) so help and command parsing
     // are correct even with lazy command registration.
     const primary = getPrimaryCommand(parseArgv);
+    console.log("[DEBUG] primary command:", primary); // 加这行
+
     if (primary) {
       const { getProgramContext } = await import("./program/program-context.js");
       const ctx = getProgramContext(program);

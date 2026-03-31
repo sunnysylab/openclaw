@@ -139,5 +139,6 @@ docs/superpowers
 # Deprecated changelog fragment workflow
 changelog/fragments/
 
-# Local scratch workspace
-.tmp/
+
+.claude
+.idea
