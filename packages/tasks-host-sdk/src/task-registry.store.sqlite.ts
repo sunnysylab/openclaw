@@ -59,6 +59,7 @@ let cachedDatabase: TaskRegistryDatabase | null = null;
 const TASK_REGISTRY_DIR_MODE = 0o700;
 const TASK_REGISTRY_FILE_MODE = 0o600;
 const TASK_REGISTRY_SIDEcar_SUFFIXES = ["", "-shm", "-wal"] as const;
+const SQLITE_IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function normalizeNumber(value: number | bigint | null): number | undefined {
   if (typeof value === "bigint") {
@@ -343,6 +344,9 @@ function ensureColumn(
   columnName: string,
   columnDefinition: string,
 ) {
+  if (!SQLITE_IDENTIFIER_RE.test(tableName) || !SQLITE_IDENTIFIER_RE.test(columnName)) {
+    throw new Error(`Unsafe sqlite identifier in task registry migration: ${tableName}.${columnName}`);
+  }
   const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name?: string }>;
   if (rows.some((row) => row.name === columnName)) {
     return;

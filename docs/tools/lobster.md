@@ -12,6 +12,8 @@ Lobster is a workflow shell that lets OpenClaw run multi-step tool sequences as 
 
 Lobster is one authoring layer above [ClawFlow](/automation/clawflow). Lobster can decide the step logic, but ClawFlow still owns the job identity, owner context, and how detached work returns to the original conversation.
 
+If you are not using Lobster, the plain TypeScript path is the ClawFlow authoring helper layer. Lobster, skills, and other authoring systems should all target the same runtime substrate instead of inventing separate flow ownership rules.
+
 ## Hook
 
 Your assistant can build the tools that manage itself. Ask for a workflow, and 30 minutes later you have a CLI plus pipelines that run as one call. Lobster is the missing piece: deterministic pipelines, explicit approvals, and resumable state.

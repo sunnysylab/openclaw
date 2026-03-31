@@ -306,30 +306,33 @@ export async function cancelFlowById(params: {
   }
   const refreshedTasks = listTasksForFlowId(flow.flowId);
   const remainingActive = refreshedTasks.filter((task) => isActiveTaskStatus(task.status));
+  const refreshedFlow = getFlowById(flow.flowId) ?? flow;
   if (remainingActive.length > 0) {
     return {
       found: true,
       cancelled: false,
       reason: "One or more child tasks are still active.",
-      flow: getFlowById(flow.flowId),
+      flow: refreshedFlow,
       tasks: refreshedTasks,
     };
   }
-  if (isTerminalFlowStatus(flow.status)) {
+  if (isTerminalFlowStatus(refreshedFlow.status)) {
     return {
       found: true,
       cancelled: false,
-      reason: `Flow is already ${flow.status}.`,
-      flow,
+      reason: `Flow is already ${refreshedFlow.status}.`,
+      flow: refreshedFlow,
       tasks: refreshedTasks,
     };
   }
+  const cancelledAt = Date.now();
   const updatedFlow = updateFlowRecordById(flow.flowId, {
     status: "cancelled",
     blockedTaskId: null,
     blockedSummary: null,
-    endedAt: Date.now(),
-    updatedAt: Date.now(),
+    waitingOnTaskId: null,
+    endedAt: cancelledAt,
+    updatedAt: cancelledAt,
   });
   return {
     found: true,

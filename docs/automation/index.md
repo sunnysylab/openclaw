@@ -59,6 +59,8 @@ See [Cron vs Heartbeat](/automation/cron-vs-heartbeat) for a detailed comparison
 
 ClawFlow sits above [Background Tasks](/automation/tasks). Tasks still track the detached runs, while ClawFlow groups related task runs into one job that you can inspect or cancel from the CLI.
 
+Plain TypeScript helpers and bundled skills sit above that runtime when you want to author linear flows without introducing a full DSL.
+
 See [ClawFlow](/automation/clawflow) for the flow overview and [CLI: flows](/cli/flows) for the command surface.
 
 ## Related

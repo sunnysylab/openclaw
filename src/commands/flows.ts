@@ -10,6 +10,16 @@ import { isRich, theme } from "../terminal/theme.js";
 const ID_PAD = 10;
 const STATUS_PAD = 10;
 const SHAPE_PAD = 12;
+const FLOW_STATUSES = new Set<FlowStatus>([
+  "queued",
+  "running",
+  "waiting",
+  "blocked",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "lost",
+]);
 
 function truncate(value: string, maxChars: number) {
   if (value.length <= maxChars) {
@@ -89,6 +99,13 @@ export async function flowsListCommand(
   runtime: RuntimeEnv,
 ) {
   const statusFilter = opts.status?.trim();
+  if (statusFilter && !FLOW_STATUSES.has(statusFilter as FlowStatus)) {
+    runtime.error(
+      `Invalid flow status '${statusFilter}'. Expected one of: ${[...FLOW_STATUSES].join(", ")}`,
+    );
+    runtime.exit(1);
+    return;
+  }
   const flows = listFlowRecords().filter((flow) => {
     if (statusFilter && flow.status !== statusFilter) {
       return false;

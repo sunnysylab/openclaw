@@ -28,6 +28,17 @@ openclaw flows list --status blocked
 openclaw flows list --json
 ```
 
+Accepted `--status` values are:
+
+- `queued`
+- `running`
+- `waiting`
+- `blocked`
+- `succeeded`
+- `failed`
+- `cancelled`
+- `lost`
+
 ### `flows show`
 
 Show one flow by flow id or owner session key.
@@ -46,6 +57,16 @@ Cancel a flow and any active child tasks.
 ```bash
 openclaw flows cancel <lookup>
 ```
+
+## Recovery tip
+
+If a flow looks stuck or orphaned, run:
+
+```bash
+openclaw doctor
+```
+
+The doctor note points you back at `openclaw flows show` and `openclaw flows cancel` for obvious broken linkage cases.
 
 ## Related
 

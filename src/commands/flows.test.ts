@@ -112,6 +112,12 @@ describe("flows commands", () => {
     expect(runtimeLogs.join("\n")).toContain("1 active/2 total");
   });
 
+  it("rejects unknown status filters", async () => {
+    await expect(flowsListCommand({ status: "mystery" }, runtime)).rejects.toThrow("__exit__:1");
+
+    expect(runtimeErrors[0]).toContain("Invalid flow status 'mystery'.");
+  });
+
   it("shows one flow with linked tasks", async () => {
     mocks.resolveFlowForLookupTokenMock.mockReturnValue(flowFixture);
     mocks.listTasksForFlowIdMock.mockReturnValue([taskFixture]);

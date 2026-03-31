@@ -10,6 +10,7 @@ import {
   resumeFlow,
   runTaskInFlow,
   setFlowOutput,
+  setFlowWaiting,
 } from "./flow-runtime.js";
 import { listTasksForFlowId, resetTaskRegistryForTests } from "./task-registry.js";
 
@@ -164,6 +165,43 @@ describe("flow-runtime", () => {
     });
   });
 
+  it("validates wait targets and lets linear flows wait on linked tasks explicitly", async () => {
+    await withFlowRuntimeStateDir(async () => {
+      const flow = createFlow({
+        ownerSessionKey: "agent:main:main",
+        goal: "Inbox routing",
+      });
+
+      const started = runTaskInFlow({
+        flowId: flow.flowId,
+        runtime: "subagent",
+        childSessionKey: "agent:codex:subagent:child",
+        runId: "run-flow-runtime-wait",
+        task: "Bucket messages",
+      });
+
+      expect(
+        setFlowWaiting({
+          flowId: flow.flowId,
+          currentStep: "wait_for_followup",
+          waitingOnTaskId: started.task.taskId,
+        }),
+      ).toMatchObject({
+        flowId: flow.flowId,
+        status: "waiting",
+        currentStep: "wait_for_followup",
+        waitingOnTaskId: started.task.taskId,
+      });
+
+      expect(() =>
+        setFlowWaiting({
+          flowId: flow.flowId,
+          waitingOnTaskId: "task-not-linked",
+        }),
+      ).toThrow(`Flow ${flow.flowId} is not linked to task task-not-linked`);
+    });
+  });
+
   it("reopens a blocked flow with resume and marks terminal states with finish/fail", async () => {
     await withFlowRuntimeStateDir(async () => {
       const flow = createFlow({
@@ -276,6 +314,28 @@ describe("flow-runtime", () => {
         reason: "clawflow-update",
         sessionKey: "agent:main:main",
       });
+    });
+  });
+
+  it("does not mutate the flow when an update has no owner session", async () => {
+    await withFlowRuntimeStateDir(async () => {
+      const flow = createFlow({
+        ownerSessionKey: "   ",
+        goal: "Inbox routing",
+        currentStep: "before",
+      });
+
+      const result = await emitFlowUpdate({
+        flowId: flow.flowId,
+        content: "This update has nowhere to go.",
+        currentStep: "after",
+      });
+
+      expect(result.delivery).toBe("parent_missing");
+      expect(result.flow.currentStep).toBe("before");
+      expect(getFlowById(flow.flowId)?.currentStep).toBe("before");
+      expect(mocks.sendMessageMock).not.toHaveBeenCalled();
+      expect(mocks.enqueueSystemEventMock).not.toHaveBeenCalled();
     });
   });
 });

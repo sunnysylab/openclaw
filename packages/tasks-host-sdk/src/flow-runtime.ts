@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { requestHeartbeatNow } from "../../../src/infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../../../src/infra/system-events.js";
 import { parseAgentSessionKey } from "../../../src/routing/session-key.js";
@@ -64,6 +65,22 @@ function canDeliverFlowToRequesterOrigin(flow: FlowRecord): boolean {
   const channel = flow.requesterOrigin?.channel?.trim();
   const to = flow.requesterOrigin?.to?.trim();
   return Boolean(channel && to && isDeliverableMessageChannel(channel));
+}
+
+function createFlowUpdateIdempotencyKey(params: {
+  flowId: string;
+  content: string;
+  currentStep?: string | null;
+  eventKey?: string;
+  updatedAt: number;
+}) {
+  const explicitKey = params.eventKey?.trim();
+  if (explicitKey) {
+    return `flow:${params.flowId}:update:${explicitKey}`;
+  }
+  const contentHash = createHash("sha1").update(params.content).digest("hex").slice(0, 12);
+  const stepToken = params.currentStep?.trim() || "step";
+  return `flow:${params.flowId}:update:${stepToken}:${params.updatedAt}:${contentHash}`;
 }
 
 export function createFlow(params: {
@@ -298,16 +315,16 @@ export async function emitFlowUpdate(params: {
   }
   const ownerSessionKey = flow.ownerSessionKey.trim();
   const updatedAt = params.updatedAt ?? Date.now();
+  if (!ownerSessionKey) {
+    return {
+      flow,
+      delivery: "parent_missing",
+    };
+  }
   const updatedFlow = updateRequiredFlow(flow.flowId, {
     currentStep: params.currentStep,
     updatedAt,
   });
-  if (!ownerSessionKey) {
-    return {
-      flow: updatedFlow,
-      delivery: "parent_missing",
-    };
-  }
   if (!canDeliverFlowToRequesterOrigin(updatedFlow)) {
     try {
       enqueueSystemEvent(content, {
@@ -332,7 +349,13 @@ export async function emitFlowUpdate(params: {
   }
   try {
     const requesterAgentId = parseAgentSessionKey(ownerSessionKey)?.agentId;
-    const idempotencyKey = `flow:${updatedFlow.flowId}:update:${params.eventKey?.trim() || updatedAt}`;
+    const idempotencyKey = createFlowUpdateIdempotencyKey({
+      flowId: updatedFlow.flowId,
+      content,
+      currentStep: updatedFlow.currentStep,
+      eventKey: params.eventKey,
+      updatedAt,
+    });
     const { sendMessage } = await loadFlowDeliveryRuntime();
     await sendMessage({
       channel: updatedFlow.requesterOrigin?.channel,
