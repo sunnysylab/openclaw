@@ -460,9 +460,11 @@ export async function runCronIsolatedAgentTurn(params: {
   let fallbackModel = liveSelection.model;
   // Snapshot the originally configured provider/model before the retry loop
   // so isFromFallback compares against the true primary, not a value already
-  // rewritten to the fallback by a prior runPrompt() call.
-  const configuredProvider = liveSelection.provider;
-  const configuredModel = liveSelection.model;
+  // rewritten to the fallback by a prior runPrompt() call.  Updated on
+  // LiveSessionModelSwitchError so intentional live switches are not
+  // misclassified as fallback.
+  let configuredProvider = liveSelection.provider;
+  let configuredModel = liveSelection.model;
   const runStartedAt = Date.now();
   let runEndedAt = runStartedAt;
   try {
@@ -611,6 +613,11 @@ export async function runCronIsolatedAgentTurn(params: {
           };
           fallbackProvider = err.provider;
           fallbackModel = err.model;
+          // A live model switch is an intentional correction, not a fallback.
+          // Update the configured baseline so the post-run comparison does not
+          // incorrectly flag the session as using a fallback model.
+          configuredProvider = err.provider;
+          configuredModel = err.model;
           syncSessionEntryLiveSelection();
           // Persist the corrected model before retrying so sessions_list
           // reflects the real model even if the retry also fails.
