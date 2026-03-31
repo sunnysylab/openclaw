@@ -26,7 +26,11 @@ import {
   resolveVisibleSessionReference,
   stripToolMessages,
 } from "./sessions-helpers.js";
-import { buildAgentToAgentMessageContext, resolvePingPongTurns } from "./sessions-send-helpers.js";
+import {
+  buildAgentToAgentMessageContext,
+  resolveAnnounceTargetFromKey,
+  resolvePingPongTurns,
+} from "./sessions-send-helpers.js";
 import { type SessionsSendAnnouncePlan, runSessionsSendA2AFlow } from "./sessions-send-tool.a2a.js";
 
 const SessionsSendToolSchema = Type.Object({
@@ -59,6 +63,23 @@ function resolveLatestAssistantReplySnapshot(messages: unknown[]): {
     return { text, fingerprint };
   }
   return {};
+}
+
+function resolveImmediateFireAndForgetAnnounceDecision(params: {
+  sessionKey: string;
+  displayKey: string;
+}): AnnounceTargetDecision {
+  const parsedDecision = resolveParsedAnnounceTargetDecision(params.sessionKey);
+  if (parsedDecision) {
+    return parsedDecision;
+  }
+  if (resolveAnnounceTargetFromKey(params.sessionKey)) {
+    return { kind: "unknown", reason: "missing_delivery" };
+  }
+  if (params.displayKey !== params.sessionKey && resolveAnnounceTargetFromKey(params.displayKey)) {
+    return { kind: "unknown", reason: "miss" };
+  }
+  return { kind: "unknown", reason: "miss" };
 }
 
 async function startAgentRun(params: {
@@ -334,25 +355,12 @@ export function createSessionsSendTool(opts?: {
           return start.result;
         }
         runId = start.runId;
-        const immediateDecision = resolveParsedAnnounceTargetDecision(resolvedKey);
-        const immediatePlan = immediateDecision ? resolveAnnouncePlan(immediateDecision) : null;
-        if (immediatePlan) {
-          if (immediatePlan.shouldRunAnnounceFlow) {
-            startA2AFlow(immediatePlan, undefined, runId);
-          }
-          return jsonResult({
-            runId,
-            status: "accepted",
-            sessionKey: displayKey,
-            delivery: immediatePlan.delivery,
-          });
-        }
-        const announcePlan = await resolveAnnounceTarget({
-          sessionKey: resolvedKey,
-          displayKey,
-        })
-          .catch(() => ({ kind: "unknown", reason: "error" }) satisfies AnnounceTargetDecision)
-          .then(resolveAnnouncePlan);
+        const announcePlan = resolveAnnouncePlan(
+          resolveImmediateFireAndForgetAnnounceDecision({
+            sessionKey: resolvedKey,
+            displayKey,
+          }),
+        );
         if (announcePlan.shouldRunAnnounceFlow) {
           startA2AFlow(announcePlan, undefined, runId);
         }
