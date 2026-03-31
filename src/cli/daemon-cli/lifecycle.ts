@@ -192,11 +192,13 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
       return handled;
     },
     postRestartCheck: async ({ warnings, fail, stdout }) => {
+      const probeAuth = await resolveGatewayRestartProbeAuth();
       if (restartedWithoutServiceManager) {
         const health = await waitForGatewayHealthyListener({
           port: restartPort,
           attempts: POST_RESTART_HEALTH_ATTEMPTS,
           delayMs: POST_RESTART_HEALTH_DELAY_MS,
+          probeAuth,
         });
         if (health.healthy) {
           return;
@@ -220,7 +222,6 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
         ]);
       }
 
-      const probeAuth = await resolveGatewayRestartProbeAuth();
       let health = await waitForGatewayHealthyRestart({
         service,
         port: restartPort,
