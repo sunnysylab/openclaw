@@ -2,5 +2,6 @@ import { describePluginRegistrationContract } from "../../test/helpers/plugins/p
 
 describePluginRegistrationContract({
   pluginId: "mistral",
+  speechProviderIds: ["mistral"],
   mediaUnderstandingProviderIds: ["mistral"],
 });
