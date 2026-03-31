@@ -33,6 +33,14 @@ export const telegramChannelConfigUiHints = {
     label: "Telegram Streaming Mode",
     help: 'Unified Telegram stream preview mode: "off" | "partial" | "block" | "progress" (default: "partial"). "progress" maps to "partial" on Telegram. Legacy boolean/streamMode keys are auto-mapped.',
   },
+  streamThrottleMs: {
+    label: "Telegram Stream Throttle (ms)",
+    help: "Throttle in ms between draft preview updates (min 250ms). Lower = smoother streaming.",
+  },
+  minInitialChars: {
+    label: "Telegram Min Initial Chars",
+    help: "Minimum characters before sending first draft preview (improves push notification UX).",
+  },
   "retry.attempts": {
     label: "Telegram Retry Attempts",
     help: "Max retry attempts for outbound Telegram API calls (default: 3).",

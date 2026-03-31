@@ -1,11 +1,15 @@
 import type { Bot } from "grammy";
-import { createFinalizableDraftLifecycle } from "openclaw/plugin-sdk/channel-lifecycle";
+import {
+  clearFinalizableDraftMessage,
+  createDraftStreamLoop,
+} from "openclaw/plugin-sdk/channel-lifecycle";
 import { buildTelegramThreadParams, type TelegramThreadSpec } from "./bot/helpers.js";
 import { isSafeToRetrySendError, isTelegramClientRejection } from "./network-errors.js";
 import { normalizeTelegramReplyToMessageId } from "./outbound-params.js";
 
 const TELEGRAM_STREAM_MAX_CHARS = 4096;
-const DEFAULT_THROTTLE_MS = 1000;
+const DEFAULT_DRAFT_THROTTLE_MS = 250;
+const DEFAULT_MESSAGE_THROTTLE_MS = 1000;
 const TELEGRAM_DRAFT_ID_MAX = 2_147_483_647;
 const THREAD_NOT_FOUND_RE = /400:\s*Bad Request:\s*message thread not found/i;
 const DRAFT_METHOD_UNAVAILABLE_RE =
@@ -114,6 +118,10 @@ type SupersededTelegramPreview = {
   parseMode?: "HTML";
 };
 
+function resolveDefaultThrottleMs(previewTransport: "message" | "draft"): number {
+  return previewTransport === "draft" ? DEFAULT_DRAFT_THROTTLE_MS : DEFAULT_MESSAGE_THROTTLE_MS;
+}
+
 export function createTelegramDraftStream(params: {
   api: Bot["api"];
   chatId: Parameters<Bot["api"]["sendMessage"]>[0];
@@ -135,7 +143,6 @@ export function createTelegramDraftStream(params: {
     params.maxChars ?? TELEGRAM_STREAM_MAX_CHARS,
     TELEGRAM_STREAM_MAX_CHARS,
   );
-  const throttleMs = Math.max(250, params.throttleMs ?? DEFAULT_THROTTLE_MS);
   const minInitialChars = params.minInitialChars;
   const chatId = params.chatId;
   const requestedPreviewTransport = params.previewTransport ?? "auto";
@@ -170,6 +177,11 @@ export function createTelegramDraftStream(params: {
   let streamMessageId: number | undefined;
   let streamDraftId = usesDraftTransport ? allocateTelegramDraftId() : undefined;
   let previewTransport: "message" | "draft" = usesDraftTransport ? "draft" : "message";
+  const loopParams = {
+    throttleMs: Math.max(250, params.throttleMs ?? resolveDefaultThrottleMs(previewTransport)),
+    isStopped: () => streamState.stopped,
+    sendOrEditStreamMessage: async (_text: string): Promise<boolean | "reschedule"> => false,
+  };
   let lastSentText = "";
   let lastDeliveredText = "";
   let lastSentParseMode: "HTML" | undefined;
@@ -286,7 +298,7 @@ export function createTelegramDraftStream(params: {
     return true;
   };
 
-  const sendOrEditStreamMessage = async (text: string): Promise<boolean> => {
+  const sendOrEditStreamMessage = async (text: string): Promise<boolean | "reschedule"> => {
     // Allow final flush even if stopped (e.g., after clear()).
     if (streamState.stopped && !streamState.final) {
       return false;
@@ -326,6 +338,7 @@ export function createTelegramDraftStream(params: {
     lastSentParseMode = renderedParseMode;
     try {
       let sent = false;
+      let shouldReschedulePending = false;
       if (previewTransport === "draft") {
         try {
           sent = await sendDraftTransportPreview({
@@ -339,6 +352,10 @@ export function createTelegramDraftStream(params: {
           }
           previewTransport = "message";
           streamDraftId = undefined;
+          if (params.throttleMs == null) {
+            loopParams.throttleMs = DEFAULT_MESSAGE_THROTTLE_MS;
+            shouldReschedulePending = true;
+          }
           params.warn?.(
             "telegram stream preview: sendMessageDraft rejected by API; falling back to sendMessage/editMessageText",
           );
@@ -359,7 +376,7 @@ export function createTelegramDraftStream(params: {
         previewRevision += 1;
         lastDeliveredText = trimmed;
       }
-      return sent;
+      return sent && shouldReschedulePending ? "reschedule" : sent;
     } catch (err) {
       streamState.stopped = true;
       params.warn?.(
@@ -369,25 +386,43 @@ export function createTelegramDraftStream(params: {
     }
   };
 
-  const { loop, update, stop, clear } = createFinalizableDraftLifecycle({
-    throttleMs,
-    state: streamState,
-    sendOrEditStreamMessage,
-    readMessageId: () => streamMessageId,
-    clearMessageId: () => {
-      streamMessageId = undefined;
-    },
-    isValidMessageId: (value): value is number =>
-      typeof value === "number" && Number.isFinite(value),
-    deleteMessage: async (messageId) => {
-      await params.api.deleteMessage(chatId, messageId);
-    },
-    onDeleteSuccess: (messageId) => {
-      params.log?.(`telegram stream preview deleted (chat=${chatId}, message=${messageId})`);
-    },
-    warn: params.warn,
-    warnPrefix: "telegram stream preview cleanup failed",
-  });
+  loopParams.sendOrEditStreamMessage = sendOrEditStreamMessage;
+  const loop = createDraftStreamLoop(loopParams);
+  const update = (text: string) => {
+    if (streamState.stopped || streamState.final) {
+      return;
+    }
+    loop.update(text);
+  };
+  const stop = async (): Promise<void> => {
+    streamState.final = true;
+    await loop.drain();
+    await loop.drain();
+  };
+  const stopForClear = async (): Promise<void> => {
+    streamState.stopped = true;
+    loop.stop();
+    await loop.waitForInFlight();
+  };
+  const clear = async (): Promise<void> => {
+    await clearFinalizableDraftMessage({
+      stopForClear,
+      readMessageId: () => streamMessageId,
+      clearMessageId: () => {
+        streamMessageId = undefined;
+      },
+      isValidMessageId: (value): value is number =>
+        typeof value === "number" && Number.isFinite(value),
+      deleteMessage: async (messageId) => {
+        await params.api.deleteMessage(chatId, messageId);
+      },
+      onDeleteSuccess: (messageId) => {
+        params.log?.(`telegram stream preview deleted (chat=${chatId}, message=${messageId})`);
+      },
+      warn: params.warn,
+      warnPrefix: "telegram stream preview cleanup failed",
+    });
+  };
 
   const forceNewMessage = () => {
     // Boundary rotation may call stop() to finalize the previous draft.
@@ -458,7 +493,9 @@ export function createTelegramDraftStream(params: {
     return undefined;
   };
 
-  params.log?.(`telegram stream preview ready (maxChars=${maxChars}, throttleMs=${throttleMs})`);
+  params.log?.(
+    `telegram stream preview ready (maxChars=${maxChars}, throttleMs=${loopParams.throttleMs})`,
+  );
 
   return {
     update,
