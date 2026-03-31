@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createBotFrameworkJwtValidator,
@@ -6,7 +7,11 @@ import {
   type MSTeamsTeamsSdk,
   createMSTeamsApp,
 } from "./sdk.js";
-import type { MSTeamsCredentials, MSTeamsSecretCredentials, MSTeamsFederatedCredentials } from "./token.js";
+import type {
+  MSTeamsCredentials,
+  MSTeamsSecretCredentials,
+  MSTeamsFederatedCredentials,
+} from "./token.js";
 
 const jwtValidatorState = vi.hoisted(() => ({
   instances: [] as Array<{ config: Record<string, unknown> }>,
@@ -35,7 +40,6 @@ vi.mock("@microsoft/teams.apps/dist/middleware/auth/jwt-validator.js", () => ({
   },
 }));
 
-
 vi.mock("node:fs", () => ({
   readFileSync: vi.fn(
     () => "-----BEGIN RSA PRIVATE KEY-----\nfake-key\n-----END RSA PRIVATE KEY-----",
@@ -61,9 +65,6 @@ vi.mock("@azure/identity", () => {
   }
   return { ManagedIdentityCredential, DefaultAzureCredential, ClientCertificateCredential };
 });
-
-import * as fs from "node:fs";
-import { createMSTeamsApp, createMSTeamsAdapter } from "./sdk.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -132,6 +133,7 @@ describe("createMSTeamsAdapter", () => {
 
     const creds = {
       appId: "app-id",
+      type: "secret",
       appPassword: "secret",
       tenantId: "tenant-id",
     } satisfies MSTeamsCredentials;
@@ -170,6 +172,7 @@ describe("createMSTeamsAdapter", () => {
 describe("createBotFrameworkJwtValidator", () => {
   const creds = {
     appId: "app-id",
+    type: "secret",
     appPassword: "secret",
     tenantId: "tenant-id",
   } satisfies MSTeamsCredentials;
