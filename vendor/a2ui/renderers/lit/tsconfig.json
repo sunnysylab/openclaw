@@ -24,7 +24,6 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "types": ["node"],
 
     /* Linting */
     "strict": true,

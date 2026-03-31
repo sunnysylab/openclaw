@@ -7,7 +7,9 @@ export function createMockPluginRegistry(
   hooks: Array<{
     hookName: string;
     handler: (...args: unknown[]) => unknown;
+    priority?: number;
     pluginId?: string;
+    messageReceivedMode?: "observe" | "blocking";
   }>,
 ): PluginRegistry {
   const pluginIds =
@@ -28,8 +30,9 @@ export function createMockPluginRegistry(
       pluginId: h.pluginId ?? "test-plugin",
       hookName: h.hookName,
       handler: h.handler,
-      priority: 0,
+      priority: h.priority ?? 0,
       source: "test",
+      messageReceivedMode: h.messageReceivedMode,
     })),
     tools: [],
     channels: [],
@@ -63,6 +66,7 @@ export function addTestHook(params: {
   hookName: PluginHookRegistration["hookName"];
   handler: PluginHookRegistration["handler"];
   priority?: number;
+  messageReceivedMode?: "observe" | "blocking";
 }) {
   params.registry.typedHooks.push({
     pluginId: params.pluginId,
@@ -70,6 +74,7 @@ export function addTestHook(params: {
     handler: params.handler,
     priority: params.priority ?? 0,
     source: "test",
+    messageReceivedMode: params.messageReceivedMode,
   } as PluginHookRegistration);
 }
 
