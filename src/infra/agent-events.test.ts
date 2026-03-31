@@ -27,7 +27,6 @@ describe("agent-events sequencing", () => {
   });
 
   test("stores and clears run context", async () => {
-    resetAgentRunContextForTest();
     registerAgentRunContext("run-1", { sessionKey: "main" });
     expect(getAgentRunContext("run-1")?.sessionKey).toBe("main");
     clearAgentRunContext("run-1");

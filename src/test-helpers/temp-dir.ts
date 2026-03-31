@@ -21,8 +21,8 @@ export async function withTempDir<T>(
     await fs.rm(base, {
       recursive: true,
       force: true,
-      maxRetries: 10,
-      retryDelay: 100,
+      maxRetries: 20,
+      retryDelay: 25,
     });
   }
 }
