@@ -59,7 +59,31 @@ type SettingsHost = {
   pendingGatewayUrl?: string | null;
   systemThemeCleanup?: (() => void) | null;
   pendingGatewayToken?: string | null;
+  chatAutostartPrompt?: string | null;
 };
+
+const DEFAULT_CHAT_AUTOSTART_PROMPT = "Please introduce yourself to the user.";
+
+function resolveChatAutostartPrompt(raw: string | null): string | null {
+  if (raw == null) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const normalized = trimmed.toLowerCase();
+  if (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on" ||
+    normalized === "bootstrap"
+  ) {
+    return DEFAULT_CHAT_AUTOSTART_PROMPT;
+  }
+  return trimmed;
+}
 
 export function applySettings(host: SettingsHost, next: UiSettings) {
   const normalized = {
@@ -105,6 +129,7 @@ export function applySettingsFromUrl(host: SettingsHost) {
   const tokenRaw = hashParams.get("token") ?? params.get("token");
   const passwordRaw = params.get("password") ?? hashParams.get("password");
   const sessionRaw = params.get("session") ?? hashParams.get("session");
+  const autostartRaw = params.get("autostart") ?? hashParams.get("autostart");
   const shouldResetSessionForToken = Boolean(
     tokenRaw?.trim() && !sessionRaw?.trim() && !gatewayUrlChanged,
   );
@@ -152,6 +177,16 @@ export function applySettingsFromUrl(host: SettingsHost) {
         lastActiveSessionKey: session,
       });
     }
+  }
+
+  if (autostartRaw != null) {
+    const prompt = resolveChatAutostartPrompt(autostartRaw);
+    if (prompt) {
+      host.chatAutostartPrompt = prompt;
+    }
+    params.delete("autostart");
+    hashParams.delete("autostart");
+    shouldCleanUrl = true;
   }
 
   if (gatewayUrlRaw != null) {

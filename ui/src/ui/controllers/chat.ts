@@ -56,6 +56,12 @@ export type ChatEventPayload = {
   errorMessage?: string;
 };
 
+type SendChatMessageOptions = {
+  attachments?: ChatAttachment[];
+  hideUserMessage?: boolean;
+  localEcho?: boolean;
+};
+
 function maybeResetToolStream(state: ChatState) {
   const toolHost = state as ChatState & Partial<Parameters<typeof resetToolStream>[0]>;
   if (
@@ -163,12 +169,13 @@ function normalizeFinalAssistantMessage(message: unknown): Record<string, unknow
 export async function sendChatMessage(
   state: ChatState,
   message: string,
-  attachments?: ChatAttachment[],
+  options?: SendChatMessageOptions,
 ): Promise<string | null> {
   if (!state.client || !state.connected) {
     return null;
   }
   const msg = message.trim();
+  const attachments = options?.attachments;
   const hasAttachments = attachments && attachments.length > 0;
   if (!msg && !hasAttachments) {
     return null;
@@ -191,14 +198,16 @@ export async function sendChatMessage(
     }
   }
 
-  state.chatMessages = [
-    ...state.chatMessages,
-    {
-      role: "user",
-      content: contentBlocks,
-      timestamp: now,
-    },
-  ];
+  if (options?.localEcho !== false) {
+    state.chatMessages = [
+      ...state.chatMessages,
+      {
+        role: "user",
+        content: contentBlocks,
+        timestamp: now,
+      },
+    ];
+  }
 
   state.chatSending = true;
   state.lastError = null;
@@ -229,6 +238,7 @@ export async function sendChatMessage(
       sessionKey: state.sessionKey,
       message: msg,
       deliver: false,
+      hideUserMessage: options?.hideUserMessage === true,
       idempotencyKey: runId,
       attachments: apiAttachments,
     });
