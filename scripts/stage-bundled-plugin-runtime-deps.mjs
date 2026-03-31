@@ -95,8 +95,12 @@ function resolveRuntimeDepsStampPath(pluginDir) {
   return path.join(pluginDir, ".openclaw-runtime-deps-stamp.json");
 }
 
-function createRuntimeDepsFingerprint(packageJson) {
-  return createHash("sha256").update(JSON.stringify(packageJson)).digest("hex");
+function createRuntimeDepsFingerprint(packageJson, lockfileContent) {
+  const hash = createHash("sha256").update(JSON.stringify(packageJson));
+  if (lockfileContent) {
+    hash.update(lockfileContent);
+  }
+  return hash.digest("hex");
 }
 
 function readRuntimeDepsStamp(stampPath) {
@@ -221,18 +225,24 @@ function installPluginRuntimeDeps(params) {
   const nodeModulesDir = path.join(pluginDir, "node_modules");
   const stampPath = resolveRuntimeDepsStampPath(pluginDir);
   const tempInstallDir = makeTempDir(pluginDir, ".runtime-deps-");
-  const npmRunner = resolveNpmRunner({
-    npmArgs: [
-      "install",
-      "--omit=dev",
-      "--silent",
-      "--ignore-scripts",
-      "--legacy-peer-deps",
-      "--package-lock=false",
-    ],
-  });
+  const lockfilePath = path.join(pluginDir, "package-lock.json");
+  const hasLockfile = fs.existsSync(lockfilePath);
+  const npmArgs = hasLockfile
+    ? ["ci", "--omit=dev", "--silent", "--ignore-scripts", "--legacy-peer-deps"]
+    : [
+        "install",
+        "--omit=dev",
+        "--silent",
+        "--ignore-scripts",
+        "--legacy-peer-deps",
+        "--package-lock=false",
+      ];
+  const npmRunner = resolveNpmRunner({ npmArgs });
   try {
     writeJson(path.join(tempInstallDir, "package.json"), packageJson);
+    if (hasLockfile) {
+      fs.copyFileSync(lockfilePath, path.join(tempInstallDir, "package-lock.json"));
+    }
     const result = spawnSync(npmRunner.command, npmRunner.args, {
       cwd: tempInstallDir,
       encoding: "utf8",
@@ -298,7 +308,11 @@ export function stageBundledPluginRuntimeDeps(params = {}) {
       removePathIfExists(stampPath);
       continue;
     }
-    const fingerprint = createRuntimeDepsFingerprint(packageJson);
+    const lockfilePath = path.join(pluginDir, "package-lock.json");
+    const lockfileContent = fs.existsSync(lockfilePath)
+      ? fs.readFileSync(lockfilePath, "utf8")
+      : null;
+    const fingerprint = createRuntimeDepsFingerprint(packageJson, lockfileContent);
     const stamp = readRuntimeDepsStamp(stampPath);
     if (fs.existsSync(nodeModulesDir) && stamp?.fingerprint === fingerprint) {
       continue;
