@@ -329,8 +329,6 @@ async function runInstallMetadataAudit(
 describe("security audit", () => {
   let fixtureRoot = "";
   let caseId = 0;
-  let channelSecurityRoot = "";
-  let sharedChannelSecurityStateDir = "";
   let sharedCodeSafetyStateDir = "";
   let sharedCodeSafetyWorkspaceDir = "";
   let sharedExtensionsStateDir = "";
@@ -358,13 +356,15 @@ describe("security audit", () => {
     return { tmp, stateDir, configPath };
   };
 
+  const createChannelSecurityStateDir = async () => {
+    const stateDir = await makeTmpDir("channel-security-state");
+    await fs.mkdir(path.join(stateDir, "credentials"), { recursive: true, mode: 0o700 });
+    return stateDir;
+  };
+
   const withChannelSecurityStateDir = async (fn: (tmp: string) => Promise<void>) => {
-    const credentialsDir = path.join(sharedChannelSecurityStateDir, "credentials");
-    await fs.rm(credentialsDir, { recursive: true, force: true }).catch(() => undefined);
-    await fs.mkdir(credentialsDir, { recursive: true, mode: 0o700 });
-    await withEnvAsync({ OPENCLAW_STATE_DIR: sharedChannelSecurityStateDir }, () =>
-      fn(sharedChannelSecurityStateDir),
-    );
+    const stateDir = await createChannelSecurityStateDir();
+    await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, () => fn(stateDir));
   };
 
   const runChannelSecurityStateCases = async <T>(
@@ -442,13 +442,6 @@ description: test skill
     }
     homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(isolatedHome);
     await fs.mkdir(isolatedHome, { recursive: true, mode: 0o700 });
-    channelSecurityRoot = path.join(fixtureRoot, "channel-security");
-    await fs.mkdir(channelSecurityRoot, { recursive: true, mode: 0o700 });
-    sharedChannelSecurityStateDir = path.join(channelSecurityRoot, "state-shared");
-    await fs.mkdir(path.join(sharedChannelSecurityStateDir, "credentials"), {
-      recursive: true,
-      mode: 0o700,
-    });
     const codeSafetyFixture = await createSharedCodeSafetyFixture();
     sharedCodeSafetyStateDir = codeSafetyFixture.stateDir;
     sharedCodeSafetyWorkspaceDir = codeSafetyFixture.workspaceDir;
