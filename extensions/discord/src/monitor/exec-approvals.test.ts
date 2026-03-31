@@ -988,6 +988,45 @@ describe("DiscordExecApprovalHandler delivery routing", () => {
     );
   });
 
+  it("dedupes delivery when the origin route and approver DM resolve to the same Discord channel", async () => {
+    const handler = createHandler({
+      enabled: true,
+      approvers: ["999"],
+      target: "both",
+    });
+
+    mockRestPost.mockImplementation(async (route: string) => {
+      if (route === Routes.channelMessages("123")) {
+        return { id: "msg-1", channel_id: "123" };
+      }
+      if (route === Routes.userChannels()) {
+        return { id: "123" };
+      }
+      throw new Error(`unexpected route: ${route}`);
+    });
+
+    await handler.handleApprovalRequested(
+      createRequest({
+        sessionKey: "agent:main:discord:channel:123",
+        turnSourceChannel: "discord",
+        turnSourceTo: "123",
+        turnSourceAccountId: "default",
+      }),
+    );
+
+    expect(mockRestPost).toHaveBeenCalledTimes(2);
+    expect(mockRestPost).toHaveBeenNthCalledWith(
+      1,
+      Routes.channelMessages("123"),
+      expect.objectContaining({
+        body: expect.any(Object),
+      }),
+    );
+    expect(mockRestPost).toHaveBeenNthCalledWith(2, Routes.userChannels(), {
+      body: { recipient_id: "999" },
+    });
+  });
+
   it("delivers plugin approvals through the shared runtime flow", async () => {
     const handler = createHandler({
       enabled: true,

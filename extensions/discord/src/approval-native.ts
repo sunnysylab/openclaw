@@ -1,5 +1,7 @@
-import { createApproverRestrictedNativeApprovalAdapter } from "openclaw/plugin-sdk/approval-runtime";
-import { resolveExecApprovalSessionTarget } from "openclaw/plugin-sdk/approval-runtime";
+import {
+  createApproverRestrictedNativeApprovalAdapter,
+  resolveExecApprovalSessionTarget,
+} from "openclaw/plugin-sdk/approval-runtime";
 import type { DiscordExecApprovalConfig, OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import type {
   ExecApprovalRequest,
@@ -136,6 +138,9 @@ function resolveDiscordOriginTarget(params: {
 
   if (turnSourceTarget) {
     return { to: turnSourceTarget.to };
+  }
+  if (sessionKind === "dm") {
+    return null;
   }
   if (sessionTarget?.channel === "discord") {
     const targetTo = normalizeDiscordOriginChannelId(sessionTarget.to);
