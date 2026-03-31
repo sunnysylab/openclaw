@@ -23,9 +23,12 @@ function applyCacheControl(msg: { content?: unknown }): void {
   if (typeof msg.content === "string") {
     msg.content = [{ type: "text", text: msg.content, cache_control: cacheControl }];
   } else if (Array.isArray(msg.content) && msg.content.length > 0) {
-    const last = msg.content[msg.content.length - 1];
-    if (last && typeof last === "object" && CACHEABLE_BLOCK_TYPES.has((last as { type?: string }).type ?? "")) {
-      (last as Record<string, unknown>).cache_control = cacheControl;
+    for (let i = msg.content.length - 1; i >= 0; i--) {
+      const block = msg.content[i];
+      if (block && typeof block === "object" && CACHEABLE_BLOCK_TYPES.has((block as { type?: string }).type ?? "")) {
+        (block as Record<string, unknown>).cache_control = cacheControl;
+        break;
+      }
     }
   }
 }

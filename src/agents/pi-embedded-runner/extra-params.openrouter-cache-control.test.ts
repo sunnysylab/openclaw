@@ -179,7 +179,7 @@ describe("extra-params: OpenRouter Anthropic cache_control", () => {
     expect(payload.messages[1].content).toBe("Hello");
   });
 
-  it("skips cache_control when last user block is not a cacheable type", () => {
+  it("walks back to nearest cacheable block when last block is not cacheable", () => {
     const payload = {
       messages: [
         { role: "system", content: "System prompt." },
@@ -196,10 +196,33 @@ describe("extra-params: OpenRouter Anthropic cache_control", () => {
     runOpenRouterPayload(payload, "anthropic/claude-opus-4-6");
 
     const userContent = payload.messages[1].content as Array<Record<string, unknown>>;
-    // text block: no cache_control (it's not the last block)
-    expect(userContent[0]).toEqual({ type: "text", text: "Describe this document" });
-    // document block: no cache_control (not a cacheable type)
+    // text block: gets cache_control (nearest cacheable block walking backward)
+    expect(userContent[0]).toEqual({
+      type: "text",
+      text: "Describe this document",
+      cache_control: { type: "ephemeral" },
+    });
+    // document block: untouched
     expect(userContent[1]).toEqual({ type: "document", source: { type: "base64", data: "abc" } });
+  });
+
+  it("skips cache_control when no cacheable block exists in user message", () => {
+    const payload = {
+      messages: [
+        { role: "system", content: "System prompt." },
+        {
+          role: "user",
+          content: [
+            { type: "document", source: { type: "base64", data: "abc" } },
+          ],
+        },
+      ],
+    };
+
+    runOpenRouterPayload(payload, "anthropic/claude-opus-4-6");
+
+    const userContent = payload.messages[1].content as Array<Record<string, unknown>>;
+    expect(userContent[0]).toEqual({ type: "document", source: { type: "base64", data: "abc" } });
   });
 
   it("only marks the last system message when multiple system messages exist", () => {
