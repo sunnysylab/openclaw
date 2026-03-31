@@ -7,6 +7,7 @@ import { resolveAgentMainSessionKey, resolveMainSessionKey } from "../../config/
 import { callGateway } from "../../gateway/call.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
 import {
+  DeliveryError,
   deliverOutboundPayloads,
   type OutboundDeliveryResult,
 } from "../../infra/outbound/deliver.js";
@@ -328,7 +329,7 @@ async function retryTransientDirectCronDelivery<T>(params: {
       return await params.run();
     } catch (err) {
       const delayMs = retryDelaysMs[retryIndex];
-      if (delayMs == null || !isTransientDirectCronDeliveryError(err) || params.signal?.aborted) {
+      if (delayMs == null || !isTransientDirectCronDeliveryError(err) || params.signal?.aborted || err instanceof DeliveryError) {
         throw err;
       }
       const nextAttempt = retryIndex + 2;
@@ -469,7 +470,7 @@ export async function dispatchCronDelivery(
           // See: https://github.com/openclaw/openclaw/issues/40545
           skipQueue: true,
         });
-      const deliveryResults = options?.retryTransient
+      const deliveryOutcome = options?.retryTransient
         ? await retryTransientDirectCronDelivery({
             jobId: params.job.id,
             signal: params.abortSignal,
@@ -477,7 +478,7 @@ export async function dispatchCronDelivery(
           })
         : await runDelivery();
       // Only mark delivered when ALL payloads succeeded (no partial failure).
-      delivered = deliveryResults.length > 0 && !hadPartialFailure;
+      delivered = deliveryOutcome.results.length > 0 && !hadPartialFailure;
       // Intentionally leave partial success uncached: replay may duplicate the
       // successful subset, but caching it here would permanently drop the
       // failed payloads by converting the replay into delivered=true.
@@ -492,7 +493,7 @@ export async function dispatchCronDelivery(
         });
       }
       if (delivered) {
-        rememberCompletedDirectCronDelivery(deliveryIdempotencyKey, deliveryResults);
+        rememberCompletedDirectCronDelivery(deliveryIdempotencyKey, deliveryOutcome.results);
       }
       return null;
     } catch (err) {
