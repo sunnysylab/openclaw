@@ -67,13 +67,16 @@ export const utopiaPlugin: ChannelPlugin<ResolvedUtopiaAccount> = {
   pairing: {
     idLabel: "utopiaPubkey",
     normalizeAllowEntry: (entry) => entry.replace(/^utopia:/i, "").trim(),
-    notifyApproval: ({ accountId, id }) => {
+    notifyApproval: async ({ accountId, id }) => {
+      if (!accountId) {
+        return;
+      }
       const bus = activeBuses.get(accountId);
       if (!bus) {
         // Intentionally drop: account not connected for this gateway
         return;
       }
-      void bus.sendApprovalDm(id);
+      await bus.sendDm(id, "Pairing approved. You can now send DM commands.");
     },
   },
 
@@ -280,6 +283,7 @@ export const utopiaPlugin: ChannelPlugin<ResolvedUtopiaAccount> = {
             Provider: "utopia",
             ChatType: "direct",
             SessionKey: route.sessionKey,
+            CommandAuthorized: access.commandAuthorized,
           });
 
           await dispatchInboundReplyWithBase({
