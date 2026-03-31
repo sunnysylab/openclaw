@@ -1,6 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import {
   buildSearchCacheKey,
+  buildUnsupportedSearchFilterResponse,
   DEFAULT_SEARCH_COUNT,
   MAX_SEARCH_COUNT,
   formatCliCommand,
@@ -168,20 +169,12 @@ function createSerperToolDefinition(
 
       const params = args as Record<string, unknown>;
 
-      const unsupportedFilter = (["freshness", "date_after", "date_before"] as const).find(
-        (name) => typeof params[name] === "string" && (params[name] as string).trim(),
-      );
-      if (unsupportedFilter) {
-        const label = unsupportedFilter.startsWith("date_")
-          ? "date_after/date_before filtering"
-          : "freshness filtering";
-        return {
-          error: unsupportedFilter.startsWith("date_")
-            ? "unsupported_date_filter"
-            : `unsupported_${unsupportedFilter}`,
-          message: `${label} is not supported by the serper provider. Only Brave and Perplexity support ${label}.`,
-          docs: "https://docs.openclaw.ai/tools/web",
-        };
+      // Serper supports country and language but not time-based filters.
+      // Strip supported fields so the shared helper only checks unsupported ones.
+      const { country: _c, language: _l, ...filterCheckParams } = params;
+      const unsupportedResponse = buildUnsupportedSearchFilterResponse(filterCheckParams, "serper");
+      if (unsupportedResponse) {
+        return unsupportedResponse;
       }
 
       const query = readStringParam(params, "query", { required: true });
