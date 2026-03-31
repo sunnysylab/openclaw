@@ -36,6 +36,7 @@ export type {
   PluginCommandContext,
   PluginInteractiveTelegramHandlerContext,
   PluginLogger,
+  PluginResetSessionResult,
   ProviderAuthContext,
   ProviderAuthDoctorHintContext,
   ProviderAuthMethod,
