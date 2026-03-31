@@ -135,7 +135,7 @@ describe("gateway run option collisions", () => {
   beforeEach(() => {
     resetRuntimeCapture();
     configState.cfg = {};
-    configState.snapshot = { exists: false };
+    configState.snapshot = { valid: true, exists: false, issues: [] };
     startGatewayServer.mockClear();
     setGatewayWsLogStyle.mockClear();
     setVerbose.mockClear();
