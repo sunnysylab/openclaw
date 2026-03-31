@@ -136,7 +136,7 @@ Note: Moonshot and Kimi Coding are separate providers. Keys are not interchangea
 
 ## Notes
 
-- Moonshot model refs use `moonshot/<modelId>`. Kimi Coding model refs use `kimi/<modelId>` (the provider ID is `kimi`, not `kimi-coding`).
+- Moonshot model refs use `moonshot/<modelId>`. Kimi Coding model refs use `kimi/<modelId>`.
 - Override pricing and context metadata in `models.providers` if needed.
 - If Moonshot publishes different context limits for a model, adjust
   `contextWindow` accordingly.
