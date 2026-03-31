@@ -125,7 +125,7 @@ async function auditSystemdUnit(
   env: Record<string, string | undefined>,
   issues: ServiceConfigIssue[],
 ) {
-  const unitPath = resolveSystemdUserUnitPath(env);
+  const unitPath = await resolveSystemdUserUnitPath(env);
   let content = "";
   try {
     content = await fs.readFile(unitPath, "utf8");

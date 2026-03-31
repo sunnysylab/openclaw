@@ -11,6 +11,7 @@ vi.mock("node:child_process", () => ({
 import { splitArgsPreservingQuotes } from "./arg-split.js";
 import { parseSystemdExecStart } from "./systemd-unit.js";
 import {
+  installSystemdService,
   isNonFatalSystemdInstallProbeError,
   isSystemdServiceEnabled,
   isSystemdUserServiceAvailable,
@@ -49,6 +50,30 @@ const createWritableStreamMock = () => {
     stdout: { write } as unknown as NodeJS.WritableStream,
   };
 };
+
+const originalProcessGetuid = process.getuid;
+
+function mockProcessGetuid(uid: number) {
+  const getuid = vi.fn(() => uid);
+  Object.defineProperty(process, "getuid", {
+    configurable: true,
+    writable: true,
+    value: getuid,
+  });
+  return getuid;
+}
+
+function restoreProcessGetuid() {
+  if (typeof originalProcessGetuid === "function") {
+    Object.defineProperty(process, "getuid", {
+      configurable: true,
+      writable: true,
+      value: originalProcessGetuid,
+    });
+    return;
+  }
+  delete (process as NodeJS.Process & { getuid?: () => number }).getuid;
+}
 
 function pathLikeToString(pathname: unknown): string {
   if (typeof pathname === "string") {
@@ -114,6 +139,7 @@ const assertRestartSuccess = async (env: NodeJS.ProcessEnv) => {
 describe("systemd availability", () => {
   beforeEach(() => {
     execFileMock.mockReset();
+    restoreProcessGetuid();
   });
 
   it("returns true when systemctl --user succeeds", async () => {
@@ -382,6 +408,12 @@ describe("systemd runtime parsing", () => {
 });
 
 describe("resolveSystemdUserUnitPath", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    execFileMock.mockReset();
+    restoreProcessGetuid();
+  });
+
   it.each([
     {
       name: "uses default service name when OPENCLAW_PROFILE is unset",
@@ -418,8 +450,161 @@ describe("resolveSystemdUserUnitPath", () => {
       },
       expected: "/home/test/.config/systemd/user/custom-unit.service",
     },
-  ])("$name", ({ env, expected }) => {
-    expect(resolveSystemdUserUnitPath(env)).toBe(expected);
+  ])("$name", async ({ env, expected }) => {
+    expect(await resolveSystemdUserUnitPath(env)).toBe(expected);
+  });
+
+  it("resolves unit path using home from getent when SUDO_USER is set and running as root", async () => {
+    mockProcessGetuid(0);
+    execFileMock.mockImplementation((cmd, args, _opts, cb) => {
+      if (cmd === "getent") {
+        expect(args).toEqual(["passwd", "alice"]);
+        cb(null, "alice:x:1000:1000::/home/alice:/bin/bash\n", "");
+        return;
+      }
+      cb(new Error(`unexpected command: ${cmd}`), "", "");
+    });
+
+    const result = await resolveSystemdUserUnitPath({ HOME: "/root", SUDO_USER: "alice" });
+    expect(result).toBe("/home/alice/.config/systemd/user/openclaw-gateway.service");
+  });
+
+  it("falls back to /home/<sudoUser> when getent fails during sudo resolution", async () => {
+    mockProcessGetuid(0);
+    execFileMock.mockImplementation((cmd, _args, _opts, cb) => {
+      if (cmd === "getent") {
+        cb(new Error("getent not available"), "", "");
+        return;
+      }
+      cb(new Error(`unexpected command: ${cmd}`), "", "");
+    });
+
+    const result = await resolveSystemdUserUnitPath({ HOME: "/root", SUDO_USER: "alice" });
+    expect(result).toBe("/home/alice/.config/systemd/user/openclaw-gateway.service");
+  });
+
+  it("throws for OPENCLAW_SYSTEMD_UNIT containing path traversal characters", async () => {
+    await expect(
+      resolveSystemdUserUnitPath({
+        HOME: "/home/test",
+        OPENCLAW_SYSTEMD_UNIT: "../evil-unit",
+      }),
+    ).rejects.toThrow(/Invalid OPENCLAW_SYSTEMD_UNIT/);
+  });
+
+  it("throws for OPENCLAW_SYSTEMD_UNIT containing a slash", async () => {
+    await expect(
+      resolveSystemdUserUnitPath({
+        HOME: "/home/test",
+        OPENCLAW_SYSTEMD_UNIT: "path/to/unit",
+      }),
+    ).rejects.toThrow(/Invalid OPENCLAW_SYSTEMD_UNIT/);
+  });
+});
+
+describe("installSystemdService", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    execFileMock.mockReset();
+  });
+
+  it("does not create or chown default.target.wants during sudo installs", async () => {
+    const mkdirSpy = vi.spyOn(fs, "mkdir").mockResolvedValue(undefined);
+    vi.spyOn(fs, "writeFile").mockResolvedValue(undefined);
+    const accessError = new Error("missing unit") as NodeJS.ErrnoException;
+    accessError.code = "ENOENT";
+    vi.spyOn(fs, "access").mockRejectedValue(accessError);
+
+    execFileMock.mockImplementation((cmd, args, _opts, cb) => {
+      if (cmd === "getent") {
+        expect(args).toEqual(["passwd", "alice"]);
+        cb(null, "alice:x:1000:1000::/home/alice:/bin/bash\n", "");
+        return;
+      }
+
+      if (cmd === "chown") {
+        expect(args).toEqual([
+          "alice",
+          "/home/alice/.config/systemd/user",
+          "/home/alice/.config/systemd/user/openclaw-gateway.service",
+        ]);
+        cb(null, "", "");
+        return;
+      }
+
+      if (cmd === "systemctl") {
+        cb(null, "", "");
+        return;
+      }
+
+      cb(new Error(`unexpected command: ${cmd}`), "", "");
+    });
+
+    const { stdout } = createWritableStreamMock();
+    const env = {
+      HOME: "/root",
+      SUDO_USER: "alice",
+    };
+    const getuidSpy = mockProcessGetuid(0);
+
+    await installSystemdService({
+      env,
+      stdout,
+      description: "OpenClaw Gateway",
+      environment: {},
+      programArguments: ["/usr/bin/openclaw", "gateway", "run"],
+      workingDirectory: "/tmp/openclaw",
+    });
+
+    expect(mkdirSpy).toHaveBeenCalledTimes(1);
+    expect(mkdirSpy).toHaveBeenCalledWith("/home/alice/.config/systemd/user", { recursive: true });
+    expect(getuidSpy).toHaveBeenCalled();
+  });
+
+  it("includes .bak file in chown targets when a previous unit file exists", async () => {
+    vi.spyOn(fs, "mkdir").mockResolvedValue(undefined);
+    vi.spyOn(fs, "writeFile").mockResolvedValue(undefined);
+    vi.spyOn(fs, "copyFile").mockResolvedValue(undefined);
+    // access resolves (unit file already exists) → triggers backup path
+    vi.spyOn(fs, "access").mockResolvedValue(undefined);
+
+    const chownArgsSeen: string[][] = [];
+    execFileMock.mockImplementation((cmd, args, _opts, cb) => {
+      if (cmd === "getent") {
+        cb(null, "alice:x:1000:1000::/home/alice:/bin/bash\n", "");
+        return;
+      }
+      if (cmd === "chown") {
+        chownArgsSeen.push(args as string[]);
+        cb(null, "", "");
+        return;
+      }
+      if (cmd === "systemctl") {
+        cb(null, "", "");
+        return;
+      }
+      cb(new Error(`unexpected command: ${cmd}`), "", "");
+    });
+
+    const { stdout } = createWritableStreamMock();
+    mockProcessGetuid(0);
+
+    await installSystemdService({
+      env: { HOME: "/root", SUDO_USER: "alice" },
+      stdout,
+      description: "OpenClaw Gateway",
+      environment: {},
+      programArguments: ["/usr/bin/openclaw", "gateway", "run"],
+      workingDirectory: "/tmp/openclaw",
+    });
+
+    expect(chownArgsSeen).toHaveLength(1);
+    expect(chownArgsSeen[0]).toEqual([
+      "alice",
+      "/home/alice/.config/systemd/user",
+      "/home/alice/.config/systemd/user/openclaw-gateway.service",
+      "/home/alice/.config/systemd/user/openclaw-gateway.service.bak",
+    ]);
   });
 });
 
