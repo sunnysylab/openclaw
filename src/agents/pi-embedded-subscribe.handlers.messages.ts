@@ -147,12 +147,34 @@ export function handleMessageStart(
     return;
   }
 
+  // WORKAROUND: Some providers (e.g., KimiCodingPlan) send malformed SSE streams where
+  // a new message_start arrives before the previous message_stop. Detect this and
+  // synthesize a message_end for the previous message to maintain stream integrity.
+  if (ctx.state.inAssistantMessage) {
+    // Synthesize a message_end for the previous message to properly close it out.
+    // This prevents the "message_start before receiving message_stop" error.
+    // First flush any buffered block replies to ensure text is not lost.
+    ctx.flushBlockReplyBuffer();
+    const syntheticEndEvt = {
+      type: "message_end" as const,
+      // Minimal message object — content is intentionally empty since we already
+      // flushed buffered text above. Downstream code handles missing content gracefully.
+      message: { role: "assistant" } as AgentMessage,
+    };
+    try {
+      handleMessageEnd(ctx, syntheticEndEvt);
+    } catch (err) {
+      ctx.log.warn(`synthetic message_end failed: ${String(err)}`);
+    }
+  }
+
   // KNOWN: Resetting at `text_end` is unsafe (late/duplicate end events).
   // ASSUME: `message_start` is the only reliable boundary for “new assistant message begins”.
   // Start-of-message is a safer reset point than message_end: some providers
   // may deliver late text_end updates after message_end, which would otherwise
   // re-trigger block replies.
   ctx.resetAssistantMessageState(ctx.state.assistantTexts.length);
+  ctx.state.inAssistantMessage = true;
   // Use assistant message_start as the earliest "writing" signal for typing.
   void ctx.params.onAssistantMessageStart?.();
 }
@@ -533,4 +555,5 @@ export function handleMessageEnd(
   ctx.state.lastStreamedAssistant = undefined;
   ctx.state.lastStreamedAssistantCleaned = undefined;
   ctx.state.reasoningStreamOpen = false;
+  ctx.state.inAssistantMessage = false;
 }

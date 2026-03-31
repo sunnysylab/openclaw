@@ -81,6 +81,11 @@ export type EmbeddedPiSubscribeState = {
   pendingToolAudioAsVoice: boolean;
   deterministicApprovalPromptSent: boolean;
   lastAssistant?: AgentMessage;
+  /**
+   * Tracks whether we're currently inside an assistant message (between message_start and message_end).
+   * Used to detect malformed streams where message_start arrives before the previous message_end.
+   */
+  inAssistantMessage: boolean;
 };
 
 export type EmbeddedPiSubscribeContext = {
