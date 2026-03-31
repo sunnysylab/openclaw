@@ -1,5 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+function createStubTool(name: string) {
+  return {
+    name,
+    description: `${name} stub`,
+    parameters: { type: "object", properties: {} },
+    execute: vi.fn(async () => ({ output: name })),
+  };
+}
+
+function mockToolFactory(name: string) {
+  return () => createStubTool(name);
+}
+
 const callGatewayMock = vi.fn();
 vi.mock("../gateway/call.js", () => ({
   callGateway: (opts: unknown) => callGatewayMock(opts),
@@ -16,6 +29,49 @@ vi.mock("../config/config.js", async (importOriginal) => {
     resolveGatewayPort: () => 18789,
   };
 });
+
+vi.mock("./tools/agents-list-tool.js", () => ({
+  createAgentsListTool: mockToolFactory("agents_list_stub"),
+}));
+vi.mock("./tools/cron-tool.js", () => ({
+  createCronTool: mockToolFactory("cron_stub"),
+}));
+vi.mock("./tools/gateway-tool.js", () => ({
+  createGatewayTool: mockToolFactory("gateway_stub"),
+}));
+vi.mock("./tools/image-generate-tool.js", () => ({
+  createImageGenerateTool: mockToolFactory("image_generate_stub"),
+}));
+vi.mock("./tools/message-tool.js", () => ({
+  createMessageTool: mockToolFactory("message_stub"),
+}));
+vi.mock("./tools/nodes-tool.js", () => ({
+  createNodesTool: mockToolFactory("nodes_stub"),
+}));
+vi.mock("./tools/pdf-tool.js", () => ({
+  createPdfTool: mockToolFactory("pdf_stub"),
+}));
+vi.mock("./tools/session-status-tool.js", () => ({
+  createSessionStatusTool: mockToolFactory("session_status_stub"),
+}));
+vi.mock("./tools/sessions-list-tool.js", () => ({
+  createSessionsListTool: mockToolFactory("sessions_list_stub"),
+}));
+vi.mock("./tools/sessions-send-tool.js", () => ({
+  createSessionsSendTool: mockToolFactory("sessions_send_stub"),
+}));
+vi.mock("./tools/sessions-spawn-tool.js", () => ({
+  createSessionsSpawnTool: mockToolFactory("sessions_spawn_stub"),
+}));
+vi.mock("./tools/sessions-yield-tool.js", () => ({
+  createSessionsYieldTool: mockToolFactory("sessions_yield_stub"),
+}));
+vi.mock("./tools/subagents-tool.js", () => ({
+  createSubagentsTool: mockToolFactory("subagents_stub"),
+}));
+vi.mock("./tools/tts-tool.js", () => ({
+  createTtsTool: mockToolFactory("tts_stub"),
+}));
 
 import "./test-helpers/fast-core-tools.js";
 
