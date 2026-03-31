@@ -188,7 +188,7 @@ For actions/directory reads, user token can be preferred when configured. For wr
 
     - explicit app mention (`<@botId>`)
     - mention regex patterns (`agents.list[].groupChat.mentionPatterns`, fallback `messages.groupChat.mentionPatterns`)
-    - implicit reply-to-bot thread behavior
+    - implicit reply-to-bot thread behavior (disabled when `thread.requireExplicitMention` is `true`)
 
     Per-channel controls (`channels.slack.channels.<id>`; names only via startup resolution or `dangerouslyAllowNameMatching`):
 
@@ -288,6 +288,7 @@ and still route command execution against the target conversation session (`Comm
 - Thread replies can create thread session suffixes (`:thread:<threadTs>`) when applicable.
 - `channels.slack.thread.historyScope` default is `thread`; `thread.inheritParent` default is `false`.
 - `channels.slack.thread.initialHistoryLimit` controls how many existing thread messages are fetched when a new thread session starts (default `20`; set `0` to disable).
+- `channels.slack.thread.requireExplicitMention` (default `false`): when `true`, suppress implicit thread mentions so the bot only responds to explicit `@bot` mentions inside threads — even threads where the bot previously participated. Without this, any reply in a bot-participated thread bypasses `requireMention` gating.
 
 Reply threading controls:
 
