@@ -135,7 +135,7 @@ export async function startUtopiaBus(options: UtopiaBusOptions): Promise<UtopiaB
 
     const msg = event.data as unknown as UtopiaInstantMessage;
     // Skip own messages and any outgoing message delivery events
-    if (msg.pk === publicKey || !msg.isIncoming) {
+    if (msg.pk === publicKey || !msg.isIncoming || !msg.text || msg.text.trim() === "") {
       return;
     }
 
