@@ -11,7 +11,10 @@ import { registerInternalHook } from "../hooks/internal-hooks.js";
 import type { HookEntry } from "../hooks/types.js";
 import { resolveUserPath } from "../utils.js";
 import { registerPluginCommand, validatePluginCommandDefinition } from "./command-registration.js";
-import { registerCompactionProvider } from "./compaction-provider.js";
+import {
+  getRegisteredCompactionProvider,
+  registerCompactionProvider,
+} from "./compaction-provider.js";
 import { normalizePluginHttpPath } from "./http-path.js";
 import { findOverlappingPluginHttpRoute } from "./http-route-overlap.js";
 import { registerPluginInteractiveHandler } from "./interactive.js";
@@ -1058,8 +1061,23 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
           });
         }
       },
-      registerCompactionProvider:
-        registrationMode === "full" ? (provider) => registerCompactionProvider(provider) : () => {},
+      registerCompactionProvider: (provider) => {
+        if (registrationMode !== "full") {
+          return;
+        }
+        const existing = getRegisteredCompactionProvider(provider.id);
+        if (existing) {
+          const ownerDetail = existing.ownerPluginId ? ` (owner: ${existing.ownerPluginId})` : "";
+          pushDiagnostic({
+            level: "error",
+            pluginId: record.id,
+            source: record.source,
+            message: `compaction provider already registered: ${provider.id}${ownerDetail}`,
+          });
+          return;
+        }
+        registerCompactionProvider(provider, { ownerPluginId: record.id });
+      },
       registerMemoryPromptSection: (builder) => {
         if (registrationMode !== "full") {
           return;

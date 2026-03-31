@@ -6,8 +6,10 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { AgentCompactionIdentifierPolicy } from "../config/types.agent-defaults.js";
 import { retryAsync } from "../infra/retry.js";
+import { isAbortError } from "../infra/unhandled-rejections.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { DEFAULT_CONTEXT_TOKENS } from "./defaults.js";
+import { isTimeoutError } from "./failover-error.js";
 import { repairToolUseResultPairing, stripToolResultDetails } from "./session-transcript-repair.js";
 
 const log = createSubsystemLogger("compaction");
@@ -278,7 +280,7 @@ async function summarizeChunks(params: {
         maxDelayMs: 5000,
         jitter: 0.2,
         label: "compaction/generateSummary",
-        shouldRetry: (err) => !(err instanceof Error && err.name === "AbortError"),
+        shouldRetry: (err) => !isAbortError(err) && !isTimeoutError(err),
       },
     );
   }
