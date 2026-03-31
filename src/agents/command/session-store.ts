@@ -137,28 +137,30 @@ export async function updateSessionStoreAfterAgentRun(params: {
     next.outputTokens = output ?? (useFallback ? entry.outputTokens : undefined);
     const prevEstimate = entry.totalTokensEstimate;
     const prevTotal = entry.totalTokens;
-    const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
     const hasFreshContextSnapshot =
       hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
 
-    if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
+    if (
+      typeof totalTokens === "number" &&
+      Number.isFinite(totalTokens) &&
+      (totalTokens > 0 || (totalTokens === 0 && hasFreshContextSnapshot))
+    ) {
       next.totalTokens = totalTokens;
       next.totalTokensFresh = true;
-
-      if (modelChanged) {
-        next.totalTokensEstimate = undefined;
-      } else {
-        next.totalTokensEstimate = totalTokens;
-      }
+      next.totalTokensEstimate = totalTokens;
     } else {
-      next.totalTokensFresh = (totalTokens === 0 && hasFreshContextSnapshot) || prevWasZero;
+      next.totalTokensFresh = false;
       if (!modelChanged) {
         const fallback = prevEstimate ?? prevTotal;
         if (fallback !== undefined && fallback > 0) {
           next.totalTokensEstimate = fallback;
         }
       }
+    }
+
+    if (modelChanged) {
+      next.totalTokensEstimate = undefined;
     }
     next.cacheRead = usage?.cacheRead ?? (useFallback ? entry.cacheRead : undefined);
     next.cacheWrite = usage?.cacheWrite ?? (useFallback ? entry.cacheWrite : undefined);

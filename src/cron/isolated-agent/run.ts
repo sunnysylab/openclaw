@@ -692,25 +692,22 @@ export async function runCronIsolatedAgentTurn(params: {
       };
       const prevEstimate = cronSession.sessionEntry.totalTokensEstimate;
       const prevTotal = cronSession.sessionEntry.totalTokens;
-      const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
       const lastCallUsage = finalRunResult.meta?.agentMeta?.lastCallUsage;
       const hasFreshContextSnapshot =
         hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
 
-      if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
+      if (
+        typeof totalTokens === "number" &&
+        Number.isFinite(totalTokens) &&
+        (totalTokens > 0 || (totalTokens === 0 && hasFreshContextSnapshot))
+      ) {
         cronSession.sessionEntry.totalTokens = totalTokens;
         cronSession.sessionEntry.totalTokensFresh = true;
-
-        if (modelChanged) {
-          cronSession.sessionEntry.totalTokensEstimate = undefined;
-        } else {
-          cronSession.sessionEntry.totalTokensEstimate = totalTokens;
-        }
+        cronSession.sessionEntry.totalTokensEstimate = totalTokens;
         telemetryUsage.total_tokens = totalTokens;
       } else {
-        cronSession.sessionEntry.totalTokensFresh =
-          (totalTokens === 0 && hasFreshContextSnapshot) || prevWasZero;
+        cronSession.sessionEntry.totalTokensFresh = false;
         if (!modelChanged) {
           const fallback = prevEstimate ?? prevTotal;
           if (fallback !== undefined && fallback > 0) {
@@ -718,6 +715,10 @@ export async function runCronIsolatedAgentTurn(params: {
           }
         }
         telemetryUsage.total_tokens = totalTokens === 0 ? 0 : undefined;
+      }
+
+      if (modelChanged) {
+        cronSession.sessionEntry.totalTokensEstimate = undefined;
       }
       cronSession.sessionEntry.cacheRead =
         usage?.cacheRead ?? (useFallback ? cronSession.sessionEntry.cacheRead : undefined);

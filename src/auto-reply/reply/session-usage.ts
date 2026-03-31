@@ -152,25 +152,27 @@ export async function persistSessionUsageUpdate(params: {
 
           const prevEstimate = entry.totalTokensEstimate;
           const prevTotal = entry.totalTokens;
-          const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
-          if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
+          if (
+            typeof totalTokens === "number" &&
+            Number.isFinite(totalTokens) &&
+            (totalTokens > 0 || (totalTokens === 0 && hasFreshContextSnapshot))
+          ) {
             patch.totalTokens = totalTokens;
             patch.totalTokensFresh = true;
-
-            if (modelChanged) {
-              patch.totalTokensEstimate = undefined;
-            } else {
-              patch.totalTokensEstimate = totalTokens;
-            }
+            patch.totalTokensEstimate = totalTokens;
           } else {
-            patch.totalTokensFresh = (totalTokens === 0 && hasFreshContextSnapshot) || prevWasZero;
+            patch.totalTokensFresh = false;
             if (!modelChanged) {
               const fallback = prevEstimate ?? prevTotal;
               if (fallback !== undefined && fallback > 0) {
                 patch.totalTokensEstimate = fallback;
               }
             }
+          }
+
+          if (modelChanged) {
+            patch.totalTokensEstimate = undefined;
           }
           const hasCurrentUsage =
             hasUsage ||
