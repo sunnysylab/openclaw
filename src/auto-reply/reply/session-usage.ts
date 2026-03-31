@@ -154,28 +154,24 @@ export async function persistSessionUsageUpdate(params: {
           const prevTotal = entry.totalTokens;
           const prevWasZero = prevEstimate === 0 || (prevEstimate === undefined && prevTotal === 0);
 
-          if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
+          if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
             patch.totalTokens = totalTokens;
-            patch.totalTokensFresh = totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
+            patch.totalTokensFresh = true;
 
             if (modelChanged) {
               patch.totalTokensEstimate = undefined;
             } else {
-              if (totalTokens > 0 || (totalTokens === 0 && patch.totalTokensFresh)) {
-                patch.totalTokensEstimate = totalTokens;
-              }
-              if (totalTokens === 0 && !patch.totalTokensFresh) {
-                const fallback = prevEstimate ?? prevTotal;
-                if (fallback !== undefined && fallback > 0) {
-                  patch.totalTokensEstimate = fallback;
-                }
-              }
+              patch.totalTokensEstimate = totalTokens;
             }
           } else {
-            patch.totalTokens = undefined;
-            patch.totalTokensFresh = false;
+            patch.totalTokensFresh = (totalTokens === 0 && hasFreshContextSnapshot) || prevWasZero;
+            if (!modelChanged) {
+              const fallback = prevEstimate ?? prevTotal;
+              if (fallback !== undefined && fallback > 0) {
+                patch.totalTokensEstimate = fallback;
+              }
+            }
           }
-
           const hasCurrentUsage =
             hasUsage ||
             Boolean(params.lastCallUsage) ||
@@ -228,24 +224,25 @@ export async function persistSessionUsageUpdate(params: {
           model: modelUsed,
           contextTokens: params.contextTokensUsed ?? entry.contextTokens,
           systemPromptReport: params.systemPromptReport ?? entry.systemPromptReport,
-          inputTokens: undefined,
-          outputTokens: undefined,
-          totalTokens: undefined,
-          totalTokensFresh: false,
-          cacheRead: undefined,
-          cacheWrite: undefined,
           updatedAt: Date.now(),
         };
 
         if (modelChanged) {
+          patch.inputTokens = undefined;
+          patch.outputTokens = undefined;
+          patch.totalTokens = undefined;
+          patch.totalTokensFresh = false;
+          patch.cacheRead = undefined;
+          patch.cacheWrite = undefined;
           patch.totalTokensEstimate = undefined;
-        } else if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
-          // Always prefer a confirmed fresh total as the estimate baseline.
-          patch.totalTokensEstimate = entry.totalTokens;
-        } else if (entry.totalTokensEstimate !== undefined) {
-          patch.totalTokensEstimate = entry.totalTokensEstimate;
+        } else {
+          if (entry.totalTokens !== undefined && entry.totalTokensFresh !== false) {
+            // Always prefer a confirmed fresh total as the estimate baseline.
+            patch.totalTokensEstimate = entry.totalTokens;
+          } else if (entry.totalTokensEstimate !== undefined) {
+            patch.totalTokensEstimate = entry.totalTokensEstimate;
+          }
         }
-
         return applyCliSessionIdToSessionPatch(params, entry, patch);
       },
     });

@@ -644,7 +644,10 @@ export async function runCronIsolatedAgentTurn(params: {
       cronSession.sessionEntry.totalTokens = undefined;
       cronSession.sessionEntry.totalTokensFresh = false;
       cronSession.sessionEntry.totalTokensEstimate = undefined;
-    } else if (preRunTotalTokens !== undefined && cronSession.sessionEntry.totalTokensFresh !== false) {
+    } else if (
+      preRunTotalTokens !== undefined &&
+      cronSession.sessionEntry.totalTokensFresh !== false
+    ) {
       // Always prefer a confirmed fresh total as the estimate baseline.
       cronSession.sessionEntry.totalTokensEstimate = preRunTotalTokens;
     } else if (cronSession.sessionEntry.totalTokensEstimate !== undefined) {
@@ -695,25 +698,26 @@ export async function runCronIsolatedAgentTurn(params: {
       const hasFreshContextSnapshot =
         hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
 
-      if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
+      if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
         cronSession.sessionEntry.totalTokens = totalTokens;
-        cronSession.sessionEntry.totalTokensFresh =
-          totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
+        cronSession.sessionEntry.totalTokensFresh = true;
 
         if (modelChanged) {
           cronSession.sessionEntry.totalTokensEstimate = undefined;
         } else {
-          if (totalTokens > 0 || (totalTokens === 0 && cronSession.sessionEntry.totalTokensFresh)) {
-            cronSession.sessionEntry.totalTokensEstimate = totalTokens;
-          }
-          if (totalTokens === 0 && !cronSession.sessionEntry.totalTokensFresh) {
-            const fallback = prevEstimate ?? prevTotal;
-            if (fallback !== undefined && fallback > 0) {
-              cronSession.sessionEntry.totalTokensEstimate = fallback;
-            }
-          }
+          cronSession.sessionEntry.totalTokensEstimate = totalTokens;
         }
         telemetryUsage.total_tokens = totalTokens;
+      } else {
+        cronSession.sessionEntry.totalTokensFresh =
+          (totalTokens === 0 && hasFreshContextSnapshot) || prevWasZero;
+        if (!modelChanged) {
+          const fallback = prevEstimate ?? prevTotal;
+          if (fallback !== undefined && fallback > 0) {
+            cronSession.sessionEntry.totalTokensEstimate = fallback;
+          }
+        }
+        telemetryUsage.total_tokens = totalTokens === 0 ? 0 : undefined;
       }
       cronSession.sessionEntry.cacheRead =
         usage?.cacheRead ?? (useFallback ? cronSession.sessionEntry.cacheRead : undefined);

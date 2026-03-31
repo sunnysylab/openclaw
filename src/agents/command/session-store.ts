@@ -142,21 +142,21 @@ export async function updateSessionStoreAfterAgentRun(params: {
     const hasFreshContextSnapshot =
       hasNonzeroUsage(lastCallUsage) || (typeof promptTokens === "number" && promptTokens >= 0);
 
-    if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0) {
+    if (typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0) {
       next.totalTokens = totalTokens;
-      next.totalTokensFresh = totalTokens > 0 || hasFreshContextSnapshot || prevWasZero;
+      next.totalTokensFresh = true;
 
       if (modelChanged) {
         next.totalTokensEstimate = undefined;
       } else {
-        if (totalTokens > 0 || (totalTokens === 0 && next.totalTokensFresh)) {
-          next.totalTokensEstimate = totalTokens;
-        }
-        if (totalTokens === 0 && !next.totalTokensFresh) {
-          const fallback = prevEstimate ?? prevTotal;
-          if (fallback !== undefined && fallback > 0) {
-            next.totalTokensEstimate = fallback;
-          }
+        next.totalTokensEstimate = totalTokens;
+      }
+    } else {
+      next.totalTokensFresh = (totalTokens === 0 && hasFreshContextSnapshot) || prevWasZero;
+      if (!modelChanged) {
+        const fallback = prevEstimate ?? prevTotal;
+        if (fallback !== undefined && fallback > 0) {
+          next.totalTokensEstimate = fallback;
         }
       }
     }
