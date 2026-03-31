@@ -209,7 +209,8 @@ export const utopiaPlugin: ChannelPlugin<ResolvedUtopiaAccount> = {
             peer: { kind: "direct", id: senderPubkey },
           });
 
-          const storePath = ctx.channelRuntime.session.resolveStorePath(undefined, {
+          // Honor configured `session.store` so inbound history does not silently diverge.
+          const storePath = ctx.channelRuntime.session.resolveStorePath(ctx.cfg.session?.store, {
             agentId: route.agentId,
           });
 
