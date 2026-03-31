@@ -6,6 +6,8 @@ Docs: https://docs.openclaw.ai
 
 ## 2026.3.31-beta.1
 
+- Docs/heartbeat: clarify `heartbeat.model` fallback behavior: the fallback chain is skipped only when `heartbeat.model` uses a different provider than the primary and is not itself listed in the configured fallbacks; same-provider overrides and no-override runs follow the standard fallback chain. (#40875)
+
 ### Breaking
 
 - Nodes/exec: remove the duplicated `nodes.run` shell wrapper from the CLI and agent `nodes` tool so node shell execution always goes through `exec host=node`, keeping node-specific capabilities on `nodes invoke` and the dedicated media/location/notify actions.
