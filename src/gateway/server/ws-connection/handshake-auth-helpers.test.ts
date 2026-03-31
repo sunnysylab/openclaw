@@ -65,7 +65,7 @@ describe("handshake auth helpers", () => {
     });
   });
 
-  it("allows silent local pairing only for not-paired and scope upgrades", () => {
+  it("does not allow silent local pairing for fresh not-paired devices", () => {
     expect(
       shouldAllowSilentLocalPairing({
         isLocalClient: true,
@@ -74,7 +74,7 @@ describe("handshake auth helpers", () => {
         isWebchat: false,
         reason: "not-paired",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldAllowSilentLocalPairing({
         isLocalClient: true,
