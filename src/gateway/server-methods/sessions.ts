@@ -31,9 +31,10 @@ import {
 } from "../../routing/session-key.js";
 import {
   abortTrackedRunById,
+  canRequesterAccessTrackedRun,
   normalizeOptionalTrackedText,
-  type ChatAbortControllerEntry,
   type ChatAbortOps,
+  type TrackedRunRequester,
 } from "../chat-abort.js";
 import { ADMIN_SCOPE } from "../method-scopes.js";
 import { GATEWAY_CLIENT_IDS } from "../protocol/client-info.js";
@@ -307,42 +308,15 @@ function hasTrackedActiveSessionRun(params: {
   return false;
 }
 
-type SessionInterruptRequester = {
-  connId?: string;
-  deviceId?: string;
-  isAdmin: boolean;
-};
-
 function resolveSessionInterruptRequester(
   client: GatewayRequestHandlerOptions["client"],
-): SessionInterruptRequester {
+): TrackedRunRequester {
   const scopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
   return {
     connId: normalizeOptionalTrackedText(client?.connId),
     deviceId: normalizeOptionalTrackedText(client?.connect?.device?.id),
     isAdmin: scopes.includes(ADMIN_SCOPE),
   };
-}
-
-function canRequesterInterruptTrackedRun(
-  entry: ChatAbortControllerEntry,
-  requester: SessionInterruptRequester,
-): boolean {
-  if (requester.isAdmin) {
-    return true;
-  }
-  const ownerDeviceId = normalizeOptionalTrackedText(entry.ownerDeviceId);
-  const ownerConnId = normalizeOptionalTrackedText(entry.ownerConnId);
-  if (!ownerDeviceId && !ownerConnId) {
-    return true;
-  }
-  if (ownerDeviceId && requester.deviceId && ownerDeviceId === requester.deviceId) {
-    return true;
-  }
-  if (ownerConnId && requester.connId && ownerConnId === requester.connId) {
-    return true;
-  }
-  return false;
 }
 
 function createTrackedAbortOps(context: GatewayRequestContext): ChatAbortOps {
@@ -389,7 +363,7 @@ async function interruptSessionRunIfActive(params: {
         active.sessionKey === params.canonicalKey || active.sessionKey === params.requestedKey,
     );
     const authorizedRuns = matchedRuns.filter(([, active]) =>
-      canRequesterInterruptTrackedRun(active, requester),
+      canRequesterAccessTrackedRun(active, requester),
     );
 
     if (matchedRuns.length > 0 && authorizedRuns.length !== matchedRuns.length) {

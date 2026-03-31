@@ -11,6 +11,12 @@ export type ChatAbortControllerEntry = {
   ownerDeviceId?: string;
 };
 
+export type TrackedRunRequester = {
+  connId?: string;
+  deviceId?: string;
+  isAdmin?: boolean;
+};
+
 export function normalizeOptionalTrackedText(value?: string | null): string | undefined {
   const trimmed = value?.trim();
   return trimmed || undefined;
@@ -24,6 +30,27 @@ export function clearTrackedRunEntryIfOwned(
   if (entries.get(runId)?.controller === controller) {
     entries.delete(runId);
   }
+}
+
+export function canRequesterAccessTrackedRun(
+  entry: Pick<ChatAbortControllerEntry, "ownerConnId" | "ownerDeviceId">,
+  requester: TrackedRunRequester,
+): boolean {
+  if (requester.isAdmin) {
+    return true;
+  }
+  const ownerDeviceId = normalizeOptionalTrackedText(entry.ownerDeviceId);
+  const ownerConnId = normalizeOptionalTrackedText(entry.ownerConnId);
+  if (!ownerDeviceId && !ownerConnId) {
+    return true;
+  }
+  if (ownerDeviceId && requester.deviceId && ownerDeviceId === requester.deviceId) {
+    return true;
+  }
+  if (ownerConnId && requester.connId && ownerConnId === requester.connId) {
+    return true;
+  }
+  return false;
 }
 
 export function isChatStopCommandText(text: string): boolean {
