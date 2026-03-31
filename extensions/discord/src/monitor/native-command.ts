@@ -998,6 +998,7 @@ async function dispatchDiscordCommandInteraction(params: {
     await deliverDiscordInteractionReply({
       interaction,
       payload: pluginReply,
+      mediaMaxBytes: (discordConfig?.mediaMaxMb ?? 8) * 1024 * 1024,
       textLimit: resolveTextChunkLimit(cfg, "discord", accountId, {
         fallbackLimit: 2000,
       }),
@@ -1097,6 +1098,7 @@ async function dispatchDiscordCommandInteraction(params: {
     accountId: effectiveRoute.accountId,
   });
   const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, effectiveRoute.agentId);
+  const mediaMaxBytes = (discordConfig?.mediaMaxMb ?? 8) * 1024 * 1024;
 
   let didReply = false;
   const dispatchResult = await dispatchReplyWithDispatcherImpl({
@@ -1114,6 +1116,7 @@ async function dispatchDiscordCommandInteraction(params: {
             interaction,
             payload,
             mediaLocalRoots,
+            mediaMaxBytes,
             textLimit: resolveTextChunkLimit(cfg, "discord", accountId, {
               fallbackLimit: 2000,
             }),
@@ -1199,12 +1202,13 @@ async function deliverDiscordInteractionReply(params: {
   interaction: CommandInteraction | ButtonInteraction | StringSelectMenuInteraction;
   payload: ReplyPayload;
   mediaLocalRoots?: readonly string[];
+  mediaMaxBytes?: number;
   textLimit: number;
   maxLinesPerMessage?: number;
   preferFollowUp: boolean;
   chunkMode: "length" | "newline";
 }) {
-  const { interaction, payload, textLimit, maxLinesPerMessage, preferFollowUp, chunkMode } = params;
+  const { interaction, payload, textLimit, maxLinesPerMessage, preferFollowUp, chunkMode, mediaMaxBytes } = params;
   const reply = resolveSendableOutboundReplyParts(payload);
   const discordData = payload.channelData?.discord as
     | { components?: TopLevelComponents[] }
@@ -1217,7 +1221,7 @@ async function deliverDiscordInteractionReply(params: {
   let hasReplied = false;
   const sendMessage = async (
     content: string,
-    files?: { name: string; data: Buffer }[],
+    files?: { name: string; data: Buffer; contentType?: string }[],
     components?: TopLevelComponents[],
   ) => {
     const payload =
@@ -1230,7 +1234,13 @@ async function deliverDiscordInteractionReply(params: {
                 return { name: file.name, data: file.data };
               }
               const arrayBuffer = Uint8Array.from(file.data).buffer;
-              return { name: file.name, data: new Blob([arrayBuffer]) };
+              return {
+                name: file.name,
+                data: new Blob(
+                  [arrayBuffer],
+                  file.contentType ? { type: file.contentType } : undefined,
+                ),
+              };
             }),
           }
         : {
@@ -1255,10 +1265,14 @@ async function deliverDiscordInteractionReply(params: {
       reply.mediaUrls.map(async (url) => {
         const loaded = await loadWebMedia(url, {
           localRoots: params.mediaLocalRoots,
+          maxBytes: mediaMaxBytes,
+          preserveWebp: true,
+          preserveAvif: true,
         });
         return {
           name: loaded.fileName ?? "upload",
           data: loaded.buffer,
+          contentType: loaded.contentType,
         };
       }),
     );
