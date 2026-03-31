@@ -30,7 +30,7 @@ import {
   saveAgentsConfig,
 } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
-import { loadChatHistory } from "./controllers/chat.ts";
+import { loadChatHistory, loadMoreChatHistory } from "./controllers/chat.ts";
 import {
   applyConfig,
   ensureAgentConfigEntry,
@@ -1471,6 +1471,8 @@ export function renderApp(state: AppViewState) {
               onAbort: () => void state.handleAbortChat(),
               onQueueRemove: (id) => state.removeQueuedMessage(id),
               onNewSession: () => state.handleSendChat("/new", { restoreDraft: true }),
+              chatHistoryHasMore: state.chatHistoryHasMore,
+              onLoadMoreHistory: () => loadMoreChatHistory(state),
               onClearHistory: async () => {
                 if (!state.client || !state.connected) {
                   return;
