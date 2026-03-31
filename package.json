@@ -369,6 +369,10 @@
       "types": "./dist/plugin-sdk/discord-core.d.ts",
       "default": "./dist/plugin-sdk/discord-core.js"
     },
+    "./plugin-sdk/dingtalk": {
+      "types": "./dist/plugin-sdk/dingtalk.d.ts",
+      "default": "./dist/plugin-sdk/dingtalk.js"
+    },
     "./plugin-sdk/discord-runtime-surface": {
       "types": "./dist/plugin-sdk/discord-runtime-surface.d.ts",
       "default": "./dist/plugin-sdk/discord-runtime-surface.js"

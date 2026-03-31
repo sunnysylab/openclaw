@@ -1,0 +1,54 @@
+{
+  "name": "@openclaw/dingtalk",
+  "version": "2026.3.30",
+  "private": true,
+  "description": "OpenClaw DingTalk channel plugin",
+  "keywords": [
+    "dingtalk"
+  ],
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "openclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.23"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "setupEntry": "./setup-entry.ts",
+    "channel": {
+      "id": "dingtalk",
+      "label": "DingTalk",
+      "selectionLabel": "DingTalk (Stream API)",
+      "detailLabel": "DingTalk Bot",
+      "docsPath": "/channels/dingtalk",
+      "docsLabel": "dingtalk",
+      "blurb": "DingTalk enterprise messaging bot via Stream API or webhook.",
+      "aliases": [
+        "dingding",
+        "ding-talk"
+      ],
+      "order": 60,
+      "quickstartAllowFrom": true
+    },
+    "install": {
+      "npmSpec": "@openclaw/dingtalk",
+      "localPath": "extensions/dingtalk",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.3.23"
+    }
+  }
+}

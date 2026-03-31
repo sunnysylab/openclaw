@@ -19,6 +19,7 @@ const BUNDLED_EXTENSION_IDS = readdirSync(resolve(REPO_ROOT, "extensions"), { wi
   .toSorted((left, right) => right.length - left.length);
 const GUARDED_CHANNEL_EXTENSIONS = new Set([
   "bluebubbles",
+  "dingtalk",
   "discord",
   "feishu",
   "googlechat",
@@ -185,6 +186,7 @@ const LOCAL_EXTENSION_API_BARREL_GUARDS = [
   "bluebubbles",
   "device-pair",
   "diagnostics-otel",
+  "dingtalk",
   "discord",
   "diffs",
   "feishu",

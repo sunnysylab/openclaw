@@ -82,6 +82,7 @@
   "discord",
   "discord-account",
   "discord-core",
+  "dingtalk",
   "discord-runtime-surface",
   "discord-session-key",
   "discord-surface",

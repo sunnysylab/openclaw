@@ -8,6 +8,7 @@ import { bundledPluginFile } from "../../test/helpers/bundled-plugin-paths.js";
 const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const RUNTIME_API_EXPORT_GUARDS: Record<string, readonly string[]> = {
+  "extensions/dingtalk/runtime-api.ts": ['export * from "openclaw/plugin-sdk/dingtalk";'],
   [bundledPluginFile("discord", "runtime-api.ts")]: [
     'export * from "./src/audit.js";',
     'export * from "./src/actions/runtime.js";',
