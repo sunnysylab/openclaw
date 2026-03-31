@@ -21,10 +21,16 @@ const describeLive = LIVE && ACP_BIND_LIVE ? describe : describe.skip;
 const CONNECT_TIMEOUT_MS = 90_000;
 const LIVE_TIMEOUT_MS = 240_000;
 
-function normalizeAcpAgent(raw: string | undefined): "claude" | "codex" {
+function normalizeAcpAgent(raw: string | undefined): "claude" | "codex" | "claude-code" | "gemini" {
   const normalized = raw?.trim().toLowerCase();
   if (normalized === "codex") {
     return "codex";
+  }
+  if (normalized === "claude-code") {
+    return "claude-code";
+  }
+  if (normalized === "gemini") {
+    return "gemini";
   }
   return "claude";
 }
@@ -140,14 +146,35 @@ async function connectClient(params: { url: string; token: string; timeoutMs?: n
 
 async function waitForAcpBackendHealthy(timeoutMs = 60_000): Promise<void> {
   const startedAt = Date.now();
+  let lastDetail: string | null = null;
   while (Date.now() - startedAt < timeoutMs) {
     const backend = getAcpRuntimeBackend("acpx");
     if (backend && (!backend.healthy || backend.healthy())) {
       return;
     }
+    const doctor =
+      typeof backend?.runtime === "object" &&
+      backend.runtime &&
+      "doctor" in backend.runtime &&
+      typeof backend.runtime.doctor === "function"
+        ? await backend.runtime.doctor().catch(() => null)
+        : null;
+    const detail = !backend
+      ? "backend not registered"
+      : doctor
+        ? doctor.ok
+          ? doctor.message
+          : [doctor.message, ...(doctor.details ?? [])].filter(Boolean).join(" | ")
+        : "backend registered but unhealthy";
+    if (detail !== lastDetail) {
+      logLiveStep(`acpx backend pending: ${detail}`);
+      lastDetail = detail;
+    }
     await sleep(250);
   }
-  throw new Error("timed out waiting for the acpx runtime backend to become healthy");
+  throw new Error(
+    `timed out waiting for the acpx runtime backend to become healthy${lastDetail ? `: ${lastDetail}` : ""}`,
+  );
 }
 
 async function waitForAgentRunOk(
@@ -274,6 +301,7 @@ describeLive("gateway live (ACP bind)", () => {
       };
       await fs.writeFile(tempConfigPath, `${JSON.stringify(nextCfg, null, 2)}\n`);
       process.env.OPENCLAW_CONFIG_PATH = tempConfigPath;
+      clearRuntimeConfigSnapshot();
 
       logLiveStep(`starting gateway on port ${String(port)}`);
       const server = await startGatewayServer(port, {
