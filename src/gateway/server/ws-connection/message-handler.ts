@@ -753,23 +753,28 @@ export function attachGatewayWsMessageHandler(params: {
           const requirePairing = async (
             reason: "not-paired" | "role-upgrade" | "scope-upgrade" | "metadata-upgrade",
           ) => {
-            const pairingStateAllowsRequestedAccess = (
+            const resolveApprovedScopeBaseline = (
               pairedCandidate: Awaited<ReturnType<typeof getPairedDevice>>,
-            ): boolean => {
+            ): string[] => {
               if (!pairedCandidate || pairedCandidate.publicKey !== devicePublicKey) {
-                return false;
+                return [];
               }
               if (!hasEffectivePairedDeviceRole(pairedCandidate, role)) {
-                return false;
+                return [];
               }
-              if (scopes.length === 0) {
-                return true;
-              }
-              const pairedScopes = Array.isArray(pairedCandidate.approvedScopes)
+              return Array.isArray(pairedCandidate.approvedScopes)
                 ? pairedCandidate.approvedScopes
                 : Array.isArray(pairedCandidate.scopes)
                   ? pairedCandidate.scopes
                   : [];
+            };
+            const pairingStateAllowsRequestedAccess = (
+              pairedCandidate: Awaited<ReturnType<typeof getPairedDevice>>,
+            ): boolean => {
+              if (scopes.length === 0) {
+                return true;
+              }
+              const pairedScopes = resolveApprovedScopeBaseline(pairedCandidate);
               if (pairedScopes.length === 0) {
                 return false;
               }
@@ -811,8 +816,12 @@ export function attachGatewayWsMessageHandler(params: {
               return replacementPending?.requestId;
             };
             if (pairing.request.silent === true) {
+              const silentApprovalScopes = resolveApprovedScopeBaseline(
+                await getPairedDevice(device.id),
+              );
               approved = await approveDevicePairing(pairing.request.requestId, {
-                callerScopes: scopes,
+                // Silent pairing may only inherit an already approved scope baseline.
+                callerScopes: silentApprovalScopes,
               });
               if (approved?.status === "approved") {
                 logGateway.info(
