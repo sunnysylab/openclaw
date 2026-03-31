@@ -10,6 +10,11 @@ import {
   scanTelegramAllowFromUsernameEntries,
 } from "../providers/telegram.js";
 import {
+  type BundledPluginInstallPathOptions,
+  collectBundledPluginInstallPathWarnings,
+  scanBundledPluginInstallPathRepairs,
+} from "./bundled-plugin-install-paths.js";
+import {
   collectBundledPluginLoadPathWarnings,
   scanBundledPluginLoadPathMigrations,
 } from "./bundled-plugin-load-paths.js";
@@ -37,6 +42,7 @@ import {
 export function collectDoctorPreviewWarnings(params: {
   cfg: OpenClawConfig;
   doctorFixCommand: string;
+  bundledPluginPathOptions?: BundledPluginInstallPathOptions;
 }): string[] {
   const warnings: string[] = [];
 
@@ -122,6 +128,22 @@ export function collectDoctorPreviewWarnings(params: {
   const safeBinTrustedDirHints = scanExecSafeBinTrustedDirHints(params.cfg);
   if (safeBinTrustedDirHints.length > 0) {
     warnings.push(collectExecSafeBinTrustedDirHintWarnings(safeBinTrustedDirHints).join("\n"));
+  }
+
+  const staleBundledPluginPaths = scanBundledPluginInstallPathRepairs(
+    params.cfg,
+    params.bundledPluginPathOptions,
+  );
+  const installPathWarnings = staleBundledPluginPaths.filter(
+    (hit) => hit.installFieldHits.length > 0,
+  );
+  if (installPathWarnings.length > 0) {
+    warnings.push(
+      ...collectBundledPluginInstallPathWarnings({
+        hits: installPathWarnings,
+        doctorFixCommand: params.doctorFixCommand,
+      }),
+    );
   }
 
   return warnings;
