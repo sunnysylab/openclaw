@@ -1,3 +1,4 @@
+import JSON5 from "json5";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { ConfigSchemaResponse, ConfigSnapshot, ConfigUiHints } from "../types.ts";
 import type { JsonSchema } from "../views/config-form.shared.ts";
@@ -78,12 +79,25 @@ export function applyConfigSchema(state: ConfigState, res: ConfigSchemaResponse)
 
 export function applyConfigSnapshot(state: ConfigState, snapshot: ConfigSnapshot) {
   state.configSnapshot = snapshot;
-  const rawFromSnapshot =
+  let rawFromSnapshot =
     typeof snapshot.raw === "string"
       ? snapshot.raw
       : snapshot.config && typeof snapshot.config === "object"
         ? serializeConfigForm(snapshot.config)
         : state.configRaw;
+
+  // Gateway redaction fallback may produce JSON5 instead of JSON;
+  // use JSON5.parse (accepts both JSON and JSON5) to avoid false re-serialization.
+  if (rawFromSnapshot) {
+    try {
+      JSON5.parse(rawFromSnapshot);
+    } catch {
+      if (snapshot.config && typeof snapshot.config === "object") {
+        rawFromSnapshot = serializeConfigForm(snapshot.config);
+      }
+    }
+  }
+
   if (!state.configFormDirty || state.configFormMode === "raw") {
     state.configRaw = rawFromSnapshot;
   } else if (state.configForm) {
