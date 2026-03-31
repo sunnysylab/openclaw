@@ -650,11 +650,6 @@ export function renderApp(state: AppViewState) {
               onSessionKeyChange: (next) => {
                 state.sessionKey = next;
                 state.chatMessage = "";
-                state.chatAttachments = [];
-                state.chatMessages = [];
-                state.chatToolMessages = [];
-                state.chatThinkingLevel = null;
-                state.chatQueue = [];
                 state.resetToolStream();
                 state.applySettings({
                   ...state.settings,
@@ -1416,9 +1411,6 @@ export function renderApp(state: AppViewState) {
                 state.sessionKey = next;
                 state.chatMessage = "";
                 state.chatAttachments = [];
-                state.chatMessages = [];
-                state.chatToolMessages = [];
-                state.chatThinkingLevel = null;
                 state.chatStream = null;
                 state.chatStreamStartedAt = null;
                 state.chatRunId = null;
