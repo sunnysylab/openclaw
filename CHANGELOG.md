@@ -6,6 +6,10 @@ Docs: https://docs.openclaw.ai
 
 ### Breaking
 
+- Daemon: increase launchd `ThrottleInterval` from 1s to 10s to prevent gateway process storms when the port isn't released before restart. This prevents 30+ zombie processes from accumulating during rapid restart cycles on macOS. (#58306)
+
+### Changes
+
 - Nodes/exec: remove the duplicated `nodes.run` shell wrapper from the CLI and agent `nodes` tool so node shell execution always goes through `exec host=node`, keeping node-specific capabilities on `nodes invoke` and the dedicated media/location/notify actions.
 - Background tasks: replace the old JSON task ledger with the SQLite-backed task store, so undocumented tooling or scripts that read `tasks/runs.json` directly must switch to the supported `openclaw tasks` surfaces instead of depending on state-dir internals. Thanks @vincentkoc and @mbelinky.
 
