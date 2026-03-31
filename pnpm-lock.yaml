@@ -361,6 +361,8 @@ importers:
 
   extensions/elevenlabs: {}
 
+  extensions/eternal-ai: {}
+  
   extensions/exa: {}
 
   extensions/fal: {}
