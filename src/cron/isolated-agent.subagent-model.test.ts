@@ -197,7 +197,7 @@ describe("runCronIsolatedAgentTurn: subagent model resolution (#11461)", () => {
     });
   });
 
-  it("prefers the agent model over agents.defaults.subagents.model", async () => {
+  it("prefers global defaults.subagents.model over agent primary model", async () => {
     await withTempHome(async (home) => {
       const call = await runSubagentModelCase({
         home,
@@ -213,8 +213,8 @@ describe("runCronIsolatedAgentTurn: subagent model resolution (#11461)", () => {
           },
         },
       });
-      expect(call?.provider).toBe("anthropic");
-      expect(call?.model).toBe("claude-opus-4-6");
+      expect(call?.provider).toBe("ollama");
+      expect(call?.model).toBe("llama3.2:3b");
     });
   });
 });
