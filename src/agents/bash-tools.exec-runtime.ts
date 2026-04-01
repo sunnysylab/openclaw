@@ -219,13 +219,7 @@ export function isRequestedExecTargetAllowed(params: {
   configuredTarget: ExecTarget;
   requestedTarget: ExecTarget;
 }) {
-  if (params.requestedTarget === params.configuredTarget) {
-    return true;
-  }
-  if (params.configuredTarget === "auto") {
-    return true;
-  }
-  return false;
+  return params.requestedTarget === params.configuredTarget;
 }
 
 export function resolveExecTarget(params: {
@@ -253,7 +247,7 @@ export function resolveExecTarget(params: {
   ) {
     throw new Error(
       `exec host not allowed (requested ${renderExecTargetLabel(requestedTarget)}; ` +
-        `configure tools.exec.host=${renderExecTargetLabel(configuredTarget)} to allow).`,
+        `configure tools.exec.host=${renderExecTargetLabel(requestedTarget)} to allow).`,
     );
   }
   const selectedTarget = requestedTarget ?? configuredTarget;
