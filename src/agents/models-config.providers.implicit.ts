@@ -43,8 +43,8 @@ const PROVIDER_IMPLICIT_MERGERS: Partial<
       ...existing,
       ...(mergedHeaders ? { headers: mergedHeaders } : {}),
       models:
-        Array.isArray(existing?.models) && existing!.models.length > 0
-          ? existing!.models
+        Array.isArray(existing?.models) && existing.models.length > 0
+          ? existing.models
           : implicit.models,
     };
   },
