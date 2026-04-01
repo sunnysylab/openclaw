@@ -5,7 +5,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { GatewayMessageChannel } from "../../utils/message-channel.js";
 import { AGENT_LANE_NESTED } from "../lanes.js";
 import { readLatestAssistantReply, runAgentStep } from "./agent-step.js";
-import { resolveAnnounceTarget } from "./sessions-announce-target.js";
+import type { AnnounceTarget } from "./sessions-send-helpers.js";
 import {
   buildAgentToAgentAnnounceContext,
   buildAgentToAgentReplyContext,
@@ -25,12 +25,27 @@ let sessionsSendA2ADeps: {
   callGateway: GatewayCaller;
 } = defaultSessionsSendA2ADeps;
 
+export type SessionsSendAnnouncePlan = {
+  shouldRunAnnounceFlow: boolean;
+  delivery:
+    | {
+        status: "pending";
+        mode: "announce";
+      }
+    | {
+        status: "skipped";
+        mode: "none";
+      };
+  announceTarget: AnnounceTarget | null;
+};
+
 export async function runSessionsSendA2AFlow(params: {
   targetSessionKey: string;
   displayKey: string;
   message: string;
   announceTimeoutMs: number;
   maxPingPongTurns: number;
+  announcePlan: SessionsSendAnnouncePlan | Promise<SessionsSendAnnouncePlan>;
   requesterSessionKey?: string;
   requesterChannel?: GatewayMessageChannel;
   roundOneReply?: string;
@@ -38,6 +53,11 @@ export async function runSessionsSendA2AFlow(params: {
 }) {
   const runContextId = params.waitRunId ?? "unknown";
   try {
+    const announcePlan = await params.announcePlan;
+    if (!announcePlan.shouldRunAnnounceFlow) {
+      return;
+    }
+
     let primaryReply = params.roundOneReply;
     let latestReply = params.roundOneReply;
     if (!primaryReply && params.waitRunId) {
@@ -61,10 +81,7 @@ export async function runSessionsSendA2AFlow(params: {
       return;
     }
 
-    const announceTarget = await resolveAnnounceTarget({
-      sessionKey: params.targetSessionKey,
-      displayKey: params.displayKey,
-    });
+    const announceTarget = announcePlan.announceTarget;
     const targetChannel = announceTarget?.channel ?? "unknown";
 
     if (
@@ -137,6 +154,7 @@ export async function runSessionsSendA2AFlow(params: {
             message: announceReply.trim(),
             channel: announceTarget.channel,
             accountId: announceTarget.accountId,
+            threadId: announceTarget.threadId,
             idempotencyKey: crypto.randomUUID(),
           },
           timeoutMs: 10_000,

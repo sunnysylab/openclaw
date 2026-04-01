@@ -1,5 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+function createStubTool(name: string) {
+  return {
+    name,
+    description: `${name} stub`,
+    parameters: { type: "object", properties: {} },
+    execute: vi.fn(async () => ({ output: name })),
+  };
+}
+
+function mockToolFactory(name: string) {
+  return () => createStubTool(name);
+}
+
 const callGatewayMock = vi.fn();
 vi.mock("../gateway/call.js", () => ({
   callGateway: (opts: unknown) => callGatewayMock(opts),
@@ -16,6 +29,43 @@ vi.mock("../config/config.js", async (importOriginal) => {
     resolveGatewayPort: () => 18789,
   };
 });
+
+vi.mock("./tools/agents-list-tool.js", () => ({
+  createAgentsListTool: mockToolFactory("agents_list_stub"),
+}));
+vi.mock("./tools/cron-tool.js", () => ({
+  createCronTool: mockToolFactory("cron_stub"),
+}));
+vi.mock("./tools/gateway-tool.js", () => ({
+  createGatewayTool: mockToolFactory("gateway_stub"),
+}));
+vi.mock("./tools/image-generate-tool.js", () => ({
+  createImageGenerateTool: mockToolFactory("image_generate_stub"),
+}));
+vi.mock("./tools/message-tool.js", () => ({
+  createMessageTool: mockToolFactory("message_stub"),
+}));
+vi.mock("./tools/nodes-tool.js", () => ({
+  createNodesTool: mockToolFactory("nodes_stub"),
+}));
+vi.mock("./tools/pdf-tool.js", () => ({
+  createPdfTool: mockToolFactory("pdf_stub"),
+}));
+vi.mock("./tools/session-status-tool.js", () => ({
+  createSessionStatusTool: mockToolFactory("session_status_stub"),
+}));
+vi.mock("./tools/sessions-list-tool.js", () => ({
+  createSessionsListTool: mockToolFactory("sessions_list_stub"),
+}));
+vi.mock("./tools/sessions-yield-tool.js", () => ({
+  createSessionsYieldTool: mockToolFactory("sessions_yield_stub"),
+}));
+vi.mock("./tools/subagents-tool.js", () => ({
+  createSubagentsTool: mockToolFactory("subagents_stub"),
+}));
+vi.mock("./tools/tts-tool.js", () => ({
+  createTtsTool: mockToolFactory("tts_stub"),
+}));
 
 import "./test-helpers/fast-core-tools.js";
 
@@ -49,6 +99,18 @@ function getSessionsHistoryTool(options?: { sandboxed?: boolean }) {
   return tool;
 }
 
+function getToolByName(name: string, options?: { sandboxed?: boolean }) {
+  const tool = createOpenClawTools({
+    agentSessionKey: "main",
+    sandboxed: options?.sandboxed,
+  }).find((candidate) => candidate.name === name);
+  expect(tool).toBeDefined();
+  if (!tool) {
+    throw new Error(`missing ${name} tool`);
+  }
+  return tool;
+}
+
 function mockGatewayWithHistory(
   extra?: (req: { method?: string; params?: Record<string, unknown> }) => unknown,
 ) {
@@ -69,6 +131,36 @@ function mockGatewayWithHistory(
 describe("sessions tools visibility", () => {
   beforeEach(async () => {
     await loadFreshOpenClawToolsModuleForTest();
+  });
+
+  it("registers real sessions_send and sessions_spawn schemas through createOpenClawTools", () => {
+    const sessionsSend = getToolByName("sessions_send");
+    const sessionsSendSchema = sessionsSend.parameters as {
+      anyOf?: unknown;
+      oneOf?: unknown;
+      properties?: Record<string, { type?: unknown }>;
+    };
+    expect(sessionsSendSchema.anyOf).toBeUndefined();
+    expect(sessionsSendSchema.oneOf).toBeUndefined();
+    expect(sessionsSendSchema.properties?.timeoutSeconds?.type).toBe("number");
+
+    const sessionsSpawn = getToolByName("sessions_spawn");
+    const sessionsSpawnSchema = sessionsSpawn.parameters as {
+      anyOf?: unknown;
+      oneOf?: unknown;
+      properties?: Record<string, { type?: unknown }>;
+    };
+    expect(sessionsSpawnSchema.anyOf).toBeUndefined();
+    expect(sessionsSpawnSchema.oneOf).toBeUndefined();
+    expect(sessionsSpawnSchema.properties?.thinking?.type).toBe("string");
+    expect(sessionsSpawnSchema.properties?.runTimeoutSeconds?.type).toBe("number");
+    expect(sessionsSpawnSchema.properties?.timeoutSeconds?.type).toBe("number");
+    expect(sessionsSpawnSchema.properties?.thread?.type).toBe("boolean");
+    expect(sessionsSpawnSchema.properties?.mode?.type).toBe("string");
+    expect(sessionsSpawnSchema.properties?.sandbox?.type).toBe("string");
+    expect(sessionsSpawnSchema.properties?.streamTo?.type).toBe("string");
+    expect(sessionsSpawnSchema.properties?.runtime?.type).toBe("string");
+    expect(sessionsSpawnSchema.properties?.cwd?.type).toBe("string");
   });
 
   it("defaults to tree visibility (self + spawned) for sessions_history", async () => {
