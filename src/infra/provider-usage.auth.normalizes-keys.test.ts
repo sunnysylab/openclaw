@@ -388,6 +388,42 @@ describe("resolveProviderAuths key normalization", () => {
     });
   });
 
+  it("ignores a preferred profile id that belongs to another provider", async () => {
+    await withSuiteHome(async (home) => {
+      await writeAuthProfiles(home, {
+        "openai-codex:default": {
+          type: "oauth",
+          provider: "openai-codex",
+          token: "token-default",
+          expires: Date.now() + 60_000,
+        },
+        "anthropic:other": {
+          type: "oauth",
+          provider: "anthropic",
+          token: "token-wrong-provider",
+          expires: Date.now() + 60_000,
+        },
+      });
+      await writeProfileOrder(home, "openai-codex", ["openai-codex:default"]);
+
+      const result = await resolveProviderAuths({
+        providers: ["openai-codex"],
+        agentDir: agentDirForHome(home),
+        env: buildSuiteEnv(home),
+        preferredProfileIds: {
+          "openai-codex": "anthropic:other",
+        },
+      });
+
+      expect(result).toEqual([
+        {
+          provider: "openai-codex",
+          token: "token-default",
+        },
+      ]);
+    });
+  });
+
   async function expectResolvedAuthsFromSuiteHome(params: {
     providers: Parameters<typeof resolveProviderAuths>[0]["providers"];
     expected: Awaited<ReturnType<typeof resolveProviderAuths>>;

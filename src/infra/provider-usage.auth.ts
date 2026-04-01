@@ -29,6 +29,10 @@ type UsageAuthState = {
   agentDir?: string;
 };
 
+function normalizeProfileProvider(value: string | undefined): string {
+  return normalizeProviderId(value ?? "").trim().toLowerCase();
+}
+
 function parseGoogleUsageToken(apiKey: string): string {
   try {
     const parsed = JSON.parse(apiKey) as { token?: unknown };
@@ -103,8 +107,19 @@ async function resolveOAuthToken(params: {
     provider: params.provider,
   });
   const preferredProfileId = params.preferredProfileId?.trim();
+  const normalizedProvider = normalizeProfileProvider(params.provider);
+  const preferredProfile = preferredProfileId
+    ? params.state.store.profiles[preferredProfileId]
+    : undefined;
+  const preferredProfileMatchesProvider =
+    preferredProfile &&
+    normalizeProfileProvider(
+      typeof preferredProfile.provider === "string" ? preferredProfile.provider : undefined,
+    ) === normalizedProvider;
   const deduped = dedupeProfileIds(
-    preferredProfileId ? [preferredProfileId, ...order] : order,
+    preferredProfileId && preferredProfileMatchesProvider
+      ? [preferredProfileId, ...order]
+      : order,
   );
 
   for (const profileId of deduped) {
