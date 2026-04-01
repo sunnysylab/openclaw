@@ -232,10 +232,46 @@ export function isTelegramClientRejection(err: unknown): boolean {
 }
 
 /**
+ * Error codes that indicate a broken/stale *existing* TCP connection rather than
+ * a failure to establish a new connection.
+ *
+ * Excludes connect-time codes (ENOTFOUND, ECONNREFUSED, EAI_AGAIN, ENETUNREACH,
+ * EHOSTUNREACH) because those only mean the health-check probe could not open a
+ * new connection -- the current long-poll socket may still be healthy.
+ */
+const STALE_CONNECTION_ERROR_CODES = new Set([
+  "ECONNRESET", // Existing connection reset by peer
+  "EPIPE", // Write to a broken pipe/socket
+  "ETIMEDOUT", // Existing connection timed out
+  "ESOCKETTIMEDOUT", // Socket-level timeout on existing connection
+  "UND_ERR_HEADERS_TIMEOUT", // Undici headers timeout on existing connection
+  "UND_ERR_BODY_TIMEOUT", // Undici body timeout on existing connection
+  "UND_ERR_SOCKET", // Undici socket error on existing connection
+  "UND_ERR_ABORTED", // Undici aborted (e.g. socket closed mid-stream)
+  "ECONNABORTED", // Connection aborted
+  "ERR_NETWORK", // Generic network failure
+  // UND_ERR_CONNECT_TIMEOUT excluded: indicates a TCP connect-phase timeout in the
+  // health-check probe, not a broken existing long-poll socket.
+]);
+
+/**
+ * Error names that indicate stale/broken connections (not connect-time failures).
+ */
+const STALE_CONNECTION_ERROR_NAMES = new Set([
+  "AbortError",
+  "TimeoutError",
+  "HeadersTimeoutError",
+  "BodyTimeoutError",
+  // ConnectTimeoutError excluded: could mean the probe failed to connect,
+  // not that the existing polling socket is stale.
+]);
+
+/**
  * Connection-level message snippets for stale-connection detection.
  * Intentionally excludes the broad "timeout" / "timed out" snippets from
  * RECOVERABLE_MESSAGE_SNIPPETS because those match HTTP timeout responses
  * (e.g. 504 Gateway Timeout) where the server actually responded.
+ * Also excludes "getaddrinfo" since DNS failures are connect-time errors.
  */
 const STALE_CONNECTION_MESSAGE_SNIPPETS = [
   "undici",
@@ -243,22 +279,25 @@ const STALE_CONNECTION_MESSAGE_SNIPPETS = [
   "network request",
   "client network socket disconnected",
   "socket hang up",
-  "getaddrinfo",
   "health check timeout",
 ];
 
 /**
  * Returns true when the error indicates a dead or stale TCP connection rather than
- * a Telegram API-level HTTP error response.
+ * a Telegram API-level HTTP error response or a connect-time failure.
  *
- * Key distinction: an HTTP 504 Gateway Timeout (or any other HTTP status error) means
+ * Key distinction 1: an HTTP 504 Gateway Timeout (or any other HTTP status error) means
  * the server actually responded -- the underlying TCP link is alive and the health-check
  * watchdog should NOT treat it as a stale socket.  Only connection-level failures
  * (ECONNRESET, ETIMEDOUT, socket hang up, fetch failed, our own "Health check timeout",
  * etc.) indicate that the TCP connection itself is dead or unusable.
  *
+ * Key distinction 2: connect-time failures (ENOTFOUND, ECONNREFUSED, EAI_AGAIN) only
+ * mean the health-check probe could not open a *new* connection.  The existing
+ * long-poll socket may still be healthy, so these should NOT trigger a restart.
+ *
  * Used by the health-check watchdog so it does not force-restart polling sessions
- * during transient Telegram-side outages that return HTTP errors.
+ * during transient Telegram-side outages or DNS blips.
  */
 export function isStaleConnectionError(err: unknown): boolean {
   if (!err) {
@@ -282,12 +321,12 @@ export function isStaleConnectionError(err: unknown): boolean {
     }
 
     const code = normalizeCode(getErrorCode(candidate));
-    if (code && RECOVERABLE_ERROR_CODES.has(code)) {
+    if (code && STALE_CONNECTION_ERROR_CODES.has(code)) {
       return true;
     }
 
     const name = readErrorName(candidate);
-    if (name && RECOVERABLE_ERROR_NAMES.has(name)) {
+    if (name && STALE_CONNECTION_ERROR_NAMES.has(name)) {
       return true;
     }
 

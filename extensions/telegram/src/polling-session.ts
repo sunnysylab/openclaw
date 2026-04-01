@@ -429,6 +429,19 @@ export class TelegramPollingSession {
                 `[telegram] Health check failed (stale connection detected): ${formatErrorMessage(err)}; restarting polling...`,
               );
               void stopRunner();
+              // Arm the forced-cycle fallback so runner.task() cannot hang
+              // indefinitely if a slow/hung update handler blocks runner.stop().
+              if (!forceCycleTimer) {
+                forceCycleTimer = setTimeout(() => {
+                  if (this.opts.abortSignal?.aborted) {
+                    return;
+                  }
+                  this.opts.log(
+                    `[telegram] Polling runner stop timed out after ${formatDurationPrecise(POLL_STOP_GRACE_MS)} (stale connection restart); forcing restart cycle.`,
+                  );
+                  forceCycleResolve?.();
+                }, POLL_STOP_GRACE_MS);
+              }
               return; // Don't schedule next check; runner restart will create a new watchdog
             }
             // Transient API error (e.g. 429 rate-limit, 5xx server error) --

@@ -263,12 +263,28 @@ describe("isStaleConnectionError", () => {
   it.each([
     ["ECONNRESET", "read ECONNRESET"],
     ["ETIMEDOUT", "connect ETIMEDOUT"],
+    ["UND_ERR_SOCKET", "socket error"],
+    ["EPIPE", "write EPIPE"],
+    ["ECONNABORTED", "connection aborted"],
+    ["UND_ERR_HEADERS_TIMEOUT", "headers timeout"],
+    ["UND_ERR_BODY_TIMEOUT", "body timeout"],
+    ["UND_ERR_ABORTED", "aborted"],
+    ["ERR_NETWORK", "network error"],
+  ])("detects post-connect error code %s as stale", (code, message) => {
+    expect(isStaleConnectionError(errorWithCode(message, code))).toBe(true);
+  });
+
+  it.each([
     ["ECONNREFUSED", "connect ECONNREFUSED"],
     ["ENOTFOUND", "getaddrinfo ENOTFOUND"],
+    ["EAI_AGAIN", "getaddrinfo EAI_AGAIN"],
+    ["ENETUNREACH", "connect ENETUNREACH"],
+    ["EHOSTUNREACH", "connect EHOSTUNREACH"],
     ["UND_ERR_CONNECT_TIMEOUT", "connect timeout"],
-    ["UND_ERR_SOCKET", "socket error"],
-  ])("detects connection-level error code %s as stale", (code, message) => {
-    expect(isStaleConnectionError(errorWithCode(message, code))).toBe(true);
+  ])("does NOT treat connect-time error code %s as stale", (code, message) => {
+    // Connect-time failures mean the health-check probe failed to open a new
+    // connection; the existing long-poll socket may still be healthy.
+    expect(isStaleConnectionError(errorWithCode(message, code))).toBe(false);
   });
 
   it("detects our own health check timeout as stale", () => {
