@@ -1458,6 +1458,8 @@ export async function runEmbeddedPiAgent(
                     },
                   ]
                 : undefined,
+              systemPromptText: attempt.systemPromptText,
+              firstTokenMs: attempt.firstTokenAt ? attempt.firstTokenAt - started : undefined,
             },
             didSendViaMessagingTool: attempt.didSendViaMessagingTool,
             didSendDeterministicApprovalPrompt: attempt.didSendDeterministicApprovalPrompt,
