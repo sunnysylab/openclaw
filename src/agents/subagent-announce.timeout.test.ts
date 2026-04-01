@@ -25,6 +25,7 @@ let requesterDepthResolver: (sessionKey?: string) => number = () => 0;
 let subagentSessionRunActive = true;
 let shouldIgnorePostCompletion = false;
 let pendingDescendantRuns = 0;
+let registryCheckShouldThrow = false;
 const isEmbeddedPiRunActiveMock = vi.fn((_sessionId: string) => false);
 const waitForEmbeddedPiRunEndMock = vi.fn(async (_sessionId: string, _timeoutMs?: number) => true);
 let fallbackRequesterResolution: {
@@ -110,7 +111,12 @@ vi.mock("./subagent-registry.js", async (importOriginal) => {
   return {
     ...actual,
     countActiveDescendantRuns: () => 0,
-    countPendingDescendantRuns: () => pendingDescendantRuns,
+    countPendingDescendantRuns: () => {
+      if (registryCheckShouldThrow) {
+        throw new Error("registry unavailable");
+      }
+      return pendingDescendantRuns;
+    },
     countPendingDescendantRunsExcludingRun: () => 0,
     listSubagentRunsForRequester: () => [],
     isSubagentSessionRunActive: () => subagentSessionRunActive,
@@ -124,7 +130,12 @@ vi.mock("./subagent-registry-runtime.js", async (importOriginal) => {
   return {
     ...actual,
     countActiveDescendantRuns: () => 0,
-    countPendingDescendantRuns: () => pendingDescendantRuns,
+    countPendingDescendantRuns: () => {
+      if (registryCheckShouldThrow) {
+        throw new Error("registry unavailable");
+      }
+      return pendingDescendantRuns;
+    },
     countPendingDescendantRunsExcludingRun: () => 0,
     listSubagentRunsForRequester: () => [],
     isSubagentSessionRunActive: () => subagentSessionRunActive,
@@ -216,6 +227,7 @@ describe("subagent announce timeout config", () => {
     subagentSessionRunActive = true;
     shouldIgnorePostCompletion = false;
     pendingDescendantRuns = 0;
+    registryCheckShouldThrow = false;
     isEmbeddedPiRunActiveMock.mockReset().mockReturnValue(false);
     waitForEmbeddedPiRunEndMock.mockReset().mockResolvedValue(true);
     fallbackRequesterResolution = null;
@@ -486,5 +498,28 @@ describe("subagent announce timeout config", () => {
     expect(internalEvents[0]?.result).toContain(
       "A longer partial summary that should stay silent.",
     );
+  });
+
+  it("regression, defers announce when registry check throws instead of sending premature completion", async () => {
+    registryCheckShouldThrow = true;
+
+    const didAnnounce = await runAnnounceFlowForTest("run-registry-error");
+
+    expect(didAnnounce).toBe(false);
+    expect(findFinalDirectAgentCall()).toBeUndefined();
+  });
+
+  it("regression, defers announce for yield-aborted subagent with pending child spawns", async () => {
+    requesterDepthResolver = () => 1;
+    pendingDescendantRuns = 1;
+
+    const didAnnounce = await runAnnounceFlowForTest("run-yield-pending-children", {
+      requesterSessionKey: "agent:main:subagent:orchestrator",
+      requesterDisplayKey: "subagent:orchestrator",
+      childSessionKey: "agent:main:subagent:orchestrator:subagent:worker",
+    });
+
+    expect(didAnnounce).toBe(false);
+    expect(findFinalDirectAgentCall()).toBeUndefined();
   });
 });
