@@ -144,6 +144,12 @@ export const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
+    toolResultContextGuard: z
+      .object({
+        compaction: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     embeddedPi: z
       .object({
         projectSettingsPolicy: z
