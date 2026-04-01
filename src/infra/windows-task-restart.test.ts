@@ -174,8 +174,9 @@ describe("relaunchGatewayScheduledTask", () => {
     expect(result.ok).toBe(true);
     const scriptPath = [...createdScriptPaths][0];
     const script = fs.readFileSync(scriptPath, "utf8");
+    expect(script).toContain(`schtasks /Query /TN`);
     expect(script).toContain(":fallback");
-    expect(script).toContain("start");
+    expect(script).toContain(`start "" /min cmd.exe /d /c`);
     expect(script).toContain(taskScriptPath);
   });
 });

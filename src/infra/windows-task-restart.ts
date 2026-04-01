@@ -43,7 +43,7 @@ function buildScheduledTaskRestartScript(
     const quotedScript = quoteCmdScriptArg(taskScriptPath);
     lines.push(
       `if exist ${quotedScript} (`,
-      `  start "" /b cmd.exe /d /c ${quotedScript}`,
+      `  start "" /min cmd.exe /d /c ${quotedScript}`,
       ")",
     );
   }
