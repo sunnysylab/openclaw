@@ -40,14 +40,11 @@ interface CopilotModelsResponse {
   data: CopilotApiModel[];
 }
 
-function inferApiType(model: CopilotApiModel): ModelDefinitionConfig["api"] {
-  const id = model.id.toLowerCase();
-  if (id.startsWith("claude")) {
-    return "anthropic-messages";
-  }
-  // Default to openai-completions (chat completions) which is broadly compatible.
-  // openai-responses requires explicit model support; safer to not assume it.
-  return "openai-completions";
+function inferApiType(_model: CopilotApiModel): ModelDefinitionConfig["api"] {
+  // GitHub Copilot is an OpenAI-compatible proxy for all model families
+  // (including Claude). Built-in defaults and the catch-all resolver both
+  // use "openai-responses"; keep discovered models consistent.
+  return "openai-responses";
 }
 
 function buildModelDefinition(model: CopilotApiModel): ModelDefinitionConfig {
@@ -60,7 +57,7 @@ function buildModelDefinition(model: CopilotApiModel): ModelDefinitionConfig {
     name: model.name ?? model.id,
     api: inferApiType(model),
     reasoning: supports?.reasoning ?? false,
-    input: supports?.vision ? (["text", "image"] as const) : (["text"] as const),
+    input: ["text", "image"] as const,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: limits?.max_prompt_tokens ?? 128_000,
     maxTokens: limits?.max_output_tokens ?? 8192,
