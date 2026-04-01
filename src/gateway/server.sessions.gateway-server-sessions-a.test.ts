@@ -46,6 +46,10 @@ const beforeResetHookMocks = vi.hoisted(() => ({
   runBeforeReset: vi.fn(async () => {}),
 }));
 
+const sessionLifecycleMocks = vi.hoisted(() => ({
+  emitSessionLifecycleEvent: vi.fn(),
+}));
+
 const subagentLifecycleHookMocks = vi.hoisted(() => ({
   runSubagentEnded: vi.fn(async () => {}),
 }));
@@ -125,6 +129,14 @@ vi.mock("../plugins/hook-runner-global.js", async (importOriginal) => {
       runBeforeReset: beforeResetHookMocks.runBeforeReset,
       runSubagentEnded: subagentLifecycleHookMocks.runSubagentEnded,
     })),
+  };
+});
+
+vi.mock("../sessions/session-lifecycle-events.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../sessions/session-lifecycle-events.js")>();
+  return {
+    ...actual,
+    emitSessionLifecycleEvent: sessionLifecycleMocks.emitSessionLifecycleEvent,
   };
 });
 
@@ -278,6 +290,7 @@ describe("gateway server sessions", () => {
     sessionHookMocks.triggerInternalHook.mockClear();
     beforeResetHookMocks.runBeforeReset.mockClear();
     beforeResetHookState.hasBeforeResetHook = false;
+    sessionLifecycleMocks.emitSessionLifecycleEvent.mockClear();
     subagentLifecycleHookMocks.runSubagentEnded.mockClear();
     subagentLifecycleHookState.hasSubagentEndedHook = true;
     threadBindingMocks.unbindThreadBindingsBySessionKey.mockClear();
@@ -2306,6 +2319,36 @@ describe("gateway server sessions", () => {
     });
     expect(event.context?.previousSessionEntry).toMatchObject({ sessionId: "sess-main" });
     ws.close();
+  });
+
+  test("direct session resets emit lifecycle events for shared sessions.changed broadcasts", async () => {
+    await createSessionStoreDir();
+    await writeSessionStore({
+      entries: {
+        main: {
+          sessionId: "sess-main",
+          updatedAt: Date.now(),
+          label: "Ops",
+          displayName: "Ops Main",
+        },
+      },
+    });
+
+    const reset = await performGatewaySessionReset({
+      key: "main",
+      reason: "reset",
+      commandSource: "plugin:test-plugin",
+    });
+
+    expect(reset.ok).toBe(true);
+    expect(sessionLifecycleMocks.emitSessionLifecycleEvent).toHaveBeenCalledTimes(1);
+    expect(sessionLifecycleMocks.emitSessionLifecycleEvent).toHaveBeenCalledWith({
+      sessionKey: "agent:main:main",
+      reason: "reset",
+      parentSessionKey: undefined,
+      label: "Ops",
+      displayName: "Ops Main",
+    });
   });
 
   test("sessions.reset emits before_reset hook with transcript context", async () => {
