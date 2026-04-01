@@ -998,6 +998,29 @@ describe("buildStatusMessage", () => {
     );
   });
 
+  it("hydrates cache usage from transcript fallback when session entry omits cache fields", async () => {
+    await withTempHome(
+      async (dir) => {
+        const sessionId = "sess-cache-fallback";
+        writeBaselineTranscriptUsageLog({
+          dir,
+          agentId: "main",
+          sessionId,
+        });
+
+        const text = buildTranscriptStatusText({
+          sessionId,
+          sessionKey: "agent:main:main",
+        });
+
+        const normalized = normalizeTestText(text);
+        expect(normalized).toContain("Cache: 100% hit");
+        expect(normalized).toContain("1.0k cached");
+      },
+      { prefix: "openclaw-status-" },
+    );
+  });
+
   it("reads transcript usage for non-default agents", async () => {
     await withTempHome(
       async (dir) => {
