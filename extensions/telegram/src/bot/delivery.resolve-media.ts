@@ -1,7 +1,11 @@
 import path from "node:path";
 import { GrammyError } from "grammy";
-import { fetchRemoteMedia } from "openclaw/plugin-sdk/media-runtime";
-import { saveMediaBuffer } from "openclaw/plugin-sdk/media-runtime";
+import { readLocalFileSafely } from "openclaw/plugin-sdk/infra-runtime";
+import {
+  fetchRemoteMedia,
+  MediaFetchError,
+  saveMediaBuffer,
+} from "openclaw/plugin-sdk/media-runtime";
 import { logVerbose, warn } from "openclaw/plugin-sdk/runtime-env";
 import { retryAsync } from "openclaw/plugin-sdk/runtime-env";
 import { formatErrorMessage } from "openclaw/plugin-sdk/ssrf-runtime";
@@ -167,7 +171,29 @@ async function downloadAndSaveTelegramFile(params: {
   apiRoot?: string;
 }) {
   if (path.isAbsolute(params.filePath)) {
-    return { path: params.filePath, contentType: params.mimeType };
+    // Local Bot API returns absolute filesystem paths. Save them into OpenClaw's
+    // inbound media store so downstream media-understanding can read them from an
+    // allowed root instead of the Bot API cache directory.
+    let localFile;
+    try {
+      localFile = await readLocalFileSafely({
+        filePath: params.filePath,
+        maxBytes: params.maxBytes,
+      });
+    } catch (err) {
+      throw new MediaFetchError(
+        "fetch_failed",
+        `Failed to read local Telegram Bot API media from ${params.filePath}: ${formatErrorMessage(err)}`,
+        { cause: err },
+      );
+    }
+    return await saveMediaBuffer(
+      localFile.buffer,
+      params.mimeType,
+      "inbound",
+      params.maxBytes,
+      params.telegramFileName ?? path.basename(params.filePath),
+    );
   }
   const apiBase = resolveTelegramApiBase(params.apiRoot);
   const url = `${apiBase}/file/bot${params.token}/${params.filePath}`;
