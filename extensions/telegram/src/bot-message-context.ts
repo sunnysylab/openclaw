@@ -459,6 +459,7 @@ export const buildTelegramMessageContext = async ({
 
   const { ctxPayload, skillFilter } = await buildTelegramInboundContextPayload({
     cfg,
+    ownershipCfg: freshCfg,
     primaryCtx,
     msg,
     allMedia,
