@@ -1598,8 +1598,6 @@ describe("applyExtraParamsToAgent", () => {
       "X-Custom": "1",
     });
   });
-
->>>>>>> Config: add Gemini safety settings
   it("passes configured websocket transport through stream options", () => {
     const { calls, agent } = createOptionsCaptureAgent();
     const cfg = {
