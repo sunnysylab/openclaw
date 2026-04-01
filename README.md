@@ -119,7 +119,7 @@ openclaw message send --to +1234567890 --message "Hello from OpenClaw"
 openclaw agent --message "Ship checklist" --thinking high
 ```
 
-Upgrading? [Updating guide](https://docs.openclaw.ai/install/updating) (and run `openclaw doctor`).
+Upgrading? See the [Updating guide](https://docs.openclaw.ai/install/updating) and run `openclaw doctor` afterward.
 
 ## Development channels
 
@@ -154,7 +154,7 @@ Note: `pnpm openclaw ...` runs TypeScript directly (via `tsx`). `pnpm build` pro
 
 OpenClaw connects to real messaging surfaces. Treat inbound DMs as **untrusted input**.
 
-Full security guide: [Security](https://docs.openclaw.ai/gateway/security)
+Full security guide: [Security](https://docs.openclaw.ai/gateway/security).
 
 Default behavior on Telegram/WhatsApp/Signal/iMessage/Microsoft Teams/Discord/Google Chat/Slack:
 
@@ -529,8 +529,7 @@ Use these when you’re past the onboarding flow and want the deeper reference.
 
 ## Molty
 
-OpenClaw was built for **Molty**, a space lobster AI assistant. 🦞
-by Peter Steinberger and the community.
+OpenClaw was built for **Molty**, a space lobster AI assistant, by Peter Steinberger and the community. 🦞
 
 - [openclaw.ai](https://openclaw.ai)
 - [soul.md](https://soul.md)
