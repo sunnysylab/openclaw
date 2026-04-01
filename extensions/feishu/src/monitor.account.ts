@@ -260,9 +260,12 @@ function parseFeishuCardActionEventPayload(value: unknown): FeishuCardActionEven
   const unionId = readString(operator.union_id);
   const tag = readString(action.tag);
   const actionValue = action.value;
-  const contextOpenId = readString(context.open_id);
-  const contextUserId = readString(context.user_id);
-  const chatId = readString(context.chat_id);
+  // Feishu card.action.trigger via WebSocket uses open_id/user_id in context,
+  // but via long-connection SDK uses open_message_id/open_chat_id instead.
+  // Fall back to operator fields when context fields are absent.
+  const contextOpenId = readString(context.open_id) || openId;
+  const contextUserId = readString(context.user_id) || userId;
+  const chatId = readString(context.chat_id) || readString(context.open_chat_id);
   if (
     !token ||
     !openId ||
@@ -271,8 +274,7 @@ function parseFeishuCardActionEventPayload(value: unknown): FeishuCardActionEven
     !tag ||
     !isRecord(actionValue) ||
     !contextOpenId ||
-    !contextUserId ||
-    !chatId
+    !contextUserId
   ) {
     return null;
   }
@@ -290,7 +292,8 @@ function parseFeishuCardActionEventPayload(value: unknown): FeishuCardActionEven
     context: {
       open_id: contextOpenId,
       user_id: contextUserId,
-      chat_id: chatId,
+      chat_id: chatId ?? "",
+      open_message_id: readString(context.open_message_id) || undefined,
     },
   };
 }
