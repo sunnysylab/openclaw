@@ -75,10 +75,18 @@ describe("msteams monitor handler authz", () => {
           resolveInboundDebounceMs: () => 0,
           createInboundDebouncer: <T>(params: {
             onFlush: (entries: T[]) => Promise<void>;
-          }): { enqueue: (entry: T) => Promise<void> } => ({
+          }): {
+            enqueue: (entry: T) => Promise<void>;
+            flushKey: (_key: string) => Promise<boolean>;
+            flushAll: () => Promise<number>;
+            unregister: () => void;
+          } => ({
             enqueue: async (entry: T) => {
               await params.onFlush([entry]);
             },
+            flushKey: async (_key: string) => false,
+            flushAll: async () => 0,
+            unregister: () => {},
           }),
         },
         pairing: {
@@ -152,8 +160,8 @@ describe("msteams monitor handler authz", () => {
       },
     } as OpenClawConfig);
 
-    const handler = createMSTeamsMessageHandler(deps);
-    await handler({
+    const { handleTeamsMessage } = createMSTeamsMessageHandler(deps);
+    await handleTeamsMessage({
       activity: {
         id: "msg-1",
         type: "message",
@@ -203,8 +211,8 @@ describe("msteams monitor handler authz", () => {
       },
     } as OpenClawConfig);
 
-    const handler = createMSTeamsMessageHandler(deps);
-    await handler({
+    const { handleTeamsMessage } = createMSTeamsMessageHandler(deps);
+    await handleTeamsMessage({
       activity: {
         id: "msg-1",
         type: "message",

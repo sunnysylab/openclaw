@@ -116,7 +116,7 @@ export const registerTelegramHandlers = ({
   processMessage,
   logger,
   telegramDeps = defaultTelegramBotDeps,
-}: RegisterTelegramHandlerParams) => {
+}: RegisterTelegramHandlerParams): { unregisterDebouncer: () => void } => {
   const DEFAULT_TEXT_FRAGMENT_MAX_GAP_MS = 1500;
   const TELEGRAM_TEXT_FRAGMENT_START_THRESHOLD_CHARS = 4000;
   const TELEGRAM_TEXT_FRAGMENT_MAX_GAP_MS =
@@ -1849,4 +1849,6 @@ export const registerTelegramHandlers = ({
       errorMessage: "channel_post handler failed",
     });
   });
+
+  return { unregisterDebouncer: inboundDebouncer.unregister };
 };
