@@ -35,8 +35,9 @@ import {
   createDefaultChannelRuntimeState,
 } from "openclaw/plugin-sdk/status-helpers";
 import { matrixMessageActions } from "./actions.js";
-import { matrixApprovalAuth } from "./approval-auth.js";
+import { matrixApprovalCapability } from "./approval-native.js";
 import { MatrixConfigSchema } from "./config-schema.js";
+import { shouldSuppressLocalMatrixExecApprovalPrompt } from "./exec-approvals.js";
 import {
   resolveMatrixGroupRequireMention,
   resolveMatrixGroupToolPolicy,
@@ -310,7 +311,7 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount, MatrixProbe> =
             },
           }),
       },
-      auth: matrixApprovalAuth,
+      approvalCapability: matrixApprovalCapability,
       groups: {
         resolveRequireMention: resolveMatrixGroupRequireMention,
         resolveToolPolicy: resolveMatrixGroupToolPolicy,
@@ -556,6 +557,12 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount, MatrixProbe> =
       chunker: chunkTextForOutbound,
       chunkerMode: "markdown",
       textChunkLimit: 4000,
+      shouldSuppressLocalPayloadPrompt: ({ cfg, accountId, payload }) =>
+        shouldSuppressLocalMatrixExecApprovalPrompt({
+          cfg,
+          accountId,
+          payload,
+        }),
       ...createRuntimeOutboundDelegates({
         getRuntime: loadMatrixChannelRuntime,
         sendText: {

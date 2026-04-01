@@ -142,6 +142,6 @@ export function resolveMatrixAccountConfig(params: {
       | undefined,
     accountId,
     normalizeAccountId,
-    nestedObjectKeys: ["dm", "actions"],
+    nestedObjectKeys: ["dm", "actions", "execApprovals"],
   });
 }
