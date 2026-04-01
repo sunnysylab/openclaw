@@ -19,6 +19,8 @@ export type ChannelHealthMonitorConfig = {
 
 export type ChannelDefaultsConfig = {
   groupPolicy?: GroupPolicy;
+  /** Default groupAllowFrom for all channels. Per-account groupAllowFrom overrides this. */
+  groupAllowFrom?: Array<string | number>;
   /** Default heartbeat visibility for all channels. */
   heartbeat?: ChannelHeartbeatVisibilityConfig;
 };

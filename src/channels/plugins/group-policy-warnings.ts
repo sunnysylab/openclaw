@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "../../config/config.js";
 import {
+  normalizeNonTelegramGroupPolicy,
   resolveAllowlistProviderRuntimeGroupPolicy,
   resolveDefaultGroupPolicy,
   resolveOpenProviderRuntimeGroupPolicy,
@@ -155,7 +156,7 @@ export function buildOpenGroupPolicyConfigureRouteAllowlistWarning(params: {
 
 export function collectOpenGroupPolicyRestrictSendersWarnings(
   params: Parameters<typeof buildOpenGroupPolicyRestrictSendersWarning>[0] & {
-    groupPolicy: "open" | "allowlist" | "disabled";
+    groupPolicy: GroupPolicy;
   },
 ): string[] {
   if (params.groupPolicy !== "open") {
@@ -177,7 +178,7 @@ export function collectAllowlistProviderRestrictSendersWarnings(
     configuredGroupPolicy: params.configuredGroupPolicy,
     collect: (groupPolicy) =>
       collectOpenGroupPolicyRestrictSendersWarnings({
-        groupPolicy,
+        groupPolicy: normalizeNonTelegramGroupPolicy(groupPolicy),
         surface: params.surface,
         openScope: params.openScope,
         groupPolicyPath: params.groupPolicyPath,
@@ -236,6 +237,12 @@ export function collectAllowlistProviderGroupPolicyWarnings(params: {
   providerConfigPresent: boolean;
   configuredGroupPolicy?: GroupPolicy | null;
   collect: GroupPolicyWarningCollector;
+  /**
+   * When true, normalize "members" to "open" before calling collect.
+   * Use for non-Telegram channels where "members" is not supported and
+   * behaves as "open" at runtime.
+   */
+  normalizeMembers?: boolean;
 }): string[] {
   const defaultGroupPolicy = resolveDefaultGroupPolicy(params.cfg);
   const { groupPolicy } = resolveAllowlistProviderRuntimeGroupPolicy({
@@ -243,7 +250,10 @@ export function collectAllowlistProviderGroupPolicyWarnings(params: {
     groupPolicy: params.configuredGroupPolicy ?? undefined,
     defaultGroupPolicy,
   });
-  return params.collect(groupPolicy);
+  const effective = params.normalizeMembers
+    ? normalizeNonTelegramGroupPolicy(groupPolicy)
+    : groupPolicy;
+  return params.collect(effective);
 }
 
 /** Build a config-aware allowlist-provider warning collector from an arbitrary policy resolver. */
@@ -275,7 +285,8 @@ export function collectOpenProviderGroupPolicyWarnings(params: {
     groupPolicy: params.configuredGroupPolicy ?? undefined,
     defaultGroupPolicy,
   });
-  return params.collect(groupPolicy);
+  // "members" is Telegram-only; non-Telegram callers should treat it as "open" for warnings
+  return params.collect(normalizeNonTelegramGroupPolicy(groupPolicy));
 }
 
 /** Build a config-aware open-provider warning collector from an arbitrary policy resolver. */
@@ -311,7 +322,7 @@ export function createAllowlistProviderOpenWarningCollector<ResolvedAccount>(par
 }
 
 export function collectOpenGroupPolicyRouteAllowlistWarnings(params: {
-  groupPolicy: "open" | "allowlist" | "disabled";
+  groupPolicy: GroupPolicy;
   routeAllowlistConfigured: boolean;
   restrictSenders: Parameters<typeof buildOpenGroupPolicyRestrictSendersWarning>[0];
   noRouteAllowlist: Parameters<typeof buildOpenGroupPolicyNoRouteAllowlistWarning>[0];
@@ -348,7 +359,7 @@ export function createAllowlistProviderRouteAllowlistWarningCollector<ResolvedAc
 }
 
 export function collectOpenGroupPolicyConfiguredRouteWarnings(params: {
-  groupPolicy: "open" | "allowlist" | "disabled";
+  groupPolicy: GroupPolicy;
   routeAllowlistConfigured: boolean;
   configureRouteAllowlist: Parameters<typeof buildOpenGroupPolicyConfigureRouteAllowlistWarning>[0];
   missingRouteAllowlist: Parameters<typeof buildOpenGroupPolicyWarning>[0];

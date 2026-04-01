@@ -229,7 +229,9 @@ function setTwitchAccessControl(
   });
 }
 
-function resolveTwitchGroupPolicy(cfg: OpenClawConfig): "open" | "allowlist" | "disabled" {
+function resolveTwitchGroupPolicy(
+  cfg: OpenClawConfig,
+): "open" | "allowlist" | "disabled" | "members" {
   const account = getAccountConfig(cfg, DEFAULT_ACCOUNT_ID);
   if (account?.allowedRoles?.includes("all")) {
     return "open";
@@ -242,7 +244,7 @@ function resolveTwitchGroupPolicy(cfg: OpenClawConfig): "open" | "allowlist" | "
 
 function setTwitchGroupPolicy(
   cfg: OpenClawConfig,
-  policy: "open" | "allowlist" | "disabled",
+  policy: "open" | "allowlist" | "disabled" | "members",
 ): OpenClawConfig {
   const allowedRoles: TwitchRole[] =
     policy === "open" ? ["all"] : policy === "allowlist" ? ["moderator", "vip"] : [];

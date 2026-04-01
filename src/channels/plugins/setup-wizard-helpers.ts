@@ -521,7 +521,10 @@ export function createNestedChannelAllowFromSetter(params: {
 export function createTopLevelChannelGroupPolicySetter(params: {
   channel: string;
   enabled?: boolean;
-}): (cfg: OpenClawConfig, groupPolicy: "open" | "allowlist" | "disabled") => OpenClawConfig {
+}): (
+  cfg: OpenClawConfig,
+  groupPolicy: "open" | "allowlist" | "disabled" | "members",
+) => OpenClawConfig {
   return (cfg, groupPolicy) =>
     setTopLevelChannelGroupPolicy({
       cfg,

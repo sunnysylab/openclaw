@@ -513,7 +513,7 @@ export function isDiscordAutoThreadOwnedByBot(params: {
 }
 
 export function isDiscordGroupAllowedByPolicy(params: {
-  groupPolicy: "open" | "disabled" | "allowlist";
+  groupPolicy: "open" | "disabled" | "allowlist" | "members";
   guildAllowlisted: boolean;
   channelAllowlistConfigured: boolean;
   channelAllowed: boolean;

@@ -15,13 +15,6 @@ import {
 } from "openclaw/plugin-sdk/command-auth-native";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import type { ChannelGroupPolicy } from "openclaw/plugin-sdk/config-runtime";
-import { resolveMarkdownTableMode } from "openclaw/plugin-sdk/markdown-table-runtime";
-import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
-import {
-  normalizeTelegramCommandName,
-  resolveTelegramCustomCommands,
-  TELEGRAM_COMMAND_NAME_PATTERN,
-} from "openclaw/plugin-sdk/telegram-command-config";
 import type {
   ReplyToMode,
   TelegramAccountConfig,
@@ -33,6 +26,7 @@ import {
   ensureConfiguredBindingRouteReady,
   recordInboundSessionMetaSafe,
 } from "openclaw/plugin-sdk/conversation-runtime";
+import { resolveMarkdownTableMode } from "openclaw/plugin-sdk/markdown-table-runtime";
 import { getAgentScopedMediaLocalRoots } from "openclaw/plugin-sdk/media-runtime";
 import {
   executePluginCommand,
@@ -45,9 +39,15 @@ import {
 } from "openclaw/plugin-sdk/reply-dispatch-runtime";
 import { resolveAgentRoute } from "openclaw/plugin-sdk/routing";
 import { resolveThreadSessionKeys } from "openclaw/plugin-sdk/routing";
+import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { danger, logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { getChildLogger } from "openclaw/plugin-sdk/runtime-env";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
+import {
+  normalizeTelegramCommandName,
+  resolveTelegramCustomCommands,
+  TELEGRAM_COMMAND_NAME_PATTERN,
+} from "openclaw/plugin-sdk/telegram-command-config";
 import { resolveTelegramAccount } from "./accounts.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import { isSenderAllowed, normalizeDmAllowFromWithStore } from "./bot-access.js";
@@ -83,6 +83,7 @@ import {
   evaluateTelegramGroupPolicyAccess,
 } from "./group-access.js";
 import { resolveTelegramGroupPromptSettings } from "./group-config-helpers.js";
+import { verifyGroupMembership } from "./group-membership-cache.js";
 import { buildInlineKeyboard } from "./send.js";
 
 const EMPTY_RESPONSE_FALLBACK = "No response generated. Please try again.";
@@ -350,6 +351,23 @@ async function resolveTelegramCommandAuth(params: {
     }
     if (policyAccess.reason === "group-chat-not-allowed") {
       return await sendAuthMessage("This group is not allowed.");
+    }
+  }
+
+  // Enforce "members" policy: verify all group members are trusted before
+  // allowing native commands. Without this check, native commands like /start
+  // and /help would bypass the members policy and respond in untrusted groups.
+  if (isGroup && policyAccess.groupPolicy === "members") {
+    const membershipResult = await verifyGroupMembership({
+      chatId,
+      api: bot.api,
+      botId: bot.botInfo.id,
+      allowFrom: effectiveGroupAllow,
+    });
+    if (!membershipResult.trusted) {
+      return await sendAuthMessage(
+        "This group contains untrusted members. All members must be in the trusted list.",
+      );
     }
   }
 
