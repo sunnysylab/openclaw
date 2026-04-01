@@ -35,12 +35,6 @@ import {
   getMemoryRuntime,
   restoreMemoryPluginState,
 } from "./memory-state.js";
-import {
-  clearOperationsRuntimeState,
-  getRegisteredOperationsRuntime,
-  getRegisteredOperationsRuntimeOwner,
-  restoreOperationsRuntimeState,
-} from "./operations-state.js";
 import { isPathInside, safeStatSync } from "./path-safety.js";
 import { createPluginRegistry, type PluginRecord, type PluginRegistry } from "./registry.js";
 import { resolvePluginCacheInputs } from "./roots.js";
@@ -129,8 +123,6 @@ type CachedPluginState = {
   memoryFlushPlanResolver: ReturnType<typeof getMemoryFlushPlanResolver>;
   memoryPromptBuilder: ReturnType<typeof getMemoryPromptSectionBuilder>;
   memoryRuntime: ReturnType<typeof getMemoryRuntime>;
-  operationsRuntime: ReturnType<typeof getRegisteredOperationsRuntime>;
-  operationsRuntimeOwner: ReturnType<typeof getRegisteredOperationsRuntimeOwner>;
 };
 
 const MAX_PLUGIN_REGISTRY_CACHE_ENTRIES = 128;
@@ -151,7 +143,6 @@ const LAZY_RUNTIME_REFLECTION_KEYS = [
   "logging",
   "state",
   "modelAuth",
-  "operations",
 ] as const satisfies readonly (keyof PluginRuntime)[];
 
 export function clearPluginLoaderCache(): void {
@@ -159,7 +150,6 @@ export function clearPluginLoaderCache(): void {
   openAllowlistWarningCache.clear();
   clearMemoryEmbeddingProviders();
   clearMemoryPluginState();
-  clearOperationsRuntimeState();
 }
 
 const defaultLogger = () => createSubsystemLogger("plugins");
@@ -793,11 +783,16 @@ function warnWhenAllowlistIsOpen(params: {
 function warnAboutUntrackedLoadedPlugins(params: {
   registry: PluginRegistry;
   provenance: PluginProvenanceIndex;
+  allowlist: string[];
   logger: PluginLogger;
   env: NodeJS.ProcessEnv;
 }) {
+  const allowSet = new Set(params.allowlist);
   for (const plugin of params.registry.plugins) {
     if (plugin.status !== "loaded" || plugin.origin === "bundled") {
+      continue;
+    }
+    if (allowSet.has(plugin.id)) {
       continue;
     }
     if (
@@ -862,10 +857,6 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
         promptBuilder: cached.memoryPromptBuilder,
         flushPlanResolver: cached.memoryFlushPlanResolver,
         runtime: cached.memoryRuntime,
-      });
-      restoreOperationsRuntimeState({
-        runtime: cached.operationsRuntime,
-        ownerPluginId: cached.operationsRuntimeOwner,
       });
       if (shouldActivate) {
         activatePluginRegistry(cached.registry, cacheKey, runtimeSubagentMode);
@@ -1373,8 +1364,6 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     const previousMemoryFlushPlanResolver = getMemoryFlushPlanResolver();
     const previousMemoryPromptBuilder = getMemoryPromptSectionBuilder();
     const previousMemoryRuntime = getMemoryRuntime();
-    const previousOperationsRuntime = getRegisteredOperationsRuntime();
-    const previousOperationsRuntimeOwner = getRegisteredOperationsRuntimeOwner();
 
     try {
       const result = register(api);
@@ -1394,10 +1383,6 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
           flushPlanResolver: previousMemoryFlushPlanResolver,
           runtime: previousMemoryRuntime,
         });
-        restoreOperationsRuntimeState({
-          runtime: previousOperationsRuntime,
-          ownerPluginId: previousOperationsRuntimeOwner,
-        });
       }
       registry.plugins.push(record);
       seenIds.set(pluginId, candidate.origin);
@@ -1407,10 +1392,6 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
         promptBuilder: previousMemoryPromptBuilder,
         flushPlanResolver: previousMemoryFlushPlanResolver,
         runtime: previousMemoryRuntime,
-      });
-      restoreOperationsRuntimeState({
-        runtime: previousOperationsRuntime,
-        ownerPluginId: previousOperationsRuntimeOwner,
       });
       recordPluginError({
         logger,
@@ -1438,6 +1419,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
   warnAboutUntrackedLoadedPlugins({
     registry,
     provenance,
+    allowlist: normalized.allow,
     logger,
     env,
   });
@@ -1451,8 +1433,6 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       memoryFlushPlanResolver: getMemoryFlushPlanResolver(),
       memoryPromptBuilder: getMemoryPromptSectionBuilder(),
       memoryRuntime: getMemoryRuntime(),
-      operationsRuntime: getRegisteredOperationsRuntime(),
-      operationsRuntimeOwner: getRegisteredOperationsRuntimeOwner(),
     });
   }
   if (shouldActivate) {

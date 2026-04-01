@@ -143,6 +143,40 @@ describe("TelegramExecApprovalHandler", () => {
     expect(sendMessage.mock.calls.map((call) => call[0])).toEqual(["111", "222"]);
   });
 
+  it("does not double-send in direct chats when the origin chat is the approver DM", async () => {
+    const cfg = {
+      channels: {
+        telegram: {
+          execApprovals: {
+            enabled: true,
+            approvers: ["8460800771"],
+            target: "dm",
+          },
+        },
+      },
+    } as OpenClawConfig;
+    const { handler, sendMessage } = createHandler(cfg);
+
+    await handler.handleRequested({
+      ...baseRequest,
+      request: {
+        ...baseRequest.request,
+        sessionKey: "agent:main:telegram:direct:8460800771",
+        turnSourceTo: "telegram:8460800771",
+        turnSourceThreadId: undefined,
+      },
+    });
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(
+      "8460800771",
+      expect.stringContaining("/approve 9f1c7d5d-b1fb-46ef-ac45-662723b65bb7 allow-once"),
+      expect.objectContaining({
+        accountId: "default",
+      }),
+    );
+  });
+
   it("clears buttons from tracked approval messages when resolved", async () => {
     const cfg = {
       channels: {
@@ -207,6 +241,34 @@ describe("TelegramExecApprovalHandler", () => {
         ]),
       }),
     );
+  });
+
+  it("delivers plugin approvals when the agent only exists in the Telegram session key", async () => {
+    const cfg = {
+      channels: {
+        telegram: {
+          execApprovals: {
+            enabled: true,
+            approvers: ["8460800771"],
+            agentFilter: ["main"],
+            target: "dm",
+          },
+        },
+      },
+    } as OpenClawConfig;
+    const { handler, sendMessage } = createHandler(cfg);
+
+    await handler.handleRequested({
+      ...pluginRequest,
+      request: {
+        ...pluginRequest.request,
+        agentId: undefined,
+      },
+    });
+
+    const [chatId, text] = sendMessage.mock.calls[0] ?? [];
+    expect(chatId).toBe("8460800771");
+    expect(text).toContain("Plugin approval required");
   });
 
   it("does not deliver plugin approvals for a different Telegram account", async () => {
