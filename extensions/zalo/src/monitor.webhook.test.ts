@@ -294,6 +294,66 @@ describe("handleZaloWebhookRequest", () => {
     }
   });
 
+  it("keeps replay dedupe isolated across different accounts on different webhook paths", async () => {
+    const sinkA = vi.fn();
+    const sinkB = vi.fn();
+    const unregisterA = registerTarget({
+      path: "/hook-replay-account-a",
+      secret: "secret-a",
+      statusSink: sinkA,
+      account: {
+        ...DEFAULT_ACCOUNT,
+        accountId: "a",
+      },
+    });
+    const unregisterB = registerTarget({
+      path: "/hook-replay-account-b",
+      secret: "secret-b",
+      statusSink: sinkB,
+      account: {
+        ...DEFAULT_ACCOUNT,
+        accountId: "b",
+      },
+    });
+    const payload = createTextUpdate({
+      messageId: "msg-replay-cross-account-1",
+      userId: "123",
+      userName: "",
+      chatId: "123",
+      text: "hello",
+    });
+
+    try {
+      await withServer(webhookRequestHandler, async (baseUrl) => {
+        const first = await fetch(`${baseUrl}/hook-replay-account-a`, {
+          method: "POST",
+          headers: {
+            "x-bot-api-secret-token": "secret-a",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const second = await fetch(`${baseUrl}/hook-replay-account-b`, {
+          method: "POST",
+          headers: {
+            "x-bot-api-secret-token": "secret-b",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(200);
+      });
+
+      expect(sinkA).toHaveBeenCalledTimes(1);
+      expect(sinkB).toHaveBeenCalledTimes(1);
+    } finally {
+      unregisterA();
+      unregisterB();
+    }
+  });
+
   it("keeps replay dedupe isolated across different webhook paths", async () => {
     const sinkA = vi.fn();
     const sinkB = vi.fn();

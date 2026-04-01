@@ -88,12 +88,20 @@ function timingSafeEquals(left: string, right: string): boolean {
   return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function buildReplayEventCacheKey(
+  target: ZaloWebhookTarget,
+  update: ZaloUpdate,
+  messageId: string,
+): string {
+  return JSON.stringify([target.path, target.account.accountId, update.event_name, messageId]);
+}
+
 function isReplayEvent(target: ZaloWebhookTarget, update: ZaloUpdate, nowMs: number): boolean {
   const messageId = update.message?.message_id;
   if (!messageId) {
     return false;
   }
-  const key = `${target.path}:${target.account.accountId}:${update.event_name}:${messageId}`;
+  const key = buildReplayEventCacheKey(target, update, messageId);
   return recentWebhookEvents.check(key, nowMs);
 }
 
