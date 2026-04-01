@@ -21,7 +21,7 @@ export type WhatsAppActionConfig = {
 export type WhatsAppReactionLevel = ReactionLevel;
 
 export type WhatsAppGroupConfig = {
-  requireMention?: boolean;
+  requireMention?: boolean | "monitor";
   tools?: GroupToolPolicyConfig;
   toolsBySender?: GroupToolPolicyBySenderConfig;
 };
