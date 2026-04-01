@@ -20,7 +20,7 @@ vi.mock("./tmp-openclaw-dir.js", () => ({
   resolvePreferredOpenClawTmpDir: () => resolvePreferredOpenClawTmpDirMock(),
 }));
 vi.mock("../daemon/schtasks.js", () => ({
-  resolveTaskScriptPath: (...args: unknown[]) => resolveTaskScriptPathMock(...args),
+  resolveTaskScriptPath: (env: Record<string, string | undefined>) => resolveTaskScriptPathMock(env),
 }));
 
 type WindowsTaskRestartModule = typeof import("./windows-task-restart.js");
