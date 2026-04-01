@@ -268,7 +268,7 @@ export async function runReplyAgent(params: {
     isHeartbeat,
   });
 
-  activeSessionEntry = await runMemoryFlushIfNeeded({
+  const memoryFlushResult = await runMemoryFlushIfNeeded({
     cfg,
     followupRun,
     promptForEstimate: followupRun.prompt,
@@ -283,6 +283,8 @@ export async function runReplyAgent(params: {
     storePath,
     isHeartbeat,
   });
+  activeSessionEntry = memoryFlushResult.sessionEntry;
+  const didPerformMemoryFlush = memoryFlushResult.performedMemoryFlush;
 
   const runFollowupTurn = createFollowupRunner({
     opts,
@@ -752,8 +754,11 @@ export async function runReplyAgent(params: {
         });
       }
 
-      // Inject post-compaction workspace context for the next agent turn
-      if (sessionKey) {
+      // Inject post-compaction workspace context for the next agent turn.
+      // Skip this for memory flush runs to avoid leaking internal prompts into the chat UI.
+      // Memory flush runs are silent internal operations and should not enqueue system events
+      // that will be displayed to the user in subsequent turns.
+      if (sessionKey && !didPerformMemoryFlush) {
         const workspaceDir = process.cwd();
         readPostCompactionContext(workspaceDir, cfg)
           .then((contextContent) => {
@@ -766,7 +771,9 @@ export async function runReplyAgent(params: {
           });
       }
 
-      if (verboseEnabled) {
+      // Show verbose notification for auto-compaction, but suppress it for memory flush runs.
+      // Memory flush is an internal housekeeping operation that should remain invisible to users.
+      if (verboseEnabled && !didPerformMemoryFlush) {
         const suffix = typeof count === "number" ? ` (count ${count})` : "";
         verboseNotices.push({ text: `🧹 Auto-compaction complete${suffix}.` });
       }
