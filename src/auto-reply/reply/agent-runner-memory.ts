@@ -35,6 +35,7 @@ import {
 } from "./agent-runner-utils.js";
 import {
   hasAlreadyFlushedForCurrentCompaction,
+  PRECOMPACTION_TRIGGER_RATIO,
   resolveMemoryFlushContextWindowTokens,
   shouldRunMemoryFlush,
   shouldRunPreflightCompaction,
@@ -331,36 +332,25 @@ export async function runPreflightCompactionIfNeeded(params: {
     modelId: params.followupRun.run.model ?? params.defaultModel,
     agentCfgContextTokens: params.agentCfgContextTokens,
   });
-  const memoryFlushPlan = resolveMemoryFlushPlan({ cfg: params.cfg });
-  const reserveTokensFloor =
-    memoryFlushPlan?.reserveTokensFloor ??
-    params.cfg.agents?.defaults?.compaction?.reserveTokensFloor ??
-    20_000;
-  const softThresholdTokens = memoryFlushPlan?.softThresholdTokens ?? 4_000;
   const freshPersistedTokens = resolveFreshSessionTotalTokens(entry);
-  const persistedTotalTokens = entry.totalTokens;
-  const hasPersistedTotalTokens =
-    typeof persistedTotalTokens === "number" &&
-    Number.isFinite(persistedTotalTokens) &&
-    persistedTotalTokens > 0;
-  const shouldUseTranscriptFallback = entry.totalTokensFresh === false || !hasPersistedTotalTokens;
-  if (!shouldUseTranscriptFallback) {
-    return entry ?? params.sessionEntry;
-  }
   const promptTokenEstimate = estimatePromptTokensForMemoryFlush(
     params.promptForEstimate ?? params.followupRun.prompt,
   );
   const transcriptPromptTokens =
-    typeof freshPersistedTokens === "number"
-      ? undefined
-      : estimatePromptTokensFromSessionTranscript({
+    freshPersistedTokens === undefined
+      ? estimatePromptTokensFromSessionTranscript({
           sessionId: entry.sessionId,
           storePath: params.storePath,
           sessionFile: entry.sessionFile ?? params.followupRun.run.sessionFile,
-        });
+        })
+      : undefined;
+  const promptTokensSnapshot =
+    typeof freshPersistedTokens === "number" && Number.isFinite(freshPersistedTokens)
+      ? freshPersistedTokens
+      : transcriptPromptTokens;
   const projectedTokenCount =
-    typeof transcriptPromptTokens === "number"
-      ? resolveEffectivePromptTokens(transcriptPromptTokens, undefined, promptTokenEstimate)
+    typeof promptTokensSnapshot === "number"
+      ? resolveEffectivePromptTokens(promptTokensSnapshot, undefined, promptTokenEstimate)
       : undefined;
   const tokenCountForCompaction =
     typeof projectedTokenCount === "number" &&
@@ -369,7 +359,7 @@ export async function runPreflightCompactionIfNeeded(params: {
       ? projectedTokenCount
       : undefined;
 
-  const threshold = contextWindowTokens - reserveTokensFloor - softThresholdTokens;
+  const threshold = Math.max(1, Math.floor(contextWindowTokens * PRECOMPACTION_TRIGGER_RATIO));
   logVerbose(
     `preflightCompaction check: sessionKey=${params.sessionKey} ` +
       `tokenCount=${tokenCountForCompaction ?? freshPersistedTokens ?? "undefined"} ` +
@@ -384,8 +374,6 @@ export async function runPreflightCompactionIfNeeded(params: {
     entry,
     tokenCount: tokenCountForCompaction,
     contextWindowTokens,
-    reserveTokensFloor,
-    softThresholdTokens,
   });
   if (!shouldCompact) {
     return entry ?? params.sessionEntry;
@@ -439,6 +427,7 @@ export async function runPreflightCompactionIfNeeded(params: {
     sessionKey: params.sessionKey,
     storePath: params.storePath,
     tokensAfter: result.result?.tokensAfter,
+    compactionOverheadTokens: result.result?.overheadTokens,
   });
   await appendPostCompactionRefreshPrompt({
     cfg: params.cfg,
@@ -678,7 +667,7 @@ export async function runMemoryFlushIfNeeded(params: {
     .join("\n\n");
   let postCompactionSessionId: string | undefined;
   try {
-    await runWithModelFallback({
+    const memoryFlushRun = await runWithModelFallback({
       ...resolveModelFallbackOptions(params.followupRun.run),
       runId: flushRunId,
       run: async (provider, model, runOptions) => {
@@ -733,6 +722,8 @@ export async function runMemoryFlushIfNeeded(params: {
         sessionStore: activeSessionStore,
         sessionKey: params.sessionKey,
         storePath: params.storePath,
+        compactionOverheadTokens:
+          memoryFlushRun.result.meta?.agentMeta?.compactionOverheadTokens,
         newSessionId: postCompactionSessionId,
       });
       const updatedEntry = params.sessionKey ? activeSessionStore?.[params.sessionKey] : undefined;

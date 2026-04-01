@@ -34,6 +34,7 @@ export async function incrementRunCompactionCount(
     storePath: params.storePath,
     amount: params.amount,
     tokensAfter: tokensAfterCompaction,
+    compactionOverheadTokens: params.compactionOverheadTokens,
     newSessionId: params.newSessionId,
   });
 }

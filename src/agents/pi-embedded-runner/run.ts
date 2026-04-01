@@ -86,6 +86,7 @@ import type { RunEmbeddedPiAgentParams } from "./run/params.js";
 import { buildEmbeddedRunPayloads } from "./run/payloads.js";
 import { resolveEffectiveRuntimeModel, resolveHookModelSelection } from "./run/setup.js";
 import {
+  resolveToolResultMaxTokens,
   sessionLikelyHasOversizedToolResults,
   truncateOversizedToolResultsInSession,
 } from "./tool-result-truncation.js";
@@ -303,6 +304,8 @@ export async function runEmbeddedPiAgent(
       const usageAccumulator = createUsageAccumulator();
       let lastRunPromptUsage: ReturnType<typeof normalizeUsage> | undefined;
       let autoCompactionCount = 0;
+      let cumulativeToolTokens = 0;
+      let cumulativeCompactionOverheadTokens = 0;
       let runLoopIterations = 0;
       let overloadProfileRotations = 0;
       let rateLimitProfileRotations = 0;
@@ -465,6 +468,8 @@ export async function runEmbeddedPiAgent(
                   usageAccumulator,
                   lastRunPromptUsage,
                   lastTurnTotal,
+                  toolTokens: cumulativeToolTokens,
+                  compactionOverheadTokens: cumulativeCompactionOverheadTokens,
                 }),
                 error: { kind: "retry_limit", message },
               },
@@ -579,6 +584,7 @@ export async function runEmbeddedPiAgent(
           const lastAssistantUsage = normalizeUsage(lastAssistant?.usage as UsageLike);
           const attemptUsage = attempt.attemptUsage ?? lastAssistantUsage;
           mergeUsageIntoAccumulator(usageAccumulator, attemptUsage);
+          cumulativeToolTokens += Math.max(0, Math.floor(attempt.toolTokens ?? 0));
           // Keep prompt size from the latest model call so session totalTokens
           // reflects current context usage, not accumulated tool-loop usage.
           lastRunPromptUsage = lastAssistantUsage ?? attemptUsage;
@@ -854,6 +860,10 @@ export async function runEmbeddedPiAgent(
               await runOwnsCompactionAfterHook("overflow recovery", compactResult);
               if (compactResult.compacted) {
                 autoCompactionCount += 1;
+                cumulativeCompactionOverheadTokens += Math.max(
+                  0,
+                  Math.floor(compactResult.result?.overheadTokens ?? 0),
+                );
                 log.info(`auto-compaction succeeded for ${provider}/${modelId}; retrying prompt`);
                 continue;
               }
@@ -866,10 +876,15 @@ export async function runEmbeddedPiAgent(
             // context window and compaction cannot reduce it further.
             if (!toolResultTruncationAttempted) {
               const contextWindowTokens = ctxInfo.tokens;
+              const toolResultMaxTokens = resolveToolResultMaxTokens(
+                contextWindowTokens,
+                params.config,
+              );
               const hasOversized = attempt.messagesSnapshot
                 ? sessionLikelyHasOversizedToolResults({
                     messages: attempt.messagesSnapshot,
                     contextWindowTokens,
+                    toolResultMaxTokens,
                   })
                 : false;
 
@@ -889,6 +904,8 @@ export async function runEmbeddedPiAgent(
                 const truncResult = await truncateOversizedToolResultsInSession({
                   sessionFile: params.sessionFile,
                   contextWindowTokens,
+                  toolResultMaxTokens,
+                  cfg: params.config,
                   sessionId: params.sessionId,
                   sessionKey: params.sessionKey,
                 });
@@ -943,6 +960,8 @@ export async function runEmbeddedPiAgent(
                   lastRunPromptUsage,
                   lastAssistant,
                   lastTurnTotal,
+                  toolTokens: cumulativeToolTokens,
+                  compactionOverheadTokens: cumulativeCompactionOverheadTokens,
                 }),
                 systemPromptReport: attempt.systemPromptReport,
                 error: { kind, message: errorText },
@@ -987,6 +1006,8 @@ export async function runEmbeddedPiAgent(
                     lastRunPromptUsage,
                     lastAssistant,
                     lastTurnTotal,
+                    toolTokens: cumulativeToolTokens,
+                    compactionOverheadTokens: cumulativeCompactionOverheadTokens,
                   }),
                   systemPromptReport: attempt.systemPromptReport,
                   error: { kind: "role_ordering", message: errorText },
@@ -1019,6 +1040,8 @@ export async function runEmbeddedPiAgent(
                     lastRunPromptUsage,
                     lastAssistant,
                     lastTurnTotal,
+                    toolTokens: cumulativeToolTokens,
+                    compactionOverheadTokens: cumulativeCompactionOverheadTokens,
                   }),
                   systemPromptReport: attempt.systemPromptReport,
                   error: { kind: "image_size", message: errorText },
@@ -1293,6 +1316,11 @@ export async function runEmbeddedPiAgent(
             usage: usageMeta.usage,
             lastCallUsage: usageMeta.lastCallUsage,
             promptTokens: usageMeta.promptTokens,
+            toolTokens: cumulativeToolTokens > 0 ? cumulativeToolTokens : undefined,
+            compactionOverheadTokens:
+              cumulativeCompactionOverheadTokens > 0
+                ? cumulativeCompactionOverheadTokens
+                : undefined,
             compactionCount: autoCompactionCount > 0 ? autoCompactionCount : undefined,
           };
 

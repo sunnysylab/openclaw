@@ -10,6 +10,7 @@ import {
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
+import { accumulateSessionCumulativeUsage } from "../../config/sessions/cumulative-usage.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 export { drainFormattedSystemEvents } from "./session-system-events.js";
@@ -155,6 +156,8 @@ export async function incrementCompactionCount(params: {
   amount?: number;
   /** Token count after compaction - if provided, updates session token counts */
   tokensAfter?: number;
+  /** Prompt-space overhead introduced by the compacted summary itself. */
+  compactionOverheadTokens?: number;
   /** Session id after compaction, when the runtime rotated transcripts. */
   newSessionId?: string;
 }): Promise<number | undefined> {
@@ -166,54 +169,92 @@ export async function incrementCompactionCount(params: {
     now = Date.now(),
     amount = 1,
     tokensAfter,
+    compactionOverheadTokens,
     newSessionId,
   } = params;
-  if (!sessionStore || !sessionKey) {
+  if (!sessionKey) {
     return undefined;
   }
-  const entry = sessionStore[sessionKey] ?? sessionEntry;
+  const entry = sessionStore?.[sessionKey] ?? sessionEntry;
   if (!entry) {
     return undefined;
   }
+
   const incrementBy = Math.max(0, amount);
-  const nextCount = (entry.compactionCount ?? 0) + incrementBy;
-  // Build update payload with compaction count and optionally updated token counts
-  const updates: Partial<SessionEntry> = {
-    compactionCount: nextCount,
-    updatedAt: now,
+  const buildUpdates = (currentEntry: SessionEntry): Partial<SessionEntry> => {
+    const nextCount = (currentEntry.compactionCount ?? 0) + incrementBy;
+    const updates: Partial<SessionEntry> = {
+      compactionCount: nextCount,
+      updatedAt: now,
+    };
+    if (newSessionId && newSessionId !== currentEntry.sessionId) {
+      updates.sessionId = newSessionId;
+      updates.sessionFile = resolveCompactionSessionFile({
+        entry: currentEntry,
+        sessionKey,
+        storePath,
+        newSessionId,
+      });
+    }
+    // If tokensAfter is provided, update the cached token counts to reflect post-compaction state
+    if (tokensAfter != null && tokensAfter > 0) {
+      updates.totalTokens = tokensAfter;
+      updates.totalTokensFresh = true;
+      // Clear input/output breakdown since we only have the total estimate after compaction
+      updates.inputTokens = undefined;
+      updates.outputTokens = undefined;
+      updates.cacheRead = undefined;
+      updates.cacheWrite = undefined;
+    } else {
+      // Compaction succeeded but no post-compaction token count is available.
+      // Mark the snapshot stale so the preflight gate does not keep re-triggering
+      // compaction on every turn against the old high-watermark.
+      updates.totalTokensFresh = false;
+    }
+    const cumulativeUsage = accumulateSessionCumulativeUsage(
+      currentEntry,
+      { compactionOverheadTokens },
+      now,
+    );
+    if (cumulativeUsage) {
+      updates.cumulativeUsage = cumulativeUsage;
+    }
+    return updates;
   };
-  if (newSessionId && newSessionId !== entry.sessionId) {
-    updates.sessionId = newSessionId;
-    updates.sessionFile = resolveCompactionSessionFile({
-      entry,
-      sessionKey,
-      storePath,
-      newSessionId,
+
+  if (storePath) {
+    const persisted = await updateSessionStore(storePath, (store) => {
+      const currentEntry = store[sessionKey] ?? entry;
+      if (!currentEntry) {
+        return undefined;
+      }
+      const updates = buildUpdates(currentEntry);
+      const nextEntry = {
+        ...currentEntry,
+        ...updates,
+      };
+      store[sessionKey] = nextEntry;
+      return nextEntry;
     });
+    if (persisted) {
+      if (sessionStore) {
+        sessionStore[sessionKey] = persisted;
+      }
+      return persisted.compactionCount;
+    }
   }
-  // If tokensAfter is provided, update the cached token counts to reflect post-compaction state
-  if (tokensAfter != null && tokensAfter > 0) {
-    updates.totalTokens = tokensAfter;
-    updates.totalTokensFresh = true;
-    // Clear input/output breakdown since we only have the total estimate after compaction
-    updates.inputTokens = undefined;
-    updates.outputTokens = undefined;
-    updates.cacheRead = undefined;
-    updates.cacheWrite = undefined;
+
+  if (!sessionStore) {
+    return undefined;
   }
-  sessionStore[sessionKey] = {
+
+  const updates = buildUpdates(entry);
+  const nextEntry = {
     ...entry,
     ...updates,
   };
-  if (storePath) {
-    await updateSessionStore(storePath, (store) => {
-      store[sessionKey] = {
-        ...store[sessionKey],
-        ...updates,
-      };
-    });
-  }
-  return nextCount;
+  sessionStore[sessionKey] = nextEntry;
+  return nextEntry.compactionCount;
 }
 
 function resolveCompactionSessionFile(params: {

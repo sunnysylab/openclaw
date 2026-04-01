@@ -15,6 +15,28 @@ import type {
 import type { EmbeddedContextFile } from "../../pi-embedded-helpers.js";
 import type { WorkspaceBootstrapFile } from "../../workspace.js";
 
+type SubscriptionMock = {
+  assistantTexts: string[];
+  toolMetas: Array<{ toolName: string; meta?: string }>;
+  unsubscribe: () => void;
+  waitForCompactionRetry: () => Promise<void>;
+  getMessagingToolSentTexts: () => string[];
+  getMessagingToolSentMediaUrls: () => string[];
+  getMessagingToolSentTargets: () => unknown[];
+  getSuccessfulCronAdds: () => number;
+  didSendViaMessagingTool: () => boolean;
+  didSendDeterministicApprovalPrompt: () => boolean;
+  getLastToolError: () => unknown;
+  getUsageTotals: () => unknown;
+  getToolTokenTotal: () => number | undefined;
+  getCompactionCount: () => number;
+  isCompacting: () => boolean;
+};
+
+type SessionWriteLockMock = {
+  release: () => Promise<void>;
+};
+
 const hoisted = vi.hoisted(() => {
   type BootstrapContext = {
     bootstrapFiles: WorkspaceBootstrapFile[];
@@ -24,8 +46,30 @@ const hoisted = vi.hoisted(() => {
   const createAgentSessionMock = vi.fn();
   const sessionManagerOpenMock = vi.fn();
   const resolveSandboxContextMock = vi.fn();
-  const subscribeEmbeddedPiSessionMock = vi.fn();
-  const acquireSessionWriteLockMock = vi.fn();
+  const subscribeEmbeddedPiSessionMock = vi.fn<(params: unknown) => SubscriptionMock>(
+    (_params?: unknown) => ({
+      assistantTexts: [] as string[],
+      toolMetas: [] as Array<{ toolName: string; meta?: string }>,
+      unsubscribe: () => {},
+      waitForCompactionRetry: async () => {},
+      getMessagingToolSentTexts: () => [] as string[],
+      getMessagingToolSentMediaUrls: () => [] as string[],
+      getMessagingToolSentTargets: () => [] as unknown[],
+      getSuccessfulCronAdds: () => 0,
+      didSendViaMessagingTool: () => false,
+      didSendDeterministicApprovalPrompt: () => false,
+      getLastToolError: () => undefined,
+      getUsageTotals: () => undefined,
+      getToolTokenTotal: () => undefined,
+      getCompactionCount: () => 0,
+      isCompacting: () => false,
+    }),
+  );
+  const acquireSessionWriteLockMock = vi.fn<(params: unknown) => Promise<SessionWriteLockMock>>(
+    async (_params?: unknown) => ({
+      release: async () => {},
+    }),
+  );
   const resolveBootstrapContextForRunMock = vi.fn<() => Promise<BootstrapContext>>(async () => ({
     bootstrapFiles: [],
     contextFiles: [],
@@ -91,8 +135,8 @@ vi.mock("../../session-tool-result-guard-wrapper.js", () => ({
 }));
 
 vi.mock("../../pi-embedded-subscribe.js", () => ({
-  subscribeEmbeddedPiSession: (...args: unknown[]) =>
-    hoisted.subscribeEmbeddedPiSessionMock(...args),
+  subscribeEmbeddedPiSession: (params: unknown) =>
+    hoisted.subscribeEmbeddedPiSessionMock(params),
 }));
 
 vi.mock("../../../plugins/hook-runner-global.js", () => ({
@@ -167,7 +211,7 @@ vi.mock("../session-manager-init.js", () => ({
 }));
 
 vi.mock("../../session-write-lock.js", () => ({
-  acquireSessionWriteLock: (...args: unknown[]) => hoisted.acquireSessionWriteLockMock(...args),
+  acquireSessionWriteLock: (params: unknown) => hoisted.acquireSessionWriteLockMock(params),
   resolveSessionLockMaxHoldFromTimeout: () => 1,
 }));
 
@@ -209,7 +253,8 @@ vi.mock("../system-prompt.js", () => ({
 }));
 
 vi.mock("../extra-params.js", () => ({
-  applyExtraParamsToAgent: () => {},
+  applyExtraParamsToAgent: () => ({ effectiveExtraParams: undefined }),
+  resolveAgentTransportOverride: () => undefined,
 }));
 
 vi.mock("../../openai-ws-stream.js", () => ({
@@ -251,6 +296,7 @@ vi.mock("../../pi-tools.js", () => ({
 
 vi.mock("../../pi-bundle-mcp-tools.js", () => ({
   createBundleMcpToolRuntime: async () => undefined,
+  getOrCreateSessionMcpRuntime: async () => undefined,
 }));
 
 vi.mock("../../pi-bundle-lsp-runtime.js", () => ({
@@ -445,7 +491,7 @@ export type MutableSession = {
   steer: (text: string) => Promise<void>;
 };
 
-export function createSubscriptionMock() {
+export function createSubscriptionMock(): SubscriptionMock {
   return {
     assistantTexts: [] as string[],
     toolMetas: [] as Array<{ toolName: string; meta?: string }>,
@@ -459,6 +505,7 @@ export function createSubscriptionMock() {
     didSendDeterministicApprovalPrompt: () => false,
     getLastToolError: () => undefined,
     getUsageTotals: () => undefined,
+    getToolTokenTotal: () => undefined,
     getCompactionCount: () => 0,
     isCompacting: () => false,
   };
@@ -467,7 +514,7 @@ export function createSubscriptionMock() {
 export function resetEmbeddedAttemptHarness(
   params: {
     includeSpawnSubagent?: boolean;
-    subscribeImpl?: () => ReturnType<typeof createSubscriptionMock>;
+    subscribeImpl?: (params?: unknown) => SubscriptionMock;
     sessionMessages?: AgentMessage[];
   } = {},
 ) {

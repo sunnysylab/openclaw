@@ -2,7 +2,11 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage, UserMessage } from "@mariozechner/pi-ai";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { makeAgentAssistantMessage } from "../test-helpers/agent-message-fixtures.js";
+import { estimateTextTokensApprox } from "../token-approximation.js";
+import {
+  castAgentMessage,
+  makeAgentAssistantMessage,
+} from "../test-helpers/agent-message-fixtures.js";
 
 const acquireSessionWriteLockReleaseMock = vi.hoisted(() => vi.fn(async () => {}));
 const acquireSessionWriteLockMock = vi.hoisted(() =>
@@ -15,13 +19,18 @@ vi.mock("../session-write-lock.js", () => ({
 
 let truncateToolResultText: typeof import("./tool-result-truncation.js").truncateToolResultText;
 let truncateToolResultMessage: typeof import("./tool-result-truncation.js").truncateToolResultMessage;
+let truncateToolResultTextToTokens: typeof import("./tool-result-truncation.js").truncateToolResultTextToTokens;
+let truncateToolResultMessageToTokens: typeof import("./tool-result-truncation.js").truncateToolResultMessageToTokens;
 let calculateMaxToolResultChars: typeof import("./tool-result-truncation.js").calculateMaxToolResultChars;
 let getToolResultTextLength: typeof import("./tool-result-truncation.js").getToolResultTextLength;
+let getToolResultTextTokenCount: typeof import("./tool-result-truncation.js").getToolResultTextTokenCount;
 let truncateOversizedToolResultsInMessages: typeof import("./tool-result-truncation.js").truncateOversizedToolResultsInMessages;
 let truncateOversizedToolResultsInSession: typeof import("./tool-result-truncation.js").truncateOversizedToolResultsInSession;
 let isOversizedToolResult: typeof import("./tool-result-truncation.js").isOversizedToolResult;
+let resolveToolResultMaxTokens: typeof import("./tool-result-truncation.js").resolveToolResultMaxTokens;
 let sessionLikelyHasOversizedToolResults: typeof import("./tool-result-truncation.js").sessionLikelyHasOversizedToolResults;
 let HARD_MAX_TOOL_RESULT_CHARS: typeof import("./tool-result-truncation.js").HARD_MAX_TOOL_RESULT_CHARS;
+let DEFAULT_TOOL_RESULT_MAX_TOKENS: typeof import("./tool-result-truncation.js").DEFAULT_TOOL_RESULT_MAX_TOKENS;
 let onSessionTranscriptUpdate: typeof import("../../sessions/transcript-events.js").onSessionTranscriptUpdate;
 
 async function loadFreshToolResultTruncationModuleForTest() {
@@ -33,13 +42,18 @@ async function loadFreshToolResultTruncationModuleForTest() {
   ({
     truncateToolResultText,
     truncateToolResultMessage,
+    truncateToolResultTextToTokens,
+    truncateToolResultMessageToTokens,
     calculateMaxToolResultChars,
     getToolResultTextLength,
+    getToolResultTextTokenCount,
     truncateOversizedToolResultsInMessages,
     truncateOversizedToolResultsInSession,
     isOversizedToolResult,
+    resolveToolResultMaxTokens,
     sessionLikelyHasOversizedToolResults,
     HARD_MAX_TOOL_RESULT_CHARS,
+    DEFAULT_TOOL_RESULT_MAX_TOKENS,
   } = await import("./tool-result-truncation.js"));
 }
 
@@ -160,6 +174,23 @@ describe("getToolResultTextLength", () => {
   });
 });
 
+describe("getToolResultTextTokenCount", () => {
+  it("estimates tool-result tokens from text content", () => {
+    const msg = makeToolResult("x".repeat(4_000));
+    expect(getToolResultTextTokenCount(msg)).toBeGreaterThan(900);
+  });
+
+  it("counts legacy role=tool string outputs", () => {
+    const msg = castAgentMessage({
+      role: "tool",
+      tool_call_id: "call_1",
+      tool_name: "read",
+      content: "x".repeat(4_000),
+    });
+    expect(getToolResultTextTokenCount(msg)).toBeGreaterThan(900);
+  });
+});
+
 describe("truncateToolResultMessage", () => {
   it("truncates with a custom suffix", () => {
     const msg: ToolResultMessage = {
@@ -183,6 +214,61 @@ describe("truncateToolResultMessage", () => {
   });
 });
 
+describe("truncateToolResultTextToTokens", () => {
+  it("returns text unchanged when under the token cap", () => {
+    const text = "hello world";
+    expect(truncateToolResultTextToTokens(text, 2_000)).toBe(text);
+  });
+
+  it("adds a truncation notice and preserves head and tail context", () => {
+    const head = "HEAD\n".repeat(300);
+    const middle = "middle-data\n".repeat(1_000);
+    const tail = "TAIL\n".repeat(300);
+    const text = head + middle + tail;
+
+    const result = truncateToolResultTextToTokens(text, 2_000);
+    expect(result).toContain("[Truncated: original");
+    expect(result).toContain("Full output available via tool recall.");
+    expect(result).toContain("HEAD");
+    expect(result).toContain("TAIL");
+    expect(result).toContain("middle content omitted");
+  });
+});
+
+describe("truncateToolResultMessageToTokens", () => {
+  it("collapses text blocks into a token-truncated summary block", () => {
+    const msg: ToolResultMessage = {
+      role: "toolResult",
+      toolCallId: "call_1",
+      toolName: "read",
+      content: [
+        { type: "text", text: "x".repeat(8_000) },
+        { type: "text", text: "y".repeat(8_000) },
+      ],
+      isError: false,
+      timestamp: nextTimestamp(),
+    };
+
+    const result = truncateToolResultMessageToTokens(msg, 2_000);
+    expect(result.role).toBe("toolResult");
+    expect(getFirstToolResultText(result)).toContain("[Truncated: original");
+  });
+
+  it("truncates legacy role=tool string outputs", () => {
+    const msg = castAgentMessage({
+      role: "tool",
+      tool_call_id: "call_1",
+      tool_name: "read",
+      content: "x".repeat(12_000),
+    });
+
+    const result = truncateToolResultMessageToTokens(msg, 2_000);
+    expect((result as { content?: unknown }).content).toEqual(
+      expect.stringContaining("[Truncated: original"),
+    );
+  });
+});
+
 describe("calculateMaxToolResultChars", () => {
   it("scales with context window size", () => {
     const small = calculateMaxToolResultChars(32_000);
@@ -203,6 +289,33 @@ describe("calculateMaxToolResultChars", () => {
   });
 });
 
+describe("resolveToolResultMaxTokens", () => {
+  it("defaults to 2000 tokens on large windows", () => {
+    expect(resolveToolResultMaxTokens(128_000)).toBe(DEFAULT_TOOL_RESULT_MAX_TOKENS);
+  });
+
+  it("clamps to half the context window on small models", () => {
+    expect(resolveToolResultMaxTokens(1_000)).toBe(500);
+  });
+
+  it("honors config overrides when they are lower than the context cap", () => {
+    expect(
+      resolveToolResultMaxTokens(
+        128_000,
+        {
+          agents: {
+            defaults: {
+              tokenLimits: {
+                toolResultMax: 1_500,
+              },
+            },
+          },
+        } as never,
+      ),
+    ).toBe(1_500);
+  });
+});
+
 describe("isOversizedToolResult", () => {
   it("returns false for small tool results", () => {
     const msg = makeToolResult("small content");
@@ -210,12 +323,12 @@ describe("isOversizedToolResult", () => {
   });
 
   it("returns true for oversized tool results", () => {
-    const msg = makeToolResult("x".repeat(500_000));
+    const msg = makeToolResult("x".repeat(15_000));
     expect(isOversizedToolResult(msg, 128_000)).toBe(true);
   });
 
   it("returns false for non-toolResult messages", () => {
-    const msg = makeUserMessage("x".repeat(500_000));
+    const msg = makeUserMessage("x".repeat(15_000));
     expect(isOversizedToolResult(msg, 128_000)).toBe(false);
   });
 });
@@ -236,7 +349,7 @@ describe("truncateOversizedToolResultsInMessages", () => {
   });
 
   it("truncates oversized tool results", () => {
-    const bigContent = "x".repeat(500_000);
+    const bigContent = "x".repeat(15_000);
     const messages: AgentMessage[] = [
       makeUserMessage("hello"),
       makeAssistantMessage("reading file"),
@@ -251,14 +364,14 @@ describe("truncateOversizedToolResultsInMessages", () => {
     expect(toolResult?.role).toBe("toolResult");
     const text = toolResult ? getFirstToolResultText(toolResult) : "";
     expect(text.length).toBeLessThan(bigContent.length);
-    expect(text).toContain("truncated");
+    expect(text).toContain("[Truncated: original");
   });
 
   it("preserves non-toolResult messages", () => {
     const messages = [
       makeUserMessage("hello"),
       makeAssistantMessage("reading file"),
-      makeToolResult("x".repeat(500_000)),
+      makeToolResult("x".repeat(15_000)),
     ];
     const { messages: result } = truncateOversizedToolResultsInMessages(messages, 128_000);
     expect(result[0]).toBe(messages[0]); // Same reference
@@ -269,8 +382,8 @@ describe("truncateOversizedToolResultsInMessages", () => {
     const messages: AgentMessage[] = [
       makeUserMessage("hello"),
       makeAssistantMessage("reading files"),
-      makeToolResult("x".repeat(500_000), "call_1"),
-      makeToolResult("y".repeat(500_000), "call_2"),
+      makeToolResult("x".repeat(15_000), "call_1"),
+      makeToolResult("y".repeat(15_000), "call_2"),
     ];
     const { messages: result, truncatedCount } = truncateOversizedToolResultsInMessages(
       messages,
@@ -280,7 +393,7 @@ describe("truncateOversizedToolResultsInMessages", () => {
     for (const msg of result.slice(2)) {
       expect(msg.role).toBe("toolResult");
       const text = getFirstToolResultText(msg);
-      expect(text.length).toBeLessThan(500_000);
+      expect(text.length).toBeLessThan(15_000);
     }
   });
 });
@@ -291,7 +404,7 @@ describe("truncateOversizedToolResultsInSession", () => {
     const sessionManager = SessionManager.inMemory();
     sessionManager.appendMessage(makeUserMessage("hello"));
     sessionManager.appendMessage(makeAssistantMessage("reading file"));
-    sessionManager.appendMessage(makeToolResult("x".repeat(500_000)));
+    sessionManager.appendMessage(makeToolResult("x".repeat(15_000)));
 
     const openSpy = vi
       .spyOn(SessionManager, "open")
@@ -324,8 +437,8 @@ describe("truncateOversizedToolResultsInSession", () => {
         throw new Error("expected rewritten tool result");
       }
       const rewrittenText = getFirstToolResultText(rewrittenToolResult.message);
-      expect(rewrittenText.length).toBeLessThan(500_000);
-      expect(rewrittenText).toContain("truncated");
+      expect(rewrittenText.length).toBeLessThan(15_000);
+      expect(rewrittenText).toContain("[Truncated: original");
     } finally {
       cleanup();
       openSpy.mockRestore();
@@ -345,7 +458,7 @@ describe("sessionLikelyHasOversizedToolResults", () => {
   });
 
   it("returns true when a tool result is oversized", () => {
-    const messages = [makeUserMessage("hello"), makeToolResult("x".repeat(500_000))];
+    const messages = [makeUserMessage("hello"), makeToolResult("x".repeat(15_000))];
     expect(
       sessionLikelyHasOversizedToolResults({
         messages,
@@ -364,13 +477,13 @@ describe("sessionLikelyHasOversizedToolResults", () => {
   });
 });
 
-describe("truncateToolResultText head+tail strategy", () => {
+describe("truncateToolResultTextToTokens head+tail strategy", () => {
   it("preserves error content at the tail when present", () => {
     const head = "Line 1\n".repeat(500);
     const middle = "data data data\n".repeat(500);
     const tail = "\nError: something failed\nStack trace: at foo.ts:42\n";
     const text = head + middle + tail;
-    const result = truncateToolResultText(text, 5000);
+    const result = truncateToolResultTextToTokens(text, 2_000);
     // Should contain both the beginning and the error at the end
     expect(result).toContain("Line 1");
     expect(result).toContain("Error: something failed");
@@ -379,9 +492,17 @@ describe("truncateToolResultText head+tail strategy", () => {
 
   it("uses simple head truncation when tail has no important content", () => {
     const text = "normal line\n".repeat(1000);
-    const result = truncateToolResultText(text, 5000);
+    const result = truncateToolResultTextToTokens(text, 2_000);
     expect(result).toContain("normal line");
-    expect(result).not.toContain("middle content omitted");
-    expect(result).toContain("truncated");
+    expect(result).toContain("middle content omitted");
+    expect(result).toContain("[Truncated: original");
+  });
+
+  it("reports the final truncated token count in the notice", () => {
+    const text = "z".repeat(16_000);
+    const result = truncateToolResultTextToTokens(text, 2_000);
+    const match = result.match(/original (\d+) tokens → (\d+) tokens/);
+    expect(match).not.toBeNull();
+    expect(Number(match?.[2])).toBe(estimateTextTokensApprox(result));
   });
 });

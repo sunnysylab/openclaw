@@ -310,8 +310,6 @@ describe("shouldRunPreflightCompaction", () => {
       shouldRunPreflightCompaction({
         entry: { totalTokens: 96_000, totalTokensFresh: false },
         contextWindowTokens: 100_000,
-        reserveTokensFloor: 5_000,
-        softThresholdTokens: 2_000,
       }),
     ).toBe(false);
   });
@@ -322,10 +320,26 @@ describe("shouldRunPreflightCompaction", () => {
         entry: { totalTokens: 10, totalTokensFresh: false },
         tokenCount: 93_000,
         contextWindowTokens: 100_000,
-        reserveTokensFloor: 5_000,
-        softThresholdTokens: 2_000,
       }),
     ).toBe(true);
+  });
+
+  it("triggers from a fresh persisted snapshot at 80 percent of the context window", () => {
+    expect(
+      shouldRunPreflightCompaction({
+        entry: { totalTokens: 80_000, totalTokensFresh: true },
+        contextWindowTokens: 100_000,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not trigger below the 80 percent preflight threshold", () => {
+    expect(
+      shouldRunPreflightCompaction({
+        entry: { totalTokens: 79_999, totalTokensFresh: true },
+        contextWindowTokens: 100_000,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -533,5 +547,46 @@ describe("incrementCompactionCount", () => {
     expect(stored[sessionKey].compactionCount).toBe(1);
     // totalTokens unchanged
     expect(stored[sessionKey].totalTokens).toBe(180_000);
+  });
+
+  it("accumulates compaction overhead against the latest persisted cumulative usage", async () => {
+    const entry = {
+      sessionId: "s1",
+      updatedAt: Date.now(),
+      compactionCount: 0,
+    } as SessionEntry;
+    const { storePath, sessionKey, sessionStore } = await createCompactionSessionFixture(entry);
+    await seedSessionStore({
+      storePath,
+      sessionKey,
+      entry: {
+        ...entry,
+        cumulativeUsage: {
+          inputTokens: 400,
+          outputTokens: 120,
+          toolTokens: 80,
+          compactionOverheadTokens: 10,
+          updatedAt: 1_000,
+        },
+      },
+    });
+
+    await incrementCompactionCount({
+      sessionEntry: entry,
+      sessionStore,
+      sessionKey,
+      storePath,
+      compactionOverheadTokens: 30,
+    });
+
+    const stored = JSON.parse(await fs.readFile(storePath, "utf-8"));
+    expect(stored[sessionKey].cumulativeUsage).toEqual({
+      inputTokens: 400,
+      outputTokens: 120,
+      toolTokens: 80,
+      compactionOverheadTokens: 40,
+      updatedAt: expect.any(Number),
+    });
+    expect(sessionStore[sessionKey]?.cumulativeUsage?.compactionOverheadTokens).toBe(40);
   });
 });

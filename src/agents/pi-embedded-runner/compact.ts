@@ -125,6 +125,7 @@ import { splitSdkTools } from "./tool-split.js";
 import type { EmbeddedPiCompactResult } from "./types.js";
 import { describeUnknownError, mapThinkingLevel } from "./utils.js";
 import { flushPendingToolResultsAfterIdle } from "./wait-for-idle-before-flush.js";
+import { estimateTextTokensApprox } from "../token-approximation.js";
 
 export type CompactEmbeddedPiSessionParams = {
   sessionId: string;
@@ -836,6 +837,21 @@ export async function compactEmbeddedPiSessionDirect(
           fullSessionTokensBefore,
           estimateTokensFn: estimateTokens,
         });
+        const tokensBeforeForLog = Math.max(
+          0,
+          Math.floor(observedTokenCount ?? fullSessionTokensBefore ?? result.tokensBefore ?? 0),
+        );
+        const tokensAfterForLog = Math.max(0, Math.floor(tokensAfter ?? 0));
+        if (tokensBeforeForLog > 0 && tokensAfterForLog > 0) {
+          const savedPercentage = Math.max(
+            0,
+            Math.round(((tokensBeforeForLog - tokensAfterForLog) / tokensBeforeForLog) * 100),
+          );
+          log.info(
+            `[compaction] Compacted session: ${tokensBeforeForLog} -> ${tokensAfterForLog} tokens ` +
+              `(saved ${savedPercentage}%) sessionKey=${params.sessionKey ?? params.sessionId}`,
+          );
+        }
         const messageCountAfter = session.messages.length;
         const compactedCount = Math.max(0, messageCountCompactionInput - messageCountAfter);
         const postMetrics = diagEnabled ? summarizeCompactionMessages(session.messages) : undefined;
@@ -896,6 +912,7 @@ export async function compactEmbeddedPiSessionDirect(
             firstKeptEntryId: result.firstKeptEntryId,
             tokensBefore: observedTokenCount ?? result.tokensBefore,
             tokensAfter,
+            overheadTokens: estimateTextTokensApprox(result.summary),
             details: result.details,
           },
         };

@@ -22,6 +22,7 @@ import type {
 import { filterToolResultMediaUrls } from "./pi-embedded-subscribe.tools.js";
 import type { SubscribeEmbeddedPiSessionParams } from "./pi-embedded-subscribe.types.js";
 import { formatReasoningMessage, stripDowngradedToolCallText } from "./pi-embedded-utils.js";
+import { estimateUnknownTokensApprox } from "./token-approximation.js";
 import { hasNonzeroUsage, normalizeUsage, type UsageLike } from "./usage.js";
 
 const THINKING_TAG_SCAN_RE = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
@@ -92,6 +93,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     cacheWrite: 0,
     total: 0,
   };
+  let toolTokenTotal = 0;
   let compactionCount = 0;
 
   const assistantTexts = state.assistantTexts;
@@ -315,6 +317,9 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       cacheWrite: usageTotals.cacheWrite || undefined,
       total: usageTotals.total || derivedTotal || undefined,
     };
+  };
+  const recordToolTokens = (payload: unknown) => {
+    toolTokenTotal += estimateUnknownTokensApprox(payload);
   };
   const incrementCompactionCount = () => {
     compactionCount += 1;
@@ -658,6 +663,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     resolveCompactionRetry,
     maybeResolveCompactionWait,
     recordAssistantUsage,
+    recordToolTokens,
     incrementCompactionCount,
     getUsageTotals,
     getCompactionCount: () => compactionCount,
@@ -715,6 +721,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     didSendDeterministicApprovalPrompt: () => state.deterministicApprovalPromptSent,
     getLastToolError: () => (state.lastToolError ? { ...state.lastToolError } : undefined),
     getUsageTotals,
+    getToolTokenTotal: () => (toolTokenTotal > 0 ? toolTokenTotal : undefined),
     getCompactionCount: () => compactionCount,
     waitForCompactionRetry: () => {
       // Reject after unsubscribe so callers treat it as cancellation, not success
