@@ -403,16 +403,16 @@ function loadSkillEntries(
     // Only consider immediate subfolders that look like skills (have SKILL.md) and are under size cap.
     for (const name of limitedChildren) {
       const skillDir = path.join(baseDir, name);
-      if (enforceContainedRealpath) {
-        const skillDirRealPath = resolveContainedSkillPath({
+      if (
+        enforceContainedRealpath &&
+        !resolveContainedSkillPath({
           source: params.source,
           rootDir,
           rootRealPath: baseDirRealPath,
           candidatePath: skillDir,
-        });
-        if (!skillDirRealPath) {
-          continue;
-        }
+        })
+      ) {
+        continue;
       }
       const skillMd = path.join(skillDir, "SKILL.md");
       if (!fs.existsSync(skillMd)) {
