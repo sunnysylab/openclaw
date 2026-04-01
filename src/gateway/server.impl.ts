@@ -143,6 +143,7 @@ import { loadGatewayTlsRuntime } from "./server/tls.js";
 import { resolveSessionKeyForTranscriptFile } from "./session-transcript-key.js";
 import {
   attachOpenClawTranscriptMeta,
+  applyConfiguredSessionUsageCacheSettings,
   loadGatewaySessionRow,
   loadSessionEntry,
   readSessionMessages,
@@ -726,6 +727,9 @@ export async function startGatewayServer(
     channelManager,
     startedAt: serverStartedAt,
   });
+  // Apply sessions.list cache settings before runtime-state creation binds
+  // HTTP listeners so early requests never see the default cache capacity.
+  applyConfiguredSessionUsageCacheSettings(cfgAtStart);
   const {
     canvasHost,
     releasePluginRouteRegistry,

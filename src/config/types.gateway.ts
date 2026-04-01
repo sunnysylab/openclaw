@@ -390,6 +390,26 @@ export type GatewayToolsConfig = {
   allow?: string[];
 };
 
+<<<<<<< HEAD
+export type GatewaySessionsListConfig = {
+  /**
+   * Maximum number of entries in the in-memory usage cache for transcript reads.
+   * Default: 5000.
+   */
+  usageCacheMaxEntries?: number;
+  /**
+   * Pre-warm the usage cache at gateway startup by reading transcript
+   * files for all sessions that lack stored usage metadata.
+   * Default: false.
+   */
+  prewarmUsageCache?: boolean;
+  /**
+   * Maximum concurrency for the prewarm background task.
+   * Default: 16.
+   */
+  prewarmConcurrency?: number;
+};
+
 export type GatewayWebchatConfig = {
   /** Max characters per text field in chat.history responses before truncation (default: 12000). */
   chatHistoryMaxChars?: number;
@@ -457,4 +477,6 @@ export type GatewayConfig = {
    * the rolling window expires. Default: 10.
    */
   channelMaxRestartsPerHour?: number;
+  /** Sessions list performance tuning. */
+  sessionsList?: GatewaySessionsListConfig;
 };
