@@ -434,6 +434,48 @@ describe("gateway agent handler", () => {
     );
   });
 
+  it("disables structured output intent for ACP-backed sessions", async () => {
+    mockMainSessionEntry({
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    mocks.updateSessionStore.mockResolvedValue(undefined);
+    mocks.agentCommand.mockResolvedValue({
+      payloads: [{ text: "ok" }],
+      meta: { durationMs: 100 },
+    });
+    mocks.registerAgentRunContext.mockClear();
+
+    await invokeAgent(
+      {
+        message: "test acp structured intent",
+        agentId: "main",
+        sessionKey: "agent:main:main",
+        streamParams: {
+          toolChoice: "required",
+        },
+        idempotencyKey: "test-idem-acp-toolchoice-required",
+      },
+      {
+        reqId: "test-idem-acp-toolchoice-required",
+      },
+    );
+
+    expect(mocks.registerAgentRunContext).toHaveBeenCalledWith(
+      "test-idem-acp-toolchoice-required",
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        requestedStructuredOutput: false,
+      }),
+    );
+  });
+
   it("rejects provider and model overrides for write-scoped callers", async () => {
     primeMainAgentRun();
     mocks.agentCommand.mockClear();

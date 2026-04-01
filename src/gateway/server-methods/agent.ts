@@ -643,6 +643,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       resolvedSessionKey = canonicalSessionKey;
       const agentId = resolveAgentIdFromSessionKey(canonicalSessionKey);
       const mainSessionKey = resolveAgentMainSessionKey({ cfg, agentId });
+      const isAcpBackedSession = Boolean(entry?.acp);
       if (storePath) {
         const persisted = await updateSessionStore(storePath, (store) => {
           const { primaryKey } = migrateAndPruneGatewaySessionStoreKey({
@@ -665,9 +666,11 @@ export const agentHandlers: GatewayRequestHandlers = {
           bestEffortDeliver = true;
         }
       }
+      const requestedStructuredOutput =
+        !isAcpBackedSession && isStructuredOutputToolChoice(request.streamParams?.toolChoice);
       registerAgentRunContext(idem, {
         sessionKey: canonicalSessionKey,
-        requestedStructuredOutput: isStructuredOutputToolChoice(request.streamParams?.toolChoice),
+        requestedStructuredOutput,
       });
     }
 
