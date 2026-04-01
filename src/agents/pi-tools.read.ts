@@ -602,23 +602,58 @@ export function createSandboxedReadTool(params: SandboxToolParams) {
  * prevents the silent-overwrite footgun that byungsker flagged in PR #40574.
  */
 function wrapWriteToolAppendGuard(tool: AnyAgentTool): AnyAgentTool {
+  const schema =
+    tool.parameters && typeof tool.parameters === "object"
+      ? {
+          ...tool.parameters,
+          properties: {
+            ...((tool.parameters as Record<string, unknown>).properties as Record<string, unknown>),
+            append: {
+              type: "boolean",
+              description:
+                "When true, request append mode instead of overwrite mode. " +
+                "Sandboxed sessions reject append with an explicit error.",
+            },
+          },
+        }
+      : tool.parameters;
   return {
     ...tool,
+    parameters: schema,
     execute: async (toolCallId, args, signal, onUpdate) => {
+      const normalized = normalizeToolParams(args);
       const record =
-        args && typeof args === "object" ? (args as Record<string, unknown>) : undefined;
-      if (record?.append === true) {
+        normalized ??
+        (args && typeof args === "object" ? (args as Record<string, unknown>) : undefined);
+      if (record?.append === undefined || record.append === false) {
+        return tool.execute(toolCallId, normalized ?? args, signal, onUpdate);
+      }
+      if (record.append !== true) {
         return {
           content: [
             {
               type: "text" as const,
-              text: "Error: append mode is not supported in sandboxed sessions. Use the default overwrite mode, or break content into separate writes.",
+              text: "Error: `append` must be a boolean when provided.",
             },
           ],
-          details: undefined,
+          details: {
+            status: "error",
+            error: "append must be a boolean when provided",
+          },
         } as AgentToolResult<unknown>;
       }
-      return tool.execute(toolCallId, args, signal, onUpdate);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: "Error: append mode is not supported in sandboxed sessions. Use the default overwrite mode, or break content into separate writes.",
+          },
+        ],
+        details: {
+          status: "error",
+          error: "append mode is not supported in sandboxed sessions",
+        },
+      } as AgentToolResult<unknown>;
     },
   };
 }
@@ -658,12 +693,31 @@ function wrapWriteToolWithAppendMode(
     ...tool,
     parameters: schema,
     execute: async (toolCallId, args, signal, onUpdate) => {
+      const normalized = normalizeToolParams(args);
       const record =
-        args && typeof args === "object" ? (args as Record<string, unknown>) : undefined;
+        normalized ??
+        (args && typeof args === "object" ? (args as Record<string, unknown>) : undefined);
 
-      if (record?.append !== true) {
-        return tool.execute(toolCallId, args, signal, onUpdate);
+      if (record?.append === undefined || record.append === false) {
+        return tool.execute(toolCallId, normalized ?? args, signal, onUpdate);
       }
+
+      if (record.append !== true) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Error: `append` must be a boolean when provided.",
+            },
+          ],
+          details: {
+            status: "error",
+            error: "append must be a boolean when provided",
+          },
+        } as AgentToolResult<unknown>;
+      }
+
+      assertRequiredParams(record, CLAUDE_PARAM_GROUPS.write, tool.name);
 
       // Extract path and content
       const filePath =
@@ -673,17 +727,22 @@ function wrapWriteToolWithAppendMode(
             ? record.file_path
             : typeof record.filePath === "string"
               ? record.filePath
-              : undefined;
+              : typeof record.file === "string"
+                ? record.file
+                : undefined;
       const content = typeof record.content === "string" ? record.content : undefined;
 
       if (!filePath || content === undefined) {
-        return tool.execute(toolCallId, args, signal, onUpdate);
+        return tool.execute(toolCallId, normalized ?? args, signal, onUpdate);
       }
 
       const workspaceOnly = options?.workspaceOnly ?? false;
       const safePath = workspaceOnly
         ? toRelativeWorkspacePath(root, filePath)
         : path.basename(filePath);
+      const resolvedPath = workspaceOnly
+        ? path.resolve(root, safePath)
+        : resolveToolPathAgainstWorkspaceRoot({ filePath, root });
 
       try {
         if (workspaceOnly) {
@@ -696,11 +755,10 @@ function wrapWriteToolWithAppendMode(
             prependNewlineIfNeeded: true,
           });
         } else {
-          const resolved = path.resolve(root, filePath);
-          await fs.mkdir(path.dirname(resolved), { recursive: true });
+          await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
           // Use a single file descriptor for the stat check + append to avoid
           // TOCTOU races and symlink-following between separate operations.
-          const handle = await fs.open(resolved, "a+");
+          const handle = await fs.open(resolvedPath, "a+");
           try {
             let prefix = "";
             const stat = await handle.stat();
@@ -717,7 +775,7 @@ function wrapWriteToolWithAppendMode(
           }
         }
       } catch (error) {
-        sanitizeWriteToolAppendModeError(error, path.resolve(root, filePath), safePath);
+        sanitizeWriteToolAppendModeError(error, resolvedPath, safePath);
         throw error;
       }
 
@@ -734,10 +792,16 @@ function sanitizeWriteToolAppendModeError(error: unknown, resolvedPath: string, 
   if (!(error instanceof Error) || typeof error.message !== "string") {
     return;
   }
-  if (!error.message.includes(resolvedPath)) {
-    return;
+  const replacements = [
+    [resolvedPath, safePath],
+    [path.dirname(resolvedPath), path.dirname(safePath)],
+  ] as const;
+  for (const [absoluteValue, safeValue] of replacements) {
+    if (!absoluteValue || !error.message.includes(absoluteValue)) {
+      continue;
+    }
+    error.message = error.message.split(absoluteValue).join(safeValue || ".");
   }
-  error.message = error.message.split(resolvedPath).join(safePath);
 }
 
 export function createSandboxedWriteTool(params: SandboxToolParams) {
