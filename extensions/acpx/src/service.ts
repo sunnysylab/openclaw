@@ -13,6 +13,8 @@ import { ACPX_BACKEND_ID, AcpxRuntime } from "./runtime.js";
 type AcpxRuntimeLike = AcpRuntime & {
   probeAvailability(): Promise<void>;
   isHealthy(): boolean;
+  setSetupError(message?: string): void;
+  getUnhealthyReason(): string | undefined;
   doctor?(): Promise<{
     ok: boolean;
     message: string;
@@ -79,11 +81,14 @@ export function createAcpxRuntimeService(
         queueOwnerTtlSeconds: pluginConfig.queueOwnerTtlSeconds,
         logger: ctx.logger,
       });
+      const startupRuntime = runtime;
+      startupRuntime.setSetupError();
 
       registerAcpRuntimeBackend({
         id: ACPX_BACKEND_ID,
         runtime,
         healthy: () => runtime?.isHealthy() ?? false,
+        unhealthyReason: () => runtime?.getUnhealthyReason(),
       });
       const expectedVersionLabel = pluginConfig.expectedVersion ?? "any";
       const installLabel = pluginConfig.allowPluginLocalInstall ? "enabled" : "disabled";
@@ -110,11 +115,13 @@ export function createAcpxRuntimeService(
           }
           let lastFailureMessage: string | undefined;
           for (let attempt = 0; attempt <= healthProbeRetryDelaysMs.length; attempt += 1) {
-            await runtime?.probeAvailability();
+            startupRuntime.setSetupError();
+            await startupRuntime.probeAvailability();
             if (currentRevision !== lifecycleRevision) {
               return;
             }
-            if (runtime?.isHealthy()) {
+            if (startupRuntime.isHealthy()) {
+              startupRuntime.setSetupError();
               ctx.logger.info(
                 attempt === 0
                   ? "acpx runtime backend ready"
@@ -123,14 +130,16 @@ export function createAcpxRuntimeService(
               return;
             }
 
-            const doctorReport = await runtime?.doctor?.();
-            if (currentRevision !== lifecycleRevision) {
-              return;
-            }
-            if (doctorReport) {
-              lastFailureMessage = formatDoctorFailureMessage(doctorReport);
-            } else {
-              lastFailureMessage = "acpx runtime backend remained unhealthy after probe";
+            lastFailureMessage = startupRuntime.getUnhealthyReason();
+            if (!lastFailureMessage) {
+              const doctorReport = await startupRuntime.doctor?.();
+              if (currentRevision !== lifecycleRevision) {
+                return;
+              }
+              lastFailureMessage = doctorReport
+                ? formatDoctorFailureMessage(doctorReport)
+                : "acpx runtime probe failed after local install";
+              startupRuntime.setSetupError(lastFailureMessage);
             }
 
             const retryDelayMs = healthProbeRetryDelaysMs[attempt];
@@ -146,12 +155,17 @@ export function createAcpxRuntimeService(
             }
           }
           ctx.logger.warn(
-            `acpx runtime backend probe failed: ${lastFailureMessage ?? "backend remained unhealthy after setup"}`,
+            `acpx runtime backend probe failed: ${
+              lastFailureMessage ??
+              startupRuntime.getUnhealthyReason() ??
+              "backend remained unhealthy after setup"
+            }`,
           );
         } catch (err) {
           if (currentRevision !== lifecycleRevision) {
             return;
           }
+          startupRuntime.setSetupError(err instanceof Error ? err.message : String(err));
           ctx.logger.warn(
             `acpx runtime setup failed: ${err instanceof Error ? err.message : String(err)}`,
           );

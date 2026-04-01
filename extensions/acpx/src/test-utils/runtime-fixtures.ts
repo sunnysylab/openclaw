@@ -50,6 +50,10 @@ if (args.includes("--help")) {
   if (process.env.MOCK_ACPX_HELP_SIGNAL) {
     process.kill(process.pid, process.env.MOCK_ACPX_HELP_SIGNAL);
   }
+  if (process.env.MOCK_ACPX_HELP_STDOUT) {
+    process.stdout.write(process.env.MOCK_ACPX_HELP_STDOUT + "\\n");
+    process.exit(Number(process.env.MOCK_ACPX_HELP_EXIT_CODE || "1"));
+  }
   return emitTextAndExit("mock-acpx help\\n");
 }
 
@@ -365,6 +369,7 @@ emitJsonAndExit({
 `;
 
 export async function createMockRuntimeFixture(params?: {
+  expectedVersion?: string;
   permissionMode?: ResolvedAcpxPluginConfig["permissionMode"];
   queueOwnerTtlSeconds?: number;
   mcpServers?: ResolvedAcpxPluginConfig["mcpServers"];
@@ -380,6 +385,7 @@ export async function createMockRuntimeFixture(params?: {
 
   const config: ResolvedAcpxPluginConfig = {
     command: scriptPath,
+    expectedVersion: params?.expectedVersion,
     allowPluginLocalInstall: false,
     stripProviderAuthEnvVars: false,
     installCommand: "n/a",
@@ -443,6 +449,8 @@ export async function cleanupMockRuntimeFixtures(): Promise<void> {
   delete process.env.MOCK_ACPX_STATUS_STATUS;
   delete process.env.MOCK_ACPX_STATUS_NO_IDS;
   delete process.env.MOCK_ACPX_STATUS_SUMMARY;
+  delete process.env.MOCK_ACPX_HELP_STDOUT;
+  delete process.env.MOCK_ACPX_HELP_EXIT_CODE;
   sharedMockCliScriptPath = null;
   logFileSequence = 0;
   while (tempDirs.length > 0) {
