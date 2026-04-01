@@ -42,6 +42,7 @@ import { resolveTelegramGroupPromptSettings } from "./group-config-helpers.js";
 
 export async function buildTelegramInboundContextPayload(params: {
   cfg: OpenClawConfig;
+  ownershipCfg?: OpenClawConfig;
   primaryCtx: TelegramContext;
   msg: TelegramContext["message"];
   allMedia: TelegramMediaRef[];
@@ -74,6 +75,7 @@ export async function buildTelegramInboundContextPayload(params: {
 }> {
   const {
     cfg,
+    ownershipCfg,
     primaryCtx,
     msg,
     allMedia,
@@ -186,8 +188,9 @@ export async function buildTelegramInboundContextPayload(params: {
           timestamp: entry.timestamp,
         }))
       : undefined;
+  const senderOwnershipCfg = ownershipCfg ?? cfg;
   const senderAgentId = senderId
-    ? resolveConfiguredTelegramBotAgentIdsByBotId(cfg).get(senderId)
+    ? resolveConfiguredTelegramBotAgentIdsByBotId(senderOwnershipCfg).get(senderId)
     : undefined;
   const currentMediaForContext = stickerCacheHit ? [] : allMedia;
   const contextMedia = [...currentMediaForContext, ...replyMedia];
