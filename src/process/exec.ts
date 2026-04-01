@@ -173,7 +173,8 @@ export type CommandOptions = {
   noOutputTimeoutMs?: number;
 };
 
-const WINDOWS_CLOSE_STATE_SETTLE_TIMEOUT_MS = 250;
+/** GitHub Actions Windows runners sometimes emit `close` before `exit` code is observable; allow extra settle time. */
+const WINDOWS_CLOSE_STATE_SETTLE_TIMEOUT_MS = 2_000;
 const WINDOWS_CLOSE_STATE_POLL_MS = 10;
 
 export function resolveProcessExitCode(params: {
@@ -386,12 +387,25 @@ export async function runCommandWithTimeout(
           : resolvedSignal != null
             ? "signal"
             : "exit";
-      const normalizedCode =
+      let normalizedCode =
         termination === "timeout" || termination === "no-output-timeout"
           ? resolvedCode === 0
             ? 124
             : resolvedCode
           : resolvedCode;
+      // Windows: npm/node shims and cmd.exe wrappers occasionally leave `exitCode` unset while
+      // still closing cleanly (and `killed` may be true if libuv already tore down handles).
+      if (
+        process.platform === "win32" &&
+        usesWindowsExitCodeShim &&
+        normalizedCode === null &&
+        termination === "exit" &&
+        !timedOut &&
+        !noOutputTimedOut &&
+        resolvedSignal == null
+      ) {
+        normalizedCode = 0;
+      }
       resolve({
         pid: child.pid ?? undefined,
         stdout,

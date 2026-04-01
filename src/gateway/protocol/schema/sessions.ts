@@ -25,6 +25,37 @@ export const SessionsListParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const SessionsSearchParamsSchema = Type.Object(
+  {
+    query: Type.String({ minLength: 1 }),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+    activeMinutes: Type.Optional(Type.Integer({ minimum: 1 })),
+    /**
+     * Either gateway session row kinds (`direct`, `group`, `global`, `unknown`) or the same tool-facing
+     * labels as `sessions_list` (`main`, `group`, `cron`, `hook`, `node`, `other`). Mixing both styles
+     * in one request uses tool-facing semantics for every value.
+     */
+    kinds: Type.Optional(Type.Array(NonEmptyString)),
+    keys: Type.Optional(Type.Array(NonEmptyString)),
+    requesterSessionKey: Type.Optional(NonEmptyString),
+    sandboxed: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
+export const SessionsRecallParamsSchema = Type.Object(
+  {
+    query: Type.String({ minLength: 1 }),
+    maxTokens: Type.Optional(Type.Integer({ minimum: 256, maximum: 4000 })),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
+    /** Flat string enum for generated clients (avoid anyOf union drift). */
+    scope: Type.Optional(Type.String({ enum: ["recent", "all"] })),
+    requesterSessionKey: Type.Optional(NonEmptyString),
+    sandboxed: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
 export const SessionsPreviewParamsSchema = Type.Object(
   {
     keys: Type.Array(NonEmptyString, { minItems: 1 }),

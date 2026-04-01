@@ -28,7 +28,9 @@ export {
   shouldResolveSessionIdInput,
   shouldVerifyRequesterSpawnedSessionVisibility,
 } from "./sessions-resolution.js";
+export { resolveVisibleSessionKeys } from "./sessions-visible-keys.js";
 import { type OpenClawConfig, loadConfig } from "../../config/config.js";
+import { buildAgentMainSessionKey, parseAgentSessionKey } from "../../routing/session-key.js";
 import { extractTextFromChatContent } from "../../shared/chat-content.js";
 import { sanitizeUserFacingText } from "../pi-embedded-helpers.js";
 import {
@@ -119,6 +121,16 @@ export function classifySessionKind(params: {
   const key = params.key;
   if (key === params.alias || key === params.mainKey) {
     return "main";
+  }
+  const parsedAgent = parseAgentSessionKey(key);
+  if (parsedAgent) {
+    const canonicalMain = buildAgentMainSessionKey({
+      agentId: parsedAgent.agentId,
+      mainKey: params.mainKey,
+    });
+    if (key === canonicalMain) {
+      return "main";
+    }
   }
   if (key.startsWith("cron:")) {
     return "cron";

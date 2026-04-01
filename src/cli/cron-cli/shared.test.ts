@@ -182,8 +182,12 @@ describe("printCronList", () => {
 });
 
 describe("getCronChannelOptions", () => {
-  it("falls back to a generic channel placeholder when no plugins are loaded", () => {
+  beforeEach(() => {
+    hoisted.listChannelPluginsMock.mockReset();
     hoisted.listChannelPluginsMock.mockReturnValue([]);
+  });
+
+  it("falls back to a generic channel placeholder when no plugins are loaded", () => {
     expect(getCronChannelOptions()).toBe("last|<channel-id>");
   });
 

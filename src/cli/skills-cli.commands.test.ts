@@ -31,6 +31,9 @@ const mocks = vi.hoisted(() => {
     installSkillFromClawHubMock: vi.fn(),
     updateSkillsFromClawHubMock: vi.fn(),
     readTrackedClawHubSkillSlugsMock: vi.fn(),
+    listManagedSkillsMock: vi.fn(),
+    auditManagedSkillsMock: vi.fn(),
+    updateManagedSkillsMock: vi.fn(),
     defaultRuntime,
     runtimeLogs,
     runtimeErrors,
@@ -45,6 +48,9 @@ const {
   installSkillFromClawHubMock,
   updateSkillsFromClawHubMock,
   readTrackedClawHubSkillSlugsMock,
+  listManagedSkillsMock,
+  auditManagedSkillsMock,
+  updateManagedSkillsMock,
   defaultRuntime,
   runtimeLogs,
   runtimeErrors,
@@ -71,6 +77,12 @@ vi.mock("../agents/skills-clawhub.js", () => ({
     mocks.readTrackedClawHubSkillSlugsMock(...args),
 }));
 
+vi.mock("../agents/skills-hub/managed.js", () => ({
+  listManagedSkills: (...args: unknown[]) => mocks.listManagedSkillsMock(...args),
+  auditManagedSkills: (...args: unknown[]) => mocks.auditManagedSkillsMock(...args),
+  updateManagedSkills: (...args: unknown[]) => mocks.updateManagedSkillsMock(...args),
+}));
+
 describe("skills cli commands", () => {
   const createProgram = () => {
     const program = new Command();
@@ -91,6 +103,9 @@ describe("skills cli commands", () => {
     installSkillFromClawHubMock.mockReset();
     updateSkillsFromClawHubMock.mockReset();
     readTrackedClawHubSkillSlugsMock.mockReset();
+    listManagedSkillsMock.mockReset();
+    auditManagedSkillsMock.mockReset();
+    updateManagedSkillsMock.mockReset();
 
     loadConfigMock.mockReturnValue({});
     resolveDefaultAgentIdMock.mockReturnValue("main");
@@ -102,6 +117,9 @@ describe("skills cli commands", () => {
     });
     updateSkillsFromClawHubMock.mockResolvedValue([]);
     readTrackedClawHubSkillSlugsMock.mockResolvedValue([]);
+    listManagedSkillsMock.mockResolvedValue([]);
+    auditManagedSkillsMock.mockResolvedValue({ rows: [], summaries: {} });
+    updateManagedSkillsMock.mockResolvedValue([]);
     defaultRuntime.log.mockClear();
     defaultRuntime.error.mockClear();
     defaultRuntime.writeStdout.mockClear();
@@ -177,5 +195,26 @@ describe("skills cli commands", () => {
       true,
     );
     expect(runtimeErrors).toEqual([]);
+  });
+
+  it("lists managed skills", async () => {
+    listManagedSkillsMock.mockResolvedValue([
+      {
+        name: "calendar",
+        exists: true,
+        lock: { source: "clawhub", ref: "1.2.3" },
+      },
+    ]);
+    await runCommand(["skills", "managed", "list"]);
+    expect(runtimeLogs.some((line) => line.includes("calendar  clawhub@1.2.3  present"))).toBe(
+      true,
+    );
+  });
+
+  it("updates managed skills with --force", async () => {
+    updateManagedSkillsMock.mockResolvedValue([{ name: "calendar", ok: true, message: "updated" }]);
+    await runCommand(["skills", "managed", "update", "--force"]);
+    expect(updateManagedSkillsMock).toHaveBeenCalledWith({ force: true });
+    expect(runtimeLogs.some((line) => line.includes("calendar  updated"))).toBe(true);
   });
 });

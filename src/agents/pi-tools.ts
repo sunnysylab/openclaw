@@ -455,6 +455,8 @@ export function createOpenClawCodingTools(options?: {
     allowBackground,
     scopeKey,
     sessionKey: options?.sessionKey,
+    sessionId: options?.sessionId,
+    agentRunId: options?.runId,
     messageProvider: options?.messageProvider,
     currentChannelId: options?.currentChannelId,
     currentThreadTs: options?.currentThreadTs,

@@ -741,6 +741,13 @@ export const MemorySearchSchema = z
   })
   .strict()
   .optional();
+
+export const ResearchSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+  })
+  .strict()
+  .optional();
 export { AgentModelSchema };
 
 const AgentRuntimeAcpSchema = z
