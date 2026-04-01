@@ -125,6 +125,7 @@ const telegramDepsForTest: TelegramBotDeps = {
     listSkillCommandsForAgents as TelegramBotDeps["listSkillCommandsForAgents"],
   createChannelReplyPipeline:
     createChannelReplyPipeline as TelegramBotDeps["createChannelReplyPipeline"],
+  loadWebMedia: vi.fn() as TelegramBotDeps["loadWebMedia"],
   wasSentByBot: wasSentByBot as TelegramBotDeps["wasSentByBot"],
   createTelegramDraftStream:
     createTelegramDraftStream as TelegramBotDeps["createTelegramDraftStream"],

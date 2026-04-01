@@ -34,7 +34,16 @@ export const signalOutbound: ChannelOutboundAdapter = {
   chunker: (text, _limit) => text.split(/\n{2,}/).flatMap((chunk) => (chunk ? [chunk] : [])),
   chunkerMode: "text",
   textChunkLimit: 4000,
-  sendFormattedText: async ({ cfg, to, text, accountId, deps, abortSignal }) => {
+  sendFormattedText: async ({
+    cfg,
+    to,
+    text,
+    accountId,
+    deps,
+    abortSignal,
+    replyToId,
+    quoteAuthor,
+  }) => {
     const send = resolveSignalSender(deps);
     const maxBytes = resolveSignalMaxBytes({
       cfg,
@@ -52,6 +61,7 @@ export const signalOutbound: ChannelOutboundAdapter = {
       chunks = [{ text, styles: [] }];
     }
     const results = [];
+    let first = true;
     for (const chunk of chunks) {
       abortSignal?.throwIfAborted();
       const result = await send(to, chunk.text, {
@@ -60,8 +70,11 @@ export const signalOutbound: ChannelOutboundAdapter = {
         accountId: accountId ?? undefined,
         textMode: "plain",
         textStyles: chunk.styles,
+        replyTo: first ? (replyToId ?? undefined) : undefined,
+        quoteAuthor: first ? (quoteAuthor ?? undefined) : undefined,
       });
       results.push(result);
+      first = false;
     }
     return attachChannelToResults("signal", results);
   },
@@ -75,6 +88,8 @@ export const signalOutbound: ChannelOutboundAdapter = {
     accountId,
     deps,
     abortSignal,
+    replyToId,
+    quoteAuthor,
   }) => {
     abortSignal?.throwIfAborted();
     const send = resolveSignalSender(deps);
@@ -98,12 +113,14 @@ export const signalOutbound: ChannelOutboundAdapter = {
       textStyles: formatted.styles,
       mediaLocalRoots,
       mediaReadFile,
+      replyTo: replyToId ?? undefined,
+      quoteAuthor: quoteAuthor ?? undefined,
     });
     return attachChannelToResult("signal", result);
   },
   ...createAttachedChannelResultAdapter({
     channel: "signal",
-    sendText: async ({ cfg, to, text, accountId, deps }) => {
+    sendText: async ({ cfg, to, text, accountId, deps, replyToId, quoteAuthor }) => {
       const send = resolveSignalSender(deps);
       const maxBytes = resolveSignalMaxBytes({
         cfg,
@@ -113,6 +130,8 @@ export const signalOutbound: ChannelOutboundAdapter = {
         cfg,
         maxBytes,
         accountId: accountId ?? undefined,
+        replyTo: replyToId ?? undefined,
+        quoteAuthor: quoteAuthor ?? undefined,
       });
     },
     sendMedia: async ({
@@ -124,6 +143,8 @@ export const signalOutbound: ChannelOutboundAdapter = {
       mediaReadFile,
       accountId,
       deps,
+      replyToId,
+      quoteAuthor,
     }) => {
       const send = resolveSignalSender(deps);
       const maxBytes = resolveSignalMaxBytes({
@@ -137,6 +158,8 @@ export const signalOutbound: ChannelOutboundAdapter = {
         accountId: accountId ?? undefined,
         mediaLocalRoots,
         mediaReadFile,
+        replyTo: replyToId ?? undefined,
+        quoteAuthor: quoteAuthor ?? undefined,
       });
     },
   }),

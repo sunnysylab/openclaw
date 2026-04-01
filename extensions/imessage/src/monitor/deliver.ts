@@ -47,7 +47,7 @@ export async function deliverReplies(params: {
           maxBytes,
           client,
           accountId,
-          replyToId: payload.replyToId,
+          replyToId: payload.replyToId ?? undefined,
         });
         // Post-send cache population (#47830): caching happens after each chunk is sent,
         // not before. The window between send completion and cache write is sub-millisecond;
@@ -61,7 +61,7 @@ export async function deliverReplies(params: {
           maxBytes,
           client,
           accountId,
-          replyToId: payload.replyToId,
+          replyToId: payload.replyToId ?? undefined,
         });
         sentMessageCache?.remember(scope, {
           text: sent.sentText || undefined,
