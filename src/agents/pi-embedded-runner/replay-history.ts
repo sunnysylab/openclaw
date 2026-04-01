@@ -1,15 +1,15 @@
-import { EventEmitter } from "node:events";
-import type { AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { SessionManager } from "@mariozechner/pi-coding-agent";
-import type { TSchema } from "@sinclair/typebox";
 import type { OpenClawConfig } from "../../config/config.js";
-import { registerUnhandledRejectionHandler } from "../../infra/unhandled-rejections.js";
 import {
-  normalizeProviderToolSchemasWithPlugin,
   sanitizeProviderReplayHistoryWithPlugin,
   validateProviderReplayTurnsWithPlugin,
 } from "../../plugins/provider-runtime.js";
-import type { ProviderRuntimeModel } from "../../plugins/types.js";
+import type {
+  ProviderReplaySessionEntry,
+  ProviderReplaySessionState,
+  ProviderRuntimeModel,
+} from "../../plugins/types.js";
 import {
   hasInterSessionUserProvenance,
   normalizeInputProvenance,
@@ -18,20 +18,16 @@ import { resolveImageSanitizationLimits } from "../image-sanitization.js";
 import {
   downgradeOpenAIFunctionCallReasoningPairs,
   downgradeOpenAIReasoningBlocks,
-  isCompactionFailureError,
-  isGoogleModelApi,
   sanitizeGoogleTurnOrdering,
   sanitizeSessionMessagesImages,
   validateAnthropicTurns,
   validateGeminiTurns,
 } from "../pi-embedded-helpers.js";
-import { cleanToolSchemaForGemini } from "../pi-tools.schema.js";
 import {
   sanitizeToolCallInputs,
-  stripToolResultDetails,
   sanitizeToolUseResultPairing,
+  stripToolResultDetails,
 } from "../session-transcript-repair.js";
-import type { AnyAgentTool } from "../tools/common.js";
 import type { TranscriptPolicy } from "../transcript-policy.js";
 import { resolveTranscriptPolicy } from "../transcript-policy.js";
 import {
@@ -42,35 +38,19 @@ import {
 } from "../usage.js";
 import { log } from "./logger.js";
 import { dropThinkingBlocks } from "./thinking.js";
-import { describeUnknownError } from "./utils.js";
-
-const GOOGLE_TURN_ORDERING_CUSTOM_TYPE = "google-turn-ordering-bootstrap";
-const GOOGLE_SCHEMA_UNSUPPORTED_KEYWORDS = new Set([
-  "patternProperties",
-  "additionalProperties",
-  "$schema",
-  "$id",
-  "$ref",
-  "$defs",
-  "definitions",
-  "examples",
-  "minLength",
-  "maxLength",
-  "minimum",
-  "maximum",
-  "multipleOf",
-  "pattern",
-  "format",
-  "minItems",
-  "maxItems",
-  "uniqueItems",
-  "minProperties",
-  "maxProperties",
-]);
 
 const INTER_SESSION_PREFIX_BASE = "[Inter-session message]";
+const MODEL_SNAPSHOT_CUSTOM_TYPE = "model-snapshot";
+
 type AssistantHistoryMessage = Extract<AgentMessage, { role: "assistant" }>;
 type RawAssistantHistoryMessage = Omit<AssistantHistoryMessage, "content"> & { content?: unknown };
+type CustomEntryLike = { type?: unknown; customType?: unknown; data?: unknown };
+type ModelSnapshotEntry = {
+  timestamp: number;
+  provider?: string;
+  modelApi?: string | null;
+  modelId?: string;
+};
 
 function buildInterSessionPrefix(message: AgentMessage): string {
   const provenance = normalizeInputProvenance((message as { provenance?: unknown }).provenance);
@@ -376,169 +356,46 @@ function ensureAssistantUsageSnapshots(messages: AgentMessage[]): AgentMessage[]
   return touched ? out : messages;
 }
 
-export function findUnsupportedSchemaKeywords(schema: unknown, path: string): string[] {
-  if (!schema || typeof schema !== "object") {
-    return [];
-  }
-  if (Array.isArray(schema)) {
-    return schema.flatMap((item, index) =>
-      findUnsupportedSchemaKeywords(item, `${path}[${index}]`),
-    );
-  }
-  const record = schema as Record<string, unknown>;
-  const violations: string[] = [];
-  const properties =
-    record.properties && typeof record.properties === "object" && !Array.isArray(record.properties)
-      ? (record.properties as Record<string, unknown>)
-      : undefined;
-  if (properties) {
-    for (const [key, value] of Object.entries(properties)) {
-      violations.push(...findUnsupportedSchemaKeywords(value, `${path}.properties.${key}`));
-    }
-  }
-  for (const [key, value] of Object.entries(record)) {
-    if (key === "properties") {
-      continue;
-    }
-    if (GOOGLE_SCHEMA_UNSUPPORTED_KEYWORDS.has(key)) {
-      violations.push(`${path}.${key}`);
-    }
-    if (value && typeof value === "object") {
-      violations.push(...findUnsupportedSchemaKeywords(value, `${path}.${key}`));
-    }
-  }
-  return violations;
-}
-
-export function sanitizeToolsForGoogle<
-  TSchemaType extends TSchema = TSchema,
-  TResult = unknown,
->(params: {
-  tools: AgentTool<TSchemaType, TResult>[];
-  provider: string;
-  config?: OpenClawConfig;
-  workspaceDir?: string;
-  env?: NodeJS.ProcessEnv;
-  modelId?: string;
-  modelApi?: string | null;
-  model?: ProviderRuntimeModel;
-}): AgentTool<TSchemaType, TResult>[] {
-  const provider = params.provider.trim();
-  const pluginNormalized = normalizeProviderToolSchemasWithPlugin({
-    provider,
-    config: params.config,
-    workspaceDir: params.workspaceDir,
-    env: params.env,
-    context: {
-      config: params.config,
-      workspaceDir: params.workspaceDir,
-      env: params.env,
-      provider,
-      modelId: params.modelId,
-      modelApi: params.modelApi,
-      model: params.model,
-      tools: params.tools as unknown as AnyAgentTool[],
+function createProviderReplaySessionState(
+  sessionManager: SessionManager,
+): ProviderReplaySessionState {
+  return {
+    getCustomEntries() {
+      try {
+        const customEntries: ProviderReplaySessionEntry[] = [];
+        for (const entry of sessionManager.getEntries()) {
+          const candidate = entry as CustomEntryLike;
+          if (candidate?.type !== "custom" || typeof candidate.customType !== "string") {
+            continue;
+          }
+          const customType = candidate.customType.trim();
+          if (!customType) {
+            continue;
+          }
+          customEntries.push({
+            customType,
+            data: candidate.data,
+          });
+        }
+        return customEntries;
+      } catch {
+        return [];
+      }
     },
-  });
-  if (Array.isArray(pluginNormalized)) {
-    return pluginNormalized as AgentTool<TSchemaType, TResult>[];
-  }
-
-  // Cloud Code Assist uses the OpenAPI 3.03 `parameters` field for both Gemini
-  // AND Claude models.  This field does not support JSON Schema keywords such as
-  // patternProperties, additionalProperties, $ref, etc.  We must clean schemas
-  // for every provider that routes through this path.
-  if (provider !== "google-gemini-cli") {
-    return params.tools;
-  }
-  return params.tools.map((tool) => {
-    if (!tool.parameters || typeof tool.parameters !== "object") {
-      return tool;
-    }
-    return {
-      ...tool,
-      parameters: cleanToolSchemaForGemini(
-        tool.parameters as Record<string, unknown>,
-      ) as TSchemaType,
-    };
-  });
+    appendCustomEntry(customType: string, data: unknown) {
+      try {
+        sessionManager.appendCustomEntry(customType, data);
+      } catch {
+        // ignore persistence failures
+      }
+    },
+  };
 }
-
-export function logToolSchemasForGoogle(params: {
-  tools: AgentTool[];
-  provider: string;
-  config?: OpenClawConfig;
-  workspaceDir?: string;
-  env?: NodeJS.ProcessEnv;
-  modelId?: string;
-  modelApi?: string | null;
-  model?: ProviderRuntimeModel;
-}) {
-  if (params.provider.trim() !== "google-gemini-cli") {
-    return;
-  }
-  const toolNames = params.tools.map((tool, index) => `${index}:${tool.name}`);
-  const tools = sanitizeToolsForGoogle(params);
-  log.info("google tool schema snapshot", {
-    provider: params.provider,
-    toolCount: tools.length,
-    tools: toolNames,
-  });
-  for (const [index, tool] of tools.entries()) {
-    const violations = findUnsupportedSchemaKeywords(tool.parameters, `${tool.name}.parameters`);
-    if (violations.length > 0) {
-      log.warn("google tool schema has unsupported keywords", {
-        index,
-        tool: tool.name,
-        violations: violations.slice(0, 12),
-        violationCount: violations.length,
-      });
-    }
-  }
-}
-
-// Event emitter for unhandled compaction failures that escape try-catch blocks.
-// Listeners can use this to trigger session recovery with retry.
-const compactionFailureEmitter = new EventEmitter();
-
-export type CompactionFailureListener = (reason: string) => void;
-
-/**
- * Register a listener for unhandled compaction failures.
- * Called when auto-compaction fails in a way that escapes the normal try-catch,
- * e.g., when the summarization request itself exceeds the model's token limit.
- * Returns an unsubscribe function.
- */
-export function onUnhandledCompactionFailure(cb: CompactionFailureListener): () => void {
-  compactionFailureEmitter.on("failure", cb);
-  return () => compactionFailureEmitter.off("failure", cb);
-}
-
-registerUnhandledRejectionHandler((reason) => {
-  const message = describeUnknownError(reason);
-  if (!isCompactionFailureError(message)) {
-    return false;
-  }
-  log.error(`Auto-compaction failed (unhandled): ${message}`);
-  compactionFailureEmitter.emit("failure", message);
-  return true;
-});
-
-type CustomEntryLike = { type?: unknown; customType?: unknown; data?: unknown };
-
-type ModelSnapshotEntry = {
-  timestamp: number;
-  provider?: string;
-  modelApi?: string | null;
-  modelId?: string;
-};
-
-const MODEL_SNAPSHOT_CUSTOM_TYPE = "model-snapshot";
 
 function readLastModelSnapshot(sessionManager: SessionManager): ModelSnapshotEntry | null {
   try {
     const entries = sessionManager.getEntries();
-    for (let i = entries.length - 1; i >= 0; i--) {
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
       const entry = entries[i] as CustomEntryLike;
       if (entry?.type !== "custom" || entry?.customType !== MODEL_SNAPSHOT_CUSTOM_TYPE) {
         continue;
@@ -571,54 +428,10 @@ function isSameModelSnapshot(a: ModelSnapshotEntry, b: ModelSnapshotEntry): bool
   );
 }
 
-function hasGoogleTurnOrderingMarker(sessionManager: SessionManager): boolean {
-  try {
-    return sessionManager
-      .getEntries()
-      .some(
-        (entry) =>
-          (entry as CustomEntryLike)?.type === "custom" &&
-          (entry as CustomEntryLike)?.customType === GOOGLE_TURN_ORDERING_CUSTOM_TYPE,
-      );
-  } catch {
-    return false;
-  }
-}
-
-function markGoogleTurnOrderingMarker(sessionManager: SessionManager): void {
-  try {
-    sessionManager.appendCustomEntry(GOOGLE_TURN_ORDERING_CUSTOM_TYPE, {
-      timestamp: Date.now(),
-    });
-  } catch {
-    // ignore marker persistence failures
-  }
-}
-
-export function applyGoogleTurnOrderingFix(params: {
-  messages: AgentMessage[];
-  modelApi?: string | null;
-  sessionManager: SessionManager;
-  sessionId: string;
-  warn?: (message: string) => void;
-}): { messages: AgentMessage[]; didPrepend: boolean } {
-  if (!isGoogleModelApi(params.modelApi)) {
-    return { messages: params.messages, didPrepend: false };
-  }
-  const first = params.messages[0] as { role?: unknown; content?: unknown } | undefined;
-  if (first?.role !== "assistant") {
-    return { messages: params.messages, didPrepend: false };
-  }
-  const sanitized = sanitizeGoogleTurnOrdering(params.messages);
-  const didPrepend = sanitized !== params.messages;
-  if (didPrepend && !hasGoogleTurnOrderingMarker(params.sessionManager)) {
-    const warn = params.warn ?? ((message: string) => log.warn(message));
-    warn(`google turn ordering fixup: prepended user bootstrap (sessionId=${params.sessionId})`);
-    markGoogleTurnOrderingMarker(params.sessionManager);
-  }
-  return { messages: sanitized, didPrepend };
-}
-
+/**
+ * Applies the generic replay-history cleanup pipeline before provider-owned
+ * replay hooks run.
+ */
 export async function sanitizeSessionHistory(params: {
   messages: AgentMessage[];
   modelApi?: string | null;
@@ -716,6 +529,7 @@ export async function sanitizeSessionHistory(params: {
             sessionId: params.sessionId,
             messages: sanitizedOpenAI,
             allowedToolNames: params.allowedToolNames,
+            sessionState: createProviderReplaySessionState(params.sessionManager),
           },
         })
       : undefined;
@@ -734,23 +548,19 @@ export async function sanitizeSessionHistory(params: {
     return sanitizedWithProvider;
   }
 
-  // Google models use the full wrapper with logging and session markers.
-  if (isGoogleModelApi(params.modelApi)) {
-    return applyGoogleTurnOrderingFix({
-      messages: sanitizedWithProvider,
-      modelApi: params.modelApi,
-      sessionManager: params.sessionManager,
-      sessionId: params.sessionId,
-    }).messages;
-  }
-
   // Strict OpenAI-compatible providers (vLLM, Gemma, etc.) also reject
   // conversations that start with an assistant turn (e.g. delivery-mirror
-  // messages after /new).  Apply the same ordering fix without the
-  // Google-specific session markers.  See #38962.
+  // messages after /new). Provider hooks may already have applied a
+  // provider-owned ordering rewrite above; keep this generic fallback for the
+  // strict OpenAI-compatible path and for any provider that leaves assistant-
+  // first repair to core. See #38962.
   return sanitizeGoogleTurnOrdering(sanitizedWithProvider);
 }
 
+/**
+ * Runs provider-owned replay validation before falling back to the remaining
+ * generic validator pipeline.
+ */
 export async function validateReplayTurns(params: {
   messages: AgentMessage[];
   modelApi?: string | null;

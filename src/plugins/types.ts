@@ -582,16 +582,29 @@ export type ProviderReplayPolicyContext = {
   model?: ProviderRuntimeModel;
 };
 
+export type ProviderReplaySessionEntry = {
+  customType: string;
+  data?: unknown;
+};
+
+export type ProviderReplaySessionState = {
+  getCustomEntries(): ProviderReplaySessionEntry[];
+  appendCustomEntry(customType: string, data: unknown): void;
+};
+
 /**
  * Provider-owned replay-history sanitization input.
  *
  * Runs after core applies generic transcript cleanup so plugins can make
  * provider-specific replay rewrites without owning the whole compaction flow.
+ * `sessionState` exposes a narrow custom-entry facade so providers can persist
+ * replay-specific markers without depending on the raw SessionManager API.
  */
 export type ProviderSanitizeReplayHistoryContext = ProviderReplayPolicyContext & {
   sessionId: string;
   messages: AgentMessage[];
   allowedToolNames?: Iterable<string>;
+  sessionState?: ProviderReplaySessionState;
 };
 
 /**
@@ -603,6 +616,7 @@ export type ProviderSanitizeReplayHistoryContext = ProviderReplayPolicyContext &
 export type ProviderValidateReplayTurnsContext = ProviderReplayPolicyContext & {
   sessionId?: string;
   messages: AgentMessage[];
+  sessionState?: ProviderReplaySessionState;
 };
 
 /**
@@ -613,6 +627,12 @@ export type ProviderValidateReplayTurnsContext = ProviderReplayPolicyContext & {
  */
 export type ProviderNormalizeToolSchemasContext = ProviderReplayPolicyContext & {
   tools: AnyAgentTool[];
+};
+
+export type ProviderToolSchemaDiagnostic = {
+  toolName: string;
+  toolIndex?: number;
+  violations: string[];
 };
 
 /**
@@ -1069,6 +1089,15 @@ export type ProviderPlugin = {
   normalizeToolSchemas?: (
     ctx: ProviderNormalizeToolSchemasContext,
   ) => AnyAgentTool[] | null | undefined;
+  /**
+   * Provider-owned tool-schema diagnostics after normalization.
+   *
+   * Use this when a provider wants to surface transport-specific schema
+   * warnings without teaching core about provider-specific keyword rules.
+   */
+  inspectToolSchemas?: (
+    ctx: ProviderNormalizeToolSchemasContext,
+  ) => ProviderToolSchemaDiagnostic[] | null | undefined;
   /**
    * Provider-owned reasoning output mode.
    *

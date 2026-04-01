@@ -20,8 +20,10 @@ import { buildGoogleGeminiCliBackend } from "./cli-backend.js";
 import { isModernGoogleModel, resolveGoogle31ForwardCompatModel } from "./provider-models.js";
 import {
   buildGoogleReplayPolicy,
+  inspectGoogleGeminiCliToolSchemas,
   normalizeGoogleGeminiCliToolSchemas,
   resolveGoogleReasoningOutputMode,
+  sanitizeGoogleReplayHistory,
 } from "./replay-policy.js";
 import { createGeminiWebSearchProvider } from "./src/gemini-web-search-provider.js";
 
@@ -146,7 +148,9 @@ function createLazyGoogleGeminiCliProvider(): ProviderPlugin {
     resolveDynamicModel: (ctx) =>
       resolveGoogle31ForwardCompatModel({ providerId: GOOGLE_GEMINI_CLI_PROVIDER_ID, ctx }),
     buildReplayPolicy: () => buildGoogleReplayPolicy(),
+    sanitizeReplayHistory: (ctx) => sanitizeGoogleReplayHistory(ctx),
     normalizeToolSchemas: (ctx) => normalizeGoogleGeminiCliToolSchemas(ctx),
+    inspectToolSchemas: (ctx) => inspectGoogleGeminiCliToolSchemas(ctx),
     resolveReasoningOutputMode: () => resolveGoogleReasoningOutputMode(),
     isModernModelRef: ({ modelId }) => isModernGoogleModel(modelId),
     formatApiKey: (cred) => formatGoogleOauthApiKey(cred as GoogleOauthApiKeyCredential),
@@ -256,6 +260,7 @@ export default definePluginEntry({
         }),
       wrapStreamFn: (ctx) => createGoogleThinkingPayloadWrapper(ctx.streamFn, ctx.thinkingLevel),
       buildReplayPolicy: () => buildGoogleReplayPolicy(),
+      sanitizeReplayHistory: (ctx) => sanitizeGoogleReplayHistory(ctx),
       resolveReasoningOutputMode: () => resolveGoogleReasoningOutputMode(),
       isModernModelRef: ({ modelId }) => isModernGoogleModel(modelId),
     });
