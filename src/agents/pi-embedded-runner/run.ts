@@ -311,6 +311,9 @@ export async function runEmbeddedPiAgent(
       const overloadFailoverBackoffMs = resolveOverloadFailoverBackoffMs(params.config);
       const overloadProfileRotationLimit = resolveOverloadProfileRotationLimit(params.config);
       const rateLimitProfileRotationLimit = resolveRateLimitProfileRotationLimit(params.config);
+      // Track the most recent failover reason so retry-limit exhaustion can
+      // propagate a meaningful reason to the outer model-fallback loop.
+      let lastClassifiedFailoverReason: FailoverReason | null = null;
       const maybeEscalateRateLimitProfileFallback = (params: {
         failoverProvider: string;
         failoverModel: string;
@@ -448,6 +451,17 @@ export async function runEmbeddedPiAgent(
                 `provider=${provider}/${modelId} attempts=${runLoopIterations} ` +
                 `maxAttempts=${MAX_RUN_LOOP_ITERATIONS}`,
             );
+            // When model fallbacks are configured, throw so the outer
+            // model-fallback loop can try the next candidate instead of
+            // silently returning an error payload.
+            if (fallbackConfigured) {
+              throw new FailoverError(message, {
+                reason: lastClassifiedFailoverReason ?? "unknown",
+                provider,
+                model: modelId,
+                profileId: lastProfileId,
+              });
+            }
             return {
               payloads: [
                 {
@@ -1036,6 +1050,9 @@ export async function runEmbeddedPiAgent(
             }
             const promptFailoverReason =
               promptErrorDetails.reason ?? classifyFailoverReason(errorText);
+            if (promptFailoverReason) {
+              lastClassifiedFailoverReason = promptFailoverReason;
+            }
             const promptProfileFailureReason =
               resolveAuthProfileFailureReason(promptFailoverReason);
             await maybeMarkAuthProfileFailure({
@@ -1127,6 +1144,9 @@ export async function runEmbeddedPiAgent(
           const billingFailure = isBillingAssistantError(lastAssistant);
           const failoverFailure = isFailoverAssistantError(lastAssistant);
           const assistantFailoverReason = classifyFailoverReason(lastAssistant?.errorMessage ?? "");
+          if (assistantFailoverReason) {
+            lastClassifiedFailoverReason = assistantFailoverReason;
+          }
           const assistantProfileFailureReason =
             resolveAuthProfileFailureReason(assistantFailoverReason);
           const cloudCodeAssistFormatError = attempt.cloudCodeAssistFormatError;
@@ -1178,8 +1198,12 @@ export async function runEmbeddedPiAgent(
 
           // Rotate on timeout to try another account/model path in this turn,
           // but exclude post-prompt compaction timeouts (model succeeded; no profile issue).
+          // Include assistantFailoverReason so rate-limit/overload errors
+          // trigger rotation even when the provider SDK absorbs the 429 and
+          // returns a non-"error" stopReason (e.g. "toolUse").
           const shouldRotate =
-            (!aborted && failoverFailure) || (timedOut && !timedOutDuringCompaction);
+            (!aborted && (failoverFailure || assistantFailoverReason !== null)) ||
+            (timedOut && !timedOutDuringCompaction);
 
           if (shouldRotate) {
             if (lastProfileId) {
@@ -1327,6 +1351,15 @@ export async function runEmbeddedPiAgent(
           // Emit an explicit timeout error instead of silently completing, so
           // callers do not lose the turn as an orphaned user message.
           if (timedOut && !timedOutDuringCompaction && payloads.length === 0) {
+            if (fallbackConfigured) {
+              throw new FailoverError("LLM request timed out.", {
+                reason: "timeout",
+                provider,
+                model: modelId,
+                profileId: lastProfileId,
+                status: 408,
+              });
+            }
             return {
               payloads: [
                 {
@@ -1392,6 +1425,21 @@ export async function runEmbeddedPiAgent(
                 await maybeMarkAuthProfileFailure({
                   profileId: lastProfileId,
                   reason: resolveAuthProfileFailureReason(failoverReason),
+                });
+              }
+
+              // When model fallbacks are configured, throw so the outer
+              // model-fallback loop can try the next candidate.
+              if (fallbackConfigured) {
+                const incompleteFailoverReason = classifyFailoverReason(
+                  lastAssistant?.errorMessage ?? "",
+                );
+                throw new FailoverError("Agent couldn't generate a response (incomplete turn).", {
+                  reason: incompleteFailoverReason ?? "unknown",
+                  provider,
+                  model: modelId,
+                  profileId: lastProfileId,
+                  status: resolveFailoverStatus(incompleteFailoverReason ?? "unknown"),
                 });
               }
 
