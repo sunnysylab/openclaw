@@ -587,6 +587,7 @@ Current behavior:
 - Matrix room history is pending-only: OpenClaw buffers room messages that did not trigger a reply yet, then snapshots that window when a mention or other trigger arrives.
 - The current trigger message is not included in `InboundHistory`; it stays in the main inbound body for that turn.
 - Retries of the same Matrix event reuse the original history snapshot instead of drifting forward to newer room messages.
+- Fetched room context (including reply and thread context lookups) is filtered by sender allowlists (`groupAllowFrom`), so non-allowlisted messages are excluded from agent context.
 
 ## DM and room policy example
 
@@ -655,6 +656,9 @@ See [Pairing](/channels/pairing) for the shared DM pairing flow and storage layo
 ```
 
 Top-level `channels.matrix` values act as defaults for named accounts unless an account overrides them.
+You can scope inherited room entries to one Matrix account with `groups.<room>.account` (or legacy `rooms.<room>.account`).
+Entries without `account` stay shared across all Matrix accounts, and entries with `account: "default"` still work when the default account is configured directly on top-level `channels.matrix.*`.
+Partial shared auth defaults do not create a separate implicit default account by themselves. OpenClaw only synthesizes the top-level `default` account when that default has fresh auth (`homeserver` plus `accessToken`, or `homeserver` plus `userId` and `password`); named accounts can still stay discoverable from `homeserver` plus `userId` when cached credentials satisfy auth later.
 Set `defaultAccount` when you want OpenClaw to prefer one named Matrix account for implicit routing, probing, and CLI operations.
 If you configure multiple named accounts, set `defaultAccount` or pass `--account <id>` for CLI commands that rely on implicit account selection.
 Pass `--account <id>` to `openclaw matrix verify ...` and `openclaw matrix devices ...` when you want to override that implicit selection for one command.
