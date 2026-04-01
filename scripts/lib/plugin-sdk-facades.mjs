@@ -722,6 +722,7 @@ export const GENERATED_PLUGIN_SDK_FACADES = [
       "applyNexosConfig",
       "buildNexosModelDefinition",
       "buildNexosProvider",
+      "discoverNexosModels",
       "NEXOS_BASE_URL",
       "NEXOS_DEFAULT_MODEL_REF",
       "NEXOS_MODEL_CATALOG",

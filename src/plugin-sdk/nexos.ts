@@ -21,6 +21,8 @@ export const buildNexosModelDefinition: FacadeModule["buildNexosModelDefinition"
   )) as FacadeModule["buildNexosModelDefinition"];
 export const buildNexosProvider: FacadeModule["buildNexosProvider"] = ((...args) =>
   loadFacadeModule()["buildNexosProvider"](...args)) as FacadeModule["buildNexosProvider"];
+export const discoverNexosModels: FacadeModule["discoverNexosModels"] = ((...args) =>
+  loadFacadeModule()["discoverNexosModels"](...args)) as FacadeModule["discoverNexosModels"];
 export const NEXOS_BASE_URL: FacadeModule["NEXOS_BASE_URL"] = loadFacadeModule()["NEXOS_BASE_URL"];
 export const NEXOS_DEFAULT_MODEL_REF: FacadeModule["NEXOS_DEFAULT_MODEL_REF"] =
   loadFacadeModule()["NEXOS_DEFAULT_MODEL_REF"];

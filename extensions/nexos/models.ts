@@ -1,4 +1,7 @@
 import type { ModelDefinitionConfig } from "openclaw/plugin-sdk/provider-model-shared";
+import { createSubsystemLogger } from "openclaw/plugin-sdk/runtime-env";
+
+const log = createSubsystemLogger("nexos-models");
 
 export const NEXOS_BASE_URL = "https://api.nexos.ai/v1";
 
@@ -140,4 +143,88 @@ export function buildNexosModelDefinition(
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
   };
+}
+
+/** Shape of a single model entry from GET /v1/models on the Nexos API. */
+interface NexosApiModelEntry {
+  id: string;
+  name?: string;
+  owned_by?: string;
+  object?: string;
+}
+
+const NEXOS_DISCOVERY_TIMEOUT_MS = 10_000;
+const NEXOS_DEFAULT_CONTEXT_WINDOW = 128_000;
+const NEXOS_DEFAULT_MAX_TOKENS = 8192;
+
+/**
+ * Discover models from the Nexos AI API (GET /v1/models).
+ * Requires a valid API key (Bearer auth). Falls back to static catalog on failure or in test env.
+ */
+export async function discoverNexosModels(apiKey?: string): Promise<ModelDefinitionConfig[]> {
+  const staticFallback = () => NEXOS_MODEL_CATALOG.map(buildNexosModelDefinition);
+
+  if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") {
+    return staticFallback();
+  }
+
+  const trimmedKey = apiKey?.trim();
+  if (!trimmedKey) {
+    return staticFallback();
+  }
+
+  try {
+    const response = await fetch(`${NEXOS_BASE_URL}/models`, {
+      signal: AbortSignal.timeout(NEXOS_DISCOVERY_TIMEOUT_MS),
+      headers: {
+        Authorization: `Bearer ${trimmedKey}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      log.warn(`GET /v1/models failed: HTTP ${response.status}, using static catalog`);
+      return staticFallback();
+    }
+
+    const body = (await response.json()) as { data?: NexosApiModelEntry[] };
+    const data = body?.data;
+    if (!Array.isArray(data) || data.length === 0) {
+      log.warn("No models in response, using static catalog");
+      return staticFallback();
+    }
+
+    const catalogById = new Map(NEXOS_MODEL_CATALOG.map((m) => [m.id, m] as const));
+    const seen = new Set<string>();
+    const models: ModelDefinitionConfig[] = [];
+
+    for (const entry of data) {
+      const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+      if (!id || seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+
+      const catalogEntry = catalogById.get(id);
+      if (catalogEntry) {
+        models.push(buildNexosModelDefinition(catalogEntry));
+      } else {
+        const name = (typeof entry.name === "string" && entry.name.trim()) || id;
+        models.push({
+          id,
+          name,
+          reasoning: false,
+          input: ["text"],
+          cost: NEXOS_DEFAULT_COST,
+          contextWindow: NEXOS_DEFAULT_CONTEXT_WINDOW,
+          maxTokens: NEXOS_DEFAULT_MAX_TOKENS,
+        });
+      }
+    }
+
+    return models.length > 0 ? models : staticFallback();
+  } catch (error) {
+    log.warn(`Discovery failed: ${String(error)}, using static catalog`);
+    return staticFallback();
+  }
 }
