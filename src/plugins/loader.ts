@@ -44,6 +44,10 @@ import {
   setActivePluginRegistry,
 } from "./runtime.js";
 import type { CreatePluginRuntimeOptions } from "./runtime/index.js";
+import {
+  getPluginRuntimeCapabilityKey,
+  getSharedPluginRuntimeOptions,
+} from "./runtime/shared-runtime-options.js";
 import type { PluginRuntime } from "./runtime/types.js";
 import { validateJsonSchemaValue } from "./schema-validator.js";
 import {
@@ -80,6 +84,7 @@ export type PluginLoadOptions = {
   logger?: PluginLogger;
   coreGatewayHandlers?: Record<string, GatewayRequestHandler>;
   runtimeOptions?: CreatePluginRuntimeOptions;
+  inheritSharedRuntimeOptions?: boolean;
   pluginSdkResolution?: PluginSdkResolutionPreference;
   cache?: boolean;
   mode?: "full" | "validate";
@@ -235,7 +240,7 @@ function buildCacheKey(params: {
   onlyPluginIds?: string[];
   includeSetupOnlyChannelPlugins?: boolean;
   preferSetupRuntimeForChannelPlugins?: boolean;
-  runtimeSubagentMode?: "default" | "explicit" | "gateway-bindable";
+  runtimeOptions?: CreatePluginRuntimeOptions;
   pluginSdkResolution?: PluginSdkResolutionPreference;
   coreGatewayMethodNames?: string[];
 }): string {
@@ -269,7 +274,8 @@ function buildCacheKey(params: {
     ...params.plugins,
     installs,
     loadPaths,
-  })}::${scopeKey}::${setupOnlyKey}::${startupChannelMode}::${params.runtimeSubagentMode ?? "default"}::${params.pluginSdkResolution ?? "auto"}::${gatewayMethodsKey}`;
+    runtimeCapabilities: getPluginRuntimeCapabilityKey(params.runtimeOptions),
+  })}::${scopeKey}::${setupOnlyKey}::${startupChannelMode}::${params.pluginSdkResolution ?? "auto"}::${gatewayMethodsKey}`;
 }
 
 function normalizeScopedPluginIds(ids?: string[]): string[] | undefined {
@@ -278,6 +284,21 @@ function normalizeScopedPluginIds(ids?: string[]): string[] | undefined {
   }
   const normalized = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean))).toSorted();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function hasExplicitCompatibilityInputs(options: PluginLoadOptions): boolean {
+  return Boolean(
+    options.config !== undefined ||
+    options.workspaceDir !== undefined ||
+    options.env !== undefined ||
+    options.onlyPluginIds?.length ||
+    options.runtimeOptions !== undefined ||
+    options.inheritSharedRuntimeOptions === true ||
+    options.pluginSdkResolution !== undefined ||
+    options.coreGatewayHandlers !== undefined ||
+    options.includeSetupOnlyChannelPlugins === true ||
+    options.preferSetupRuntimeForChannelPlugins === true,
+  );
 }
 
 function resolveRuntimeSubagentMode(
@@ -292,20 +313,6 @@ function resolveRuntimeSubagentMode(
   return "default";
 }
 
-function hasExplicitCompatibilityInputs(options: PluginLoadOptions): boolean {
-  return Boolean(
-    options.config !== undefined ||
-    options.workspaceDir !== undefined ||
-    options.env !== undefined ||
-    options.onlyPluginIds?.length ||
-    options.runtimeOptions !== undefined ||
-    options.pluginSdkResolution !== undefined ||
-    options.coreGatewayHandlers !== undefined ||
-    options.includeSetupOnlyChannelPlugins === true ||
-    options.preferSetupRuntimeForChannelPlugins === true,
-  );
-}
-
 function resolvePluginLoadCacheContext(options: PluginLoadOptions = {}) {
   const env = options.env ?? process.env;
   const cfg = applyTestPluginDefaults(options.config ?? {}, env);
@@ -314,6 +321,9 @@ function resolvePluginLoadCacheContext(options: PluginLoadOptions = {}) {
   const includeSetupOnlyChannelPlugins = options.includeSetupOnlyChannelPlugins === true;
   const preferSetupRuntimeForChannelPlugins = options.preferSetupRuntimeForChannelPlugins === true;
   const coreGatewayMethodNames = Object.keys(options.coreGatewayHandlers ?? {}).toSorted();
+  const effectiveRuntimeOptions =
+    options.runtimeOptions ??
+    (options.inheritSharedRuntimeOptions ? getSharedPluginRuntimeOptions() : undefined);
   const cacheKey = buildCacheKey({
     workspaceDir: options.workspaceDir,
     plugins: normalized,
@@ -322,7 +332,7 @@ function resolvePluginLoadCacheContext(options: PluginLoadOptions = {}) {
     onlyPluginIds,
     includeSetupOnlyChannelPlugins,
     preferSetupRuntimeForChannelPlugins,
-    runtimeSubagentMode: resolveRuntimeSubagentMode(options.runtimeOptions),
+    runtimeOptions: effectiveRuntimeOptions,
     pluginSdkResolution: options.pluginSdkResolution,
     coreGatewayMethodNames,
   });
@@ -334,8 +344,9 @@ function resolvePluginLoadCacheContext(options: PluginLoadOptions = {}) {
     includeSetupOnlyChannelPlugins,
     preferSetupRuntimeForChannelPlugins,
     shouldActivate: options.activate !== false,
-    runtimeSubagentMode: resolveRuntimeSubagentMode(options.runtimeOptions),
+    runtimeSubagentMode: resolveRuntimeSubagentMode(effectiveRuntimeOptions),
     cacheKey,
+    effectiveRuntimeOptions,
   };
 }
 
@@ -833,6 +844,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     preferSetupRuntimeForChannelPlugins,
     shouldActivate,
     cacheKey,
+    effectiveRuntimeOptions,
     runtimeSubagentMode,
   } = resolvePluginLoadCacheContext(options);
   const logger = options.logger ?? defaultLogger();
@@ -894,7 +906,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
   // not eagerly load every channel/runtime dependency tree.
   let resolvedRuntime: PluginRuntime | null = null;
   const resolveRuntime = (): PluginRuntime => {
-    resolvedRuntime ??= resolveCreatePluginRuntime()(options.runtimeOptions);
+    resolvedRuntime ??= resolveCreatePluginRuntime()(effectiveRuntimeOptions);
     return resolvedRuntime;
   };
   const lazyRuntimeReflectionKeySet = new Set<PropertyKey>(LAZY_RUNTIME_REFLECTION_KEYS);

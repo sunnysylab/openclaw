@@ -37,6 +37,10 @@ import {
   resetPluginRuntimeStateForTest,
   setActivePluginRegistry,
 } from "./runtime.js";
+import {
+  clearSharedPluginRuntimeOptions,
+  setSharedPluginRuntimeOptions,
+} from "./runtime/shared-runtime-options.js";
 
 type TempPlugin = { dir: string; file: string; id: string };
 type PluginLoadConfig = NonNullable<Parameters<typeof loadOpenClawPlugins>[0]>["config"];
@@ -772,6 +776,7 @@ afterEach(() => {
   clearPluginDiscoveryCache();
   clearPluginManifestRegistryCache();
   resetPluginRuntimeStateForTest();
+  clearSharedPluginRuntimeOptions();
   resetDiagnosticEventsForTest();
   if (prevBundledDir === undefined) {
     delete process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
@@ -4097,6 +4102,26 @@ describe("getCompatibleActivePluginRegistry", () => {
         },
       }),
     ).toBeUndefined();
+  });
+
+  it("marks inherited gateway binding as gateway-bindable runtime mode", () => {
+    setSharedPluginRuntimeOptions({ allowGatewaySubagentBinding: true });
+
+    const context = __testing.resolvePluginLoadCacheContext({
+      config: {
+        plugins: {
+          allow: ["demo"],
+          load: { paths: ["/tmp/demo.js"] },
+        },
+      },
+      workspaceDir: "/tmp/workspace-a",
+      inheritSharedRuntimeOptions: true,
+    });
+
+    expect(context.effectiveRuntimeOptions).toEqual({
+      allowGatewaySubagentBinding: true,
+    });
+    expect(context.runtimeSubagentMode).toBe("gateway-bindable");
   });
 });
 

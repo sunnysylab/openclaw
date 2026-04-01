@@ -16,6 +16,7 @@ import { createRuntimeEvents } from "./runtime-events.js";
 import { createRuntimeLogging } from "./runtime-logging.js";
 import { createRuntimeMedia } from "./runtime-media.js";
 import { createRuntimeSystem } from "./runtime-system.js";
+import { clearSharedPluginRuntimeOptions } from "./shared-runtime-options.js";
 import type { PluginRuntime } from "./types.js";
 
 const loadTtsRuntime = createLazyRuntimeModule(() => import("./runtime-tts.runtime.js"));
@@ -141,12 +142,18 @@ export function setGatewaySubagentRuntime(subagent: PluginRuntime["subagent"]): 
   gatewaySubagentState.subagent = subagent;
 }
 
+export function getGatewaySubagentRuntime(): PluginRuntime["subagent"] | undefined {
+  return gatewaySubagentState.subagent;
+}
+
 /**
  * Reset the process-global gateway subagent runtime.
- * Used by tests to avoid leaking gateway state across module reloads.
+ * Used by tests and reload paths to avoid leaking gateway late-binding state
+ * across module reloads.
  */
 export function clearGatewaySubagentRuntime(): void {
   gatewaySubagentState.subagent = undefined;
+  clearSharedPluginRuntimeOptions();
 }
 
 /**
