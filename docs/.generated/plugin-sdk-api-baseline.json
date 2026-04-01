@@ -1015,7 +1015,7 @@
           "exportName": "BlockStreamingCoalesceSchema",
           "kind": "const",
           "source": {
-            "line": 340,
+            "line": 349,
             "path": "src/config/zod-schema.core.ts"
           }
         },
@@ -1033,7 +1033,7 @@
           "exportName": "DmConfigSchema",
           "kind": "const",
           "source": {
-            "line": 294,
+            "line": 303,
             "path": "src/config/zod-schema.core.ts"
           }
         },
@@ -1042,7 +1042,7 @@
           "exportName": "DmPolicySchema",
           "kind": "const",
           "source": {
-            "line": 338,
+            "line": 347,
             "path": "src/config/zod-schema.core.ts"
           }
         },
@@ -1060,7 +1060,7 @@
           "exportName": "GroupPolicySchema",
           "kind": "const",
           "source": {
-            "line": 336,
+            "line": 345,
             "path": "src/config/zod-schema.core.ts"
           }
         },
@@ -1078,7 +1078,7 @@
           "exportName": "MarkdownConfigSchema",
           "kind": "const",
           "source": {
-            "line": 372,
+            "line": 381,
             "path": "src/config/zod-schema.core.ts"
           }
         },
@@ -1096,7 +1096,7 @@
           "exportName": "ReplyRuntimeConfigSchemaShape",
           "kind": "const",
           "source": {
-            "line": 348,
+            "line": 357,
             "path": "src/config/zod-schema.core.ts"
           }
         },
@@ -1105,7 +1105,7 @@
           "exportName": "requireOpenAllowFrom",
           "kind": "const",
           "source": {
-            "line": 487,
+            "line": 496,
             "path": "src/config/zod-schema.core.ts"
           }
         },
@@ -1146,11 +1146,11 @@
           }
         },
         {
-          "declaration": "export const WhatsAppConfigSchema: z.ZodObject<{ enabled: z.ZodOptional<z.ZodBoolean>; capabilities: z.ZodOptional<z.ZodArray<z.ZodString>>; markdown: z.ZodOptional<z.ZodObject<{ tables: z.ZodOptional<z.ZodEnum<{ off: \"off\"; bullets: \"bullets\"; code: \"code\"; block: \"block\"; }>>; }, z.core.$strict>>; configWrites: z.ZodOptional<z.ZodBoolean>; sendReadReceipts: z.ZodOptional<z.ZodBoolean>; messagePrefix: z.ZodOptional<z.ZodString>; responsePrefix: z.ZodOptional<z.ZodString>; dmPolicy: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ disabled: \"disabled\"; pairing: \"pairing\"; allowlist: \"allowlist\"; open: \"open\"; }>>>; selfChatMode: z.ZodOptional<z.ZodBoolean>; allowFrom: z.ZodOptional<z.ZodArray<z.ZodString>>; defaultTo: z.ZodOptional<z.ZodString>; groupAllowFrom: z.ZodOptional<z.ZodArray<z.ZodString>>; groupPolicy: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ disabled: \"disabled\"; allowlist: \"allowlist\"; open: \"open\"; }>>>; historyLimit: z.ZodOptional<z.ZodNumber>; dmHistoryLimit: z.ZodOptional<z.ZodNumber>; dms: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ historyLimit: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>>>; textChunkLimit: z.ZodOptional<z.ZodNumber>; chunkMode: z.ZodOptional<z.ZodEnum<{ length: \"length\"; newline: \"newline\"; }>>; blockStreaming: z.ZodOptional<z.ZodBoolean>; blockStreamingCoalesce: z.ZodOptional<z.ZodObject<{ minChars: z.ZodOptional<z.ZodNumber>; maxChars: z.ZodOptional<z.ZodNumber>; idleMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>; groups: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ requireMention: z.ZodOptional<z.ZodBoolean>; tools: z.ZodOptional<z.ZodObject<{ allow: z.ZodOptional<z.ZodArray<z.ZodString>>; alsoAllow: z.ZodOptional<z.ZodArray<z.ZodString>>; deny: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strict>>; toolsBySender: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ allow: z.ZodOptional<z.ZodArray<z.ZodString>>; alsoAllow: z.ZodOptional<z.ZodArray<z.ZodString>>; deny: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strict>>>>; }, z.core.$strict>>>>; ackReaction: z.ZodOptional<z.ZodObject<{ emoji: z.ZodOptional<z.ZodString>; direct: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; group: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ mentions: \"mentions\"; never: \"never\"; always: \"always\"; }>>>; }, z.core.$strict>>; debounceMs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; heartbeat: z.ZodOptional<z.ZodObject<{ showOk: z.ZodOptional<z.ZodBoolean>; showAlerts: z.ZodOptional<z.ZodBoolean>; useIndicator: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; healthMonitor: z.ZodOptional<z.ZodObject<{ enabled: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; accounts: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ capabilities: z.ZodOptional<z.ZodArray<z.ZodString>>; markdown: z.ZodOptional<z.ZodObject<{ tables: z.ZodOptional<z.ZodEnum<{ off: \"off\"; bullets: \"bullets\"; code: \"code\"; block: \"block\"; }>>; }, z.core.$strict>>; configWrites: z.ZodOptional<z.ZodBoolean>; sendReadReceipts: z.ZodOptional<z.ZodBoolean>; messagePrefix: z.ZodOptional<z.ZodString>; responsePrefix: z.ZodOptional<z.ZodString>; dmPolicy: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ disabled: \"disabled\"; pairing: \"pairing\"; allowlist: \"allowlist\"; open: \"open\"; }>>>; selfChatMode: z.ZodOptional<z.ZodBoolean>; allowFrom: z.ZodOptional<z.ZodArray<z.ZodString>>; defaultTo: z.ZodOptional<z.ZodString>; groupAllowFrom: z.ZodOptional<z.ZodArray<z.ZodString>>; groupPolicy: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ disabled: \"disabled\"; allowlist: \"allowlist\"; open: \"open\"; }>>>; historyLimit: z.ZodOptional<z.ZodNumber>; dmHistoryLimit: z.ZodOptional<z.ZodNumber>; dms: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ historyLimit: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>>>; textChunkLimit: z.ZodOptional<z.ZodNumber>; chunkMode: z.ZodOptional<z.ZodEnum<{ length: \"length\"; newline: \"newline\"; }>>; blockStreaming: z.ZodOptional<z.ZodBoolean>; blockStreamingCoalesce: z.ZodOptional<z.ZodObject<{ minChars: z.ZodOptional<z.ZodNumber>; maxChars: z.ZodOptional<z.ZodNumber>; idleMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>; groups: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ requireMention: z.ZodOptional<z.ZodBoolean>; tools: z.ZodOptional<z.ZodObject<{ allow: z.ZodOptional<z.ZodArray<z.ZodString>>; alsoAllow: z.ZodOptional<z.ZodArray<z.ZodString>>; deny: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strict>>; toolsBySender: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ allow: z.ZodOptional<z.ZodArray<z.ZodString>>; alsoAllow: z.ZodOptional<z.ZodArray<z.ZodString>>; deny: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strict>>>>; }, z.core.$strict>>>>; ackReaction: z.ZodOptional<z.ZodObject<{ emoji: z.ZodOptional<z.ZodString>; direct: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; group: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ mentions: \"mentions\"; never: \"never\"; always: \"always\"; }>>>; }, z.core.$strict>>; debounceMs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; heartbeat: z.ZodOptional<z.ZodObject<{ showOk: z.ZodOptional<z.ZodBoolean>; showAlerts: z.ZodOptional<z.ZodBoolean>; useIndicator: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; healthMonitor: z.ZodOptional<z.ZodObject<{ enabled: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; name: z.ZodOptional<z.ZodString>; enabled: z.ZodOptional<z.ZodBoolean>; authDir: z.ZodOptional<z.ZodString>; mediaMaxMb: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>>>; defaultAccount: z.ZodOptional<z.ZodString>; mediaMaxMb: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; actions: z.ZodOptional<z.ZodObject<{ reactions: z.ZodOptional<z.ZodBoolean>; sendMessage: z.ZodOptional<z.ZodBoolean>; polls: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; }, z.core.$strict>;",
+          "declaration": "export const WhatsAppConfigSchema: z.ZodObject<{ enabled: z.ZodOptional<z.ZodBoolean>; capabilities: z.ZodOptional<z.ZodArray<z.ZodString>>; markdown: z.ZodOptional<z.ZodObject<{ tables: z.ZodOptional<z.ZodEnum<{ off: \"off\"; bullets: \"bullets\"; code: \"code\"; block: \"block\"; }>>; }, z.core.$strict>>; configWrites: z.ZodOptional<z.ZodBoolean>; sendReadReceipts: z.ZodOptional<z.ZodBoolean>; messagePrefix: z.ZodOptional<z.ZodString>; responsePrefix: z.ZodOptional<z.ZodString>; dmPolicy: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ disabled: \"disabled\"; pairing: \"pairing\"; allowlist: \"allowlist\"; open: \"open\"; }>>>; selfChatMode: z.ZodOptional<z.ZodBoolean>; allowFrom: z.ZodOptional<z.ZodArray<z.ZodString>>; defaultTo: z.ZodOptional<z.ZodString>; groupAllowFrom: z.ZodOptional<z.ZodArray<z.ZodString>>; groupPolicy: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ disabled: \"disabled\"; allowlist: \"allowlist\"; open: \"open\"; }>>>; historyLimit: z.ZodOptional<z.ZodNumber>; dmHistoryLimit: z.ZodOptional<z.ZodNumber>; dms: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ historyLimit: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>>>; textChunkLimit: z.ZodOptional<z.ZodNumber>; chunkMode: z.ZodOptional<z.ZodEnum<{ length: \"length\"; newline: \"newline\"; }>>; blockStreaming: z.ZodOptional<z.ZodBoolean>; blockStreamingCoalesce: z.ZodOptional<z.ZodObject<{ minChars: z.ZodOptional<z.ZodNumber>; maxChars: z.ZodOptional<z.ZodNumber>; idleMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>; groups: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ requireMention: z.ZodOptional<z.ZodBoolean>; tools: z.ZodOptional<z.ZodObject<{ allow: z.ZodOptional<z.ZodArray<z.ZodString>>; alsoAllow: z.ZodOptional<z.ZodArray<z.ZodString>>; deny: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strict>>; toolsBySender: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ allow: z.ZodOptional<z.ZodArray<z.ZodString>>; alsoAllow: z.ZodOptional<z.ZodArray<z.ZodString>>; deny: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strict>>>>; }, z.core.$strict>>>>; ackReaction: z.ZodOptional<z.ZodObject<{ emoji: z.ZodOptional<z.ZodString>; direct: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; group: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ mentions: \"mentions\"; never: \"never\"; always: \"always\"; }>>>; }, z.core.$strict>>; reactionLevel: z.ZodOptional<z.ZodEnum<{ off: \"off\"; ack: \"ack\"; minimal: \"minimal\"; extensive: \"extensive\"; }>>; debounceMs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; heartbeat: z.ZodOptional<z.ZodObject<{ showOk: z.ZodOptional<z.ZodBoolean>; showAlerts: z.ZodOptional<z.ZodBoolean>; useIndicator: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; healthMonitor: z.ZodOptional<z.ZodObject<{ enabled: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; accounts: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ capabilities: z.ZodOptional<z.ZodArray<z.ZodString>>; markdown: z.ZodOptional<z.ZodObject<{ tables: z.ZodOptional<z.ZodEnum<{ off: \"off\"; bullets: \"bullets\"; code: \"code\"; block: \"block\"; }>>; }, z.core.$strict>>; configWrites: z.ZodOptional<z.ZodBoolean>; sendReadReceipts: z.ZodOptional<z.ZodBoolean>; messagePrefix: z.ZodOptional<z.ZodString>; responsePrefix: z.ZodOptional<z.ZodString>; dmPolicy: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ disabled: \"disabled\"; pairing: \"pairing\"; allowlist: \"allowlist\"; open: \"open\"; }>>>; selfChatMode: z.ZodOptional<z.ZodBoolean>; allowFrom: z.ZodOptional<z.ZodArray<z.ZodString>>; defaultTo: z.ZodOptional<z.ZodString>; groupAllowFrom: z.ZodOptional<z.ZodArray<z.ZodString>>; groupPolicy: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ disabled: \"disabled\"; allowlist: \"allowlist\"; open: \"open\"; }>>>; historyLimit: z.ZodOptional<z.ZodNumber>; dmHistoryLimit: z.ZodOptional<z.ZodNumber>; dms: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ historyLimit: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>>>; textChunkLimit: z.ZodOptional<z.ZodNumber>; chunkMode: z.ZodOptional<z.ZodEnum<{ length: \"length\"; newline: \"newline\"; }>>; blockStreaming: z.ZodOptional<z.ZodBoolean>; blockStreamingCoalesce: z.ZodOptional<z.ZodObject<{ minChars: z.ZodOptional<z.ZodNumber>; maxChars: z.ZodOptional<z.ZodNumber>; idleMs: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>; groups: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ requireMention: z.ZodOptional<z.ZodBoolean>; tools: z.ZodOptional<z.ZodObject<{ allow: z.ZodOptional<z.ZodArray<z.ZodString>>; alsoAllow: z.ZodOptional<z.ZodArray<z.ZodString>>; deny: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strict>>; toolsBySender: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodOptional<z.ZodObject<{ allow: z.ZodOptional<z.ZodArray<z.ZodString>>; alsoAllow: z.ZodOptional<z.ZodArray<z.ZodString>>; deny: z.ZodOptional<z.ZodArray<z.ZodString>>; }, z.core.$strict>>>>; }, z.core.$strict>>>>; ackReaction: z.ZodOptional<z.ZodObject<{ emoji: z.ZodOptional<z.ZodString>; direct: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>; group: z.ZodDefault<z.ZodOptional<z.ZodEnum<{ mentions: \"mentions\"; never: \"never\"; always: \"always\"; }>>>; }, z.core.$strict>>; reactionLevel: z.ZodOptional<z.ZodEnum<{ off: \"off\"; ack: \"ack\"; minimal: \"minimal\"; extensive: \"extensive\"; }>>; debounceMs: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; heartbeat: z.ZodOptional<z.ZodObject<{ showOk: z.ZodOptional<z.ZodBoolean>; showAlerts: z.ZodOptional<z.ZodBoolean>; useIndicator: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; healthMonitor: z.ZodOptional<z.ZodObject<{ enabled: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; name: z.ZodOptional<z.ZodString>; enabled: z.ZodOptional<z.ZodBoolean>; authDir: z.ZodOptional<z.ZodString>; mediaMaxMb: z.ZodOptional<z.ZodNumber>; }, z.core.$strict>>>>; defaultAccount: z.ZodOptional<z.ZodString>; mediaMaxMb: z.ZodDefault<z.ZodOptional<z.ZodNumber>>; actions: z.ZodOptional<z.ZodObject<{ reactions: z.ZodOptional<z.ZodBoolean>; sendMessage: z.ZodOptional<z.ZodBoolean>; polls: z.ZodOptional<z.ZodBoolean>; }, z.core.$strict>>; }, z.core.$strict>;",
           "exportName": "WhatsAppConfigSchema",
           "kind": "const",
           "source": {
-            "line": 119,
+            "line": 120,
             "path": "src/config/zod-schema.providers-whatsapp.ts"
           }
         }
@@ -1404,7 +1404,7 @@
           }
         },
         {
-          "declaration": "export type ReplyPrefixContext = import(\"../auto-reply/reply/response-prefix-template.ts\").ResponsePrefixContext;",
+          "declaration": "export type ReplyPrefixContext = import(\"src/auto-reply/reply/response-prefix-template\").ResponsePrefixContext;",
           "exportName": "ReplyPrefixContext",
           "kind": "type",
           "source": {
@@ -3333,7 +3333,7 @@
           "exportName": "buildAgentSessionKey",
           "kind": "function",
           "source": {
-            "line": 91,
+            "line": 92,
             "path": "src/routing/resolve-route.ts"
           }
         },
@@ -3761,7 +3761,7 @@
           }
         },
         {
-          "declaration": "export type ChannelOutboundSessionRouteParams = {    cfg: OpenClawConfig;    agentId: string;    accountId?: string | null;    target: string;    resolvedTarget?: {        to: string;        kind: import(\"../channels/plugins/types.core.js\").ChannelDirectoryEntryKind | \"channel\";        display?: string;        source: \"normalized\" | \"directory\";    };    replyToId?: string | null;    threadId?: string | number | null;};",
+          "declaration": "export type ChannelOutboundSessionRouteParams = {    cfg: OpenClawConfig;    agentId: string;    accountId?: string | null;    target: string;    resolvedTarget?: {        to: string;        kind: import(\"src/channels/plugins/types.core\").ChannelDirectoryEntryKind | \"channel\";        display?: string;        source: \"normalized\" | \"directory\";    };    replyToId?: string | null;    threadId?: string | number | null;};",
           "exportName": "ChannelOutboundSessionRouteParams",
           "kind": "type",
           "source": {
@@ -4894,7 +4894,7 @@
           "exportName": "ModelDefinitionConfig",
           "kind": "type",
           "source": {
-            "line": 49,
+            "line": 66,
             "path": "src/config/types.models.ts"
           }
         },
@@ -4903,7 +4903,7 @@
           "exportName": "ModelProviderConfig",
           "kind": "type",
           "source": {
-            "line": 67,
+            "line": 84,
             "path": "src/config/types.models.ts"
           }
         },
@@ -5321,7 +5321,7 @@
           }
         },
         {
-          "declaration": "export function createAuthCaptureJsonFetch(responseBody: unknown): { fetchFn: ((_input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<Response>) & FetchWithPreconnect; getAuthHeader: () => string | null; };",
+          "declaration": "export function createAuthCaptureJsonFetch(responseBody: unknown): { fetchFn: ((_input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<Response>) & FetchWithPreconnect & typeof fetch; getAuthHeader: () => string | null; };",
           "exportName": "createAuthCaptureJsonFetch",
           "kind": "function",
           "source": {
@@ -5348,7 +5348,7 @@
           }
         },
         {
-          "declaration": "export function createRequestCaptureJsonFetch(responseBody: unknown): { fetchFn: ((input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<Response>) & FetchWithPreconnect; getRequest: () => { ...; }; };",
+          "declaration": "export function createRequestCaptureJsonFetch(responseBody: unknown): { fetchFn: ((input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<Response>) & FetchWithPreconnect & typeof fetch; getRequest: () => { ...; }; };",
           "exportName": "createRequestCaptureJsonFetch",
           "kind": "function",
           "source": {
