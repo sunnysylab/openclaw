@@ -66,6 +66,7 @@ type SettingsHost = {
   debugPollInterval: number | null;
   pendingGatewayUrl?: string | null;
   pendingGatewayToken?: string | null;
+  pendingChatAutostartPrompt?: string | null;
   chatAutostartPrompt?: string | null;
 };
 
@@ -147,6 +148,7 @@ const createHost = (tab: Tab): SettingsHost => ({
   debugPollInterval: null,
   pendingGatewayUrl: null,
   pendingGatewayToken: null,
+  pendingChatAutostartPrompt: null,
   chatAutostartPrompt: null,
 });
 
@@ -400,6 +402,7 @@ describe("applySettingsFromUrl", () => {
 
     expect(host.pendingGatewayUrl).toBe("wss://other-gateway.example/openclaw");
     expect(host.chatAutostartPrompt).toBeNull();
+    expect(host.pendingChatAutostartPrompt).toBe(CHAT_AUTOSTART_BOOTSTRAP_PROMPT);
     expect(window.location.search).toBe("");
   });
 });

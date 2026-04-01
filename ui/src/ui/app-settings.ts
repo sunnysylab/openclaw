@@ -60,6 +60,7 @@ type SettingsHost = {
   pendingGatewayUrl?: string | null;
   systemThemeCleanup?: (() => void) | null;
   pendingGatewayToken?: string | null;
+  pendingChatAutostartPrompt?: string | null;
   chatAutostartPrompt?: string | null;
 };
 
@@ -166,6 +167,7 @@ export function applySettingsFromUrl(host: SettingsHost) {
     } else {
       host.pendingGatewayUrl = null;
       host.pendingGatewayToken = null;
+      host.pendingChatAutostartPrompt = null;
     }
     params.delete("gatewayUrl");
     hashParams.delete("gatewayUrl");
@@ -174,8 +176,13 @@ export function applySettingsFromUrl(host: SettingsHost) {
 
   if (autostartRaw != null) {
     const prompt = resolveChatAutostartPrompt(autostartRaw);
-    if (prompt && !gatewayUrlChanged) {
-      host.chatAutostartPrompt = prompt;
+    if (prompt) {
+      if (gatewayUrlChanged) {
+        host.pendingChatAutostartPrompt = prompt;
+      } else {
+        host.chatAutostartPrompt = prompt;
+        host.pendingChatAutostartPrompt = null;
+      }
     }
     params.delete("autostart");
     hashParams.delete("autostart");
