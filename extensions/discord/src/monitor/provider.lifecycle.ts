@@ -67,7 +67,18 @@ export async function runDiscordGatewayLifecycle(params: {
     // When we deliberately set maxAttempts=0 and disconnected (health-monitor
     // stale-socket restart), Carbon fires "Max reconnect attempts (0)". This
     // is expected — log at info instead of error to avoid false alarms.
-    if (lifecycleStopping && event.type === "reconnect-exhausted") {
+    //
+    // Check abortSignal.aborted in addition to lifecycleStopping: the abort
+    // handler in the reconnect controller fires synchronously when the signal
+    // is aborted, which sets maxAttempts=0 and disconnects the gateway.
+    // Carbon emits the reconnect-exhausted error synchronously during that
+    // disconnect, *before* the lifecycle finally-block sets lifecycleStopping.
+    // Without this check, the error is treated as unexpected, rejects the
+    // lifecycle promise, and crashes the process.
+    if (
+      (lifecycleStopping || params.abortSignal?.aborted) &&
+      event.type === "reconnect-exhausted"
+    ) {
       params.runtime.log?.(
         `discord: ignoring expected reconnect-exhausted during shutdown: ${event.message}`,
       );
