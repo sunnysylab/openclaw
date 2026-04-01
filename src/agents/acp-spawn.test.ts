@@ -20,6 +20,8 @@ import {
 } from "../infra/outbound/session-binding-service.js";
 import { resetTaskRegistryForTests } from "../tasks/task-registry.js";
 import * as acpSpawnParentStream from "./acp-spawn-parent-stream.js";
+import * as agentScope from "./agent-scope.js";
+import * as workspace from "./workspace.js";
 
 function createDefaultSpawnConfig(): OpenClawConfig {
   return {
@@ -92,6 +94,8 @@ const resolveAcpSpawnStreamLogPathSpy = vi.spyOn(
   acpSpawnParentStream,
   "resolveAcpSpawnStreamLogPath",
 );
+const loadWorkspaceBootstrapFilesSpy = vi.spyOn(workspace, "loadWorkspaceBootstrapFiles");
+const resolveAgentWorkspaceDirSpy = vi.spyOn(agentScope, "resolveAgentWorkspaceDir");
 
 const { spawnAcpDirect } = await import("./acp-spawn.js");
 type SpawnRequest = Parameters<typeof spawnAcpDirect>[0];
@@ -414,6 +418,8 @@ describe("spawnAcpDirect", () => {
     areHeartbeatsEnabledSpy
       .mockReset()
       .mockImplementation(() => hoisted.areHeartbeatsEnabledMock());
+    loadWorkspaceBootstrapFilesSpy.mockReset().mockResolvedValue([]);
+    resolveAgentWorkspaceDirSpy.mockReset().mockReturnValue("/tmp/workspace-codex");
   });
 
   afterEach(() => {
@@ -810,6 +816,220 @@ describe("spawnAcpDirect", () => {
 
     expect(result.status).toBe("error");
     expect(result.error).toContain("set `acp.defaultAgent`");
+  });
+
+  it("resolves agent profile alias to underlying ACP harness ID", async () => {
+    replaceSpawnConfig({
+      ...hoisted.state.cfg,
+      acp: {
+        enabled: true,
+        backend: "acpx",
+        allowedAgents: ["claude"],
+      },
+      agents: {
+        list: [
+          {
+            id: "analyst",
+            runtime: {
+              type: "acp" as const,
+              acp: { agent: "claude" },
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await spawnAcpDirect(
+      {
+        task: "Analyze data",
+        agentId: "analyst",
+      },
+      {
+        agentSessionKey: "agent:main:telegram:direct:123",
+        agentChannel: "telegram",
+        agentAccountId: "default",
+        agentTo: "telegram:123",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    // The session key should contain the resolved harness ID "claude", not the alias "analyst"
+    expect(result.childSessionKey).toMatch(/^agent:claude:acp:/);
+    expect(hoisted.initializeSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: "claude", cwd: undefined }),
+    );
+  });
+
+  it("inherits profile workspace cwd when caller does not specify cwd", async () => {
+    replaceSpawnConfig({
+      ...hoisted.state.cfg,
+      acp: {
+        enabled: true,
+        backend: "acpx",
+        allowedAgents: ["claude"],
+      },
+      agents: {
+        list: [
+          {
+            id: "analyst",
+            workspace: "/workspace/analysis",
+            runtime: {
+              type: "acp" as const,
+              acp: { agent: "claude", cwd: "/workspace/analysis" },
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await spawnAcpDirect(
+      {
+        task: "Analyze data",
+        agentId: "analyst",
+      },
+      {
+        agentSessionKey: "agent:main:telegram:direct:123",
+        agentChannel: "telegram",
+        agentAccountId: "default",
+        agentTo: "telegram:123",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(hoisted.initializeSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/workspace/analysis" }),
+    );
+  });
+
+  it("prefers explicit cwd over profile workspace when both are provided", async () => {
+    replaceSpawnConfig({
+      ...hoisted.state.cfg,
+      acp: {
+        enabled: true,
+        backend: "acpx",
+        allowedAgents: ["claude"],
+      },
+      agents: {
+        list: [
+          {
+            id: "analyst",
+            runtime: {
+              type: "acp" as const,
+              acp: { agent: "claude", cwd: "/workspace/analysis" },
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await spawnAcpDirect(
+      {
+        task: "Analyze data",
+        agentId: "analyst",
+        cwd: "/override/workspace",
+      },
+      {
+        agentSessionKey: "agent:main:telegram:direct:123",
+        agentChannel: "telegram",
+        agentAccountId: "default",
+        agentTo: "telegram:123",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(hoisted.initializeSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/override/workspace" }),
+    );
+  });
+
+  it("inherits profile cwd from defaultAgent when agentId is omitted", async () => {
+    replaceSpawnConfig({
+      ...hoisted.state.cfg,
+      acp: {
+        enabled: true,
+        backend: "acpx",
+        defaultAgent: "codex",
+        allowedAgents: ["codex"],
+      },
+      agents: {
+        list: [
+          {
+            id: "codex",
+            runtime: {
+              type: "acp" as const,
+              acp: { agent: "codex", cwd: "/workspace/default-agent" },
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await spawnAcpDirect(
+      {
+        task: "hello",
+      },
+      {
+        agentSessionKey: "agent:main:main",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(hoisted.initializeSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: "/workspace/default-agent" }),
+    );
+  });
+
+  it("resolves defaultAgent alias to harness ID when agentId is omitted", async () => {
+    replaceSpawnConfig({
+      ...hoisted.state.cfg,
+      acp: {
+        enabled: true,
+        backend: "acpx",
+        defaultAgent: "analyst",
+        allowedAgents: ["claude"],
+      },
+      agents: {
+        list: [
+          {
+            id: "analyst",
+            runtime: {
+              type: "acp" as const,
+              acp: { agent: "claude", cwd: "/workspace/analysis" },
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await spawnAcpDirect(
+      {
+        task: "hello",
+      },
+      {
+        agentSessionKey: "agent:main:main",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(result.childSessionKey).toMatch(/^agent:claude:acp:/);
+    expect(hoisted.initializeSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: "claude", cwd: "/workspace/analysis" }),
+    );
+  });
+
+  it("passes raw harness ID through when no matching agent profile exists", async () => {
+    const result = await spawnAcpDirect(
+      {
+        task: "hello",
+        agentId: "codex",
+      },
+      {
+        agentSessionKey: "agent:main:main",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(result.childSessionKey).toMatch(/^agent:codex:acp:/);
   });
 
   it("fails fast when Discord ACP thread spawn is disabled", async () => {
@@ -1422,5 +1642,272 @@ describe("spawnAcpDirect", () => {
     expect(result.error).toContain('streamTo="parent"');
     expect(hoisted.callGatewayMock).not.toHaveBeenCalled();
     expect(hoisted.startAcpSpawnParentStreamRelayMock).not.toHaveBeenCalled();
+  });
+
+  describe("ACP bootstrap injection", () => {
+    it("should prepend workspace bootstrap files to task string", async () => {
+      loadWorkspaceBootstrapFilesSpy.mockResolvedValue([
+        {
+          name: "SOUL.md",
+          path: "/tmp/workspace-codex/SOUL.md",
+          content: "You are a researcher.",
+          missing: false,
+        },
+        {
+          name: "AGENTS.md",
+          path: "/tmp/workspace-codex/AGENTS.md",
+          content: "Follow these rules.",
+          missing: false,
+        },
+      ]);
+
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Investigate flaky tests" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      expect(agentCall).toBeDefined();
+      const message = agentCall!.params!.message as string;
+      expect(message).toContain("[WORKSPACE CONTEXT]");
+      expect(message).toContain("You are a researcher.");
+      expect(message).toContain("Follow these rules.");
+      expect(message).toContain("[/WORKSPACE CONTEXT]");
+      expect(message).toContain("Investigate flaky tests");
+      // Task should come after the context block
+      expect(message.indexOf("[/WORKSPACE CONTEXT]")).toBeLessThan(
+        message.indexOf("Investigate flaky tests"),
+      );
+    });
+
+    it("should skip bootstrap injection on resume sessions", async () => {
+      loadWorkspaceBootstrapFilesSpy.mockResolvedValue([
+        {
+          name: "SOUL.md",
+          path: "/tmp/workspace-codex/SOUL.md",
+          content: "You are a researcher.",
+          missing: false,
+        },
+      ]);
+
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Continue work", resumeSessionId: "prev-session" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      expect(agentCall).toBeDefined();
+      expect(agentCall!.params!.message).toBe("Continue work");
+    });
+
+    it("should skip bootstrap when acp.injectBootstrap is false", async () => {
+      replaceSpawnConfig({
+        ...createDefaultSpawnConfig(),
+        acp: { ...createDefaultSpawnConfig().acp, injectBootstrap: false },
+      });
+      loadWorkspaceBootstrapFilesSpy.mockResolvedValue([
+        {
+          name: "SOUL.md",
+          path: "/tmp/workspace-codex/SOUL.md",
+          content: "You are a researcher.",
+          missing: false,
+        },
+      ]);
+
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Do something" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      expect(agentCall).toBeDefined();
+      const message = agentCall!.params!.message as string;
+      expect(message).not.toContain("[WORKSPACE CONTEXT]");
+      expect(message).toContain("Do something");
+    });
+
+    it("should not fail spawn if bootstrap loading errors", async () => {
+      loadWorkspaceBootstrapFilesSpy.mockRejectedValue(new Error("Permission denied"));
+
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Do something" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      expect(agentCall).toBeDefined();
+      const message = agentCall!.params!.message as string;
+      expect(message).not.toContain("[WORKSPACE CONTEXT]");
+      expect(message).toContain("Do something");
+    });
+
+    it("should respect MAX_TOTAL_CHARS budget", async () => {
+      const largeContent = "x".repeat(40_000);
+      loadWorkspaceBootstrapFilesSpy.mockResolvedValue([
+        {
+          name: "SOUL.md",
+          path: "/tmp/workspace-codex/SOUL.md",
+          content: largeContent,
+          missing: false,
+        },
+        {
+          name: "AGENTS.md",
+          path: "/tmp/workspace-codex/AGENTS.md",
+          content: largeContent,
+          missing: false,
+        },
+      ]);
+
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Do something" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      const message = agentCall!.params!.message as string;
+      // Should include SOUL.md (40k) but not AGENTS.md (would exceed 50k)
+      expect(message).toContain("## SOUL.md");
+      expect(message).not.toContain("## AGENTS.md");
+    });
+
+    it("should exclude missing and empty bootstrap files", async () => {
+      loadWorkspaceBootstrapFilesSpy.mockResolvedValue([
+        {
+          name: "SOUL.md",
+          path: "/tmp/workspace-codex/SOUL.md",
+          content: "Real content.",
+          missing: false,
+        },
+        {
+          name: "AGENTS.md",
+          path: "/tmp/workspace-codex/AGENTS.md",
+          content: undefined,
+          missing: true,
+        },
+        {
+          name: "IDENTITY.md",
+          path: "/tmp/workspace-codex/IDENTITY.md",
+          content: "   ",
+          missing: false,
+        },
+      ]);
+
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Do something" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      const message = agentCall!.params!.message as string;
+      expect(message).toContain("## SOUL.md");
+      expect(message).not.toContain("## AGENTS.md");
+      expect(message).not.toContain("## IDENTITY.md");
+    });
+
+    it("should exclude HEARTBEAT.md and BOOTSTRAP.md", async () => {
+      loadWorkspaceBootstrapFilesSpy.mockResolvedValue([
+        {
+          name: "SOUL.md",
+          path: "/tmp/workspace-codex/SOUL.md",
+          content: "Identity.",
+          missing: false,
+        },
+        {
+          name: "HEARTBEAT.md",
+          path: "/tmp/workspace-codex/HEARTBEAT.md",
+          content: "heartbeat config",
+          missing: false,
+        },
+        {
+          name: "BOOTSTRAP.md",
+          path: "/tmp/workspace-codex/BOOTSTRAP.md",
+          content: "bootstrap ritual",
+          missing: false,
+        },
+      ]);
+
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Do something" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      const message = agentCall!.params!.message as string;
+      expect(message).toContain("## SOUL.md");
+      expect(message).not.toContain("HEARTBEAT.md");
+      expect(message).not.toContain("BOOTSTRAP.md");
+    });
+
+    it("should use params.cwd over resolveAgentWorkspaceDir when provided", async () => {
+      loadWorkspaceBootstrapFilesSpy.mockResolvedValue([
+        {
+          name: "SOUL.md",
+          path: "/custom/cwd/SOUL.md",
+          content: "Custom workspace.",
+          missing: false,
+        },
+      ]);
+
+      await spawnAcpDirect(
+        createSpawnRequest({ task: "Do something", cwd: "/custom/cwd" }),
+        createRequesterContext(),
+      );
+
+      expect(loadWorkspaceBootstrapFilesSpy).toHaveBeenCalledWith("/custom/cwd");
+    });
+  });
+
+  describe("ACP session handback injection", () => {
+    it("should append session control block with session key", async () => {
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Analyze this" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      const message = agentCall!.params!.message as string;
+      expect(message).toContain("[ACP SESSION CONTROL]");
+      expect(message).toContain("openclaw acp close-self --session-key");
+      expect(message).toContain("[/ACP SESSION CONTROL]");
+      // Session control should come after the task
+      expect(message).toContain("Analyze this");
+    });
+
+    it("should skip handback injection on resume sessions", async () => {
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Continue", resumeSessionId: "prev" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      const message = agentCall!.params!.message as string;
+      expect(message).not.toContain("[ACP SESSION CONTROL]");
+    });
+
+    it("should skip handback injection when sessionHandback is false", async () => {
+      replaceSpawnConfig({
+        ...createDefaultSpawnConfig(),
+        acp: { ...createDefaultSpawnConfig().acp, sessionHandback: false },
+      });
+
+      const result = await spawnAcpDirect(
+        createSpawnRequest({ task: "Do something" }),
+        createRequesterContext(),
+      );
+      expect(result.status).toBe("accepted");
+
+      const agentCall = findAgentGatewayCall();
+      const message = agentCall!.params!.message as string;
+      expect(message).not.toContain("[ACP SESSION CONTROL]");
+    });
   });
 });
