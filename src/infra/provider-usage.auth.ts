@@ -30,7 +30,7 @@ type UsageAuthState = {
 };
 
 function normalizeProfileProvider(value: string | undefined): string {
-  return normalizeProviderId(value ?? "").trim().toLowerCase();
+  return normalizeProviderId(value ?? "");
 }
 
 function parseGoogleUsageToken(apiKey: string): string {
