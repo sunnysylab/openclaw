@@ -380,8 +380,6 @@ export async function runPreflightCompactionIfNeeded(params: {
     entry,
     tokenCount: tokenCountForCompaction,
     contextWindowTokens,
-    reserveTokensFloor,
-    softThresholdTokens,
   });
   if (!shouldCompact) {
     return entry ?? params.sessionEntry;
@@ -675,7 +673,7 @@ export async function runMemoryFlushIfNeeded(params: {
     .join("\n\n");
   let postCompactionSessionId: string | undefined;
   try {
-    await runWithModelFallback({
+    const memoryFlushRun = await runWithModelFallback({
       ...resolveModelFallbackOptions(params.followupRun.run),
       runId: flushRunId,
       run: async (provider, model, runOptions) => {
@@ -730,7 +728,8 @@ export async function runMemoryFlushIfNeeded(params: {
         sessionStore: activeSessionStore,
         sessionKey: params.sessionKey,
         storePath: params.storePath,
-        compactionOverheadTokens: result.meta?.agentMeta?.compactionOverheadTokens,
+        compactionOverheadTokens:
+          memoryFlushRun.result.meta?.agentMeta?.compactionOverheadTokens,
         newSessionId: postCompactionSessionId,
       });
       const updatedEntry = params.sessionKey ? activeSessionStore?.[params.sessionKey] : undefined;
