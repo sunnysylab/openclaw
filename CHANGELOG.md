@@ -9,6 +9,10 @@ Docs: https://docs.openclaw.ai
 - Agents/compaction: resolve `agents.defaults.compaction.model` consistently for manual `/compact` and other context-engine compaction paths, so engine-owned compaction uses the configured override model across runtime entrypoints. (#56710) Thanks @oliviareid-svg
 - Channels/session routing: move provider-specific session conversation grammar into plugin-owned session-key surfaces, preserving Telegram topic routing and Feishu scoped inheritance across bootstrap, model override, restart, and tool-policy paths.
 
+### Fixes
+
+- Telegram/exec approvals: preserve `agentFilter` matching when the agent is only encoded in `sessionKey`, so Telegram approval requests keep reaching configured approvers after the shared approval-capability refactor. (#58634) thanks @gumadeiras
+
 ## 2026.3.31
 
 ### Breaking
