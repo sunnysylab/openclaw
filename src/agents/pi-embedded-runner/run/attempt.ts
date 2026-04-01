@@ -233,11 +233,14 @@ export async function runPromptWithRateLimitRetry(params: {
   toolMetas: Array<unknown>;
   didSendViaMessagingTool: () => boolean;
   getSuccessfulCronAdds: () => number;
+  didEmitReasoning: () => boolean;
+  getCompactionCount: () => number;
   abortSignal?: AbortSignal;
   provider: string;
   modelId: string;
 }) {
-  const preRetryMessages = params.activeSession.messages.slice();
+  let preRetryMessages = params.activeSession.messages.slice();
+  let compactionBaseline = params.getCompactionCount();
   await retryPromptOnRateLimit({
     prompt: () =>
       params.images.length > 0
@@ -247,7 +250,13 @@ export async function runPromptWithRateLimitRetry(params: {
         : params.abortable(params.activeSession.prompt(params.effectivePrompt)),
     classifyTerminalFailure: () => {
       const messages = params.activeSession.messages;
-      if (messages.length <= preRetryMessages.length) {
+      // After compaction, messages may be shorter than the pre-retry snapshot
+      // even with new messages appended.  Skip the length guard when
+      // compaction occurred during this prompt.
+      if (
+        params.getCompactionCount() <= compactionBaseline &&
+        messages.length <= preRetryMessages.length
+      ) {
         return null;
       }
       const last = messages[messages.length - 1];
@@ -267,8 +276,32 @@ export async function runPromptWithRateLimitRetry(params: {
       params.assistantTexts.length === 0 &&
       params.toolMetas.length === 0 &&
       !params.didSendViaMessagingTool() &&
-      params.getSuccessfulCronAdds() === 0,
+      params.getSuccessfulCronAdds() === 0 &&
+      !params.didEmitReasoning(),
     rewind: () => {
+      const currentCompactions = params.getCompactionCount();
+      if (currentCompactions > compactionBaseline) {
+        // Compaction completed during this prompt — the pre-retry snapshot holds
+        // pre-compaction history and is now stale.  Derive the post-compaction
+        // pre-prompt baseline from the current messages by stripping messages the
+        // prompt added.  isReplaySafe() already confirmed no assistant text, no
+        // tool activity, no outbound messages, and no cron adds, so at most two
+        // messages were appended: the user prompt and a trailing error assistant.
+        const current = params.activeSession.messages;
+        let end = current.length;
+        if (
+          end > 0 &&
+          current[end - 1]?.role === "assistant" &&
+          (current[end - 1] as { stopReason?: string }).stopReason === "error"
+        ) {
+          end--;
+        }
+        if (end > 0 && current[end - 1]?.role === "user") {
+          end--;
+        }
+        preRetryMessages = current.slice(0, end);
+        compactionBaseline = currentCompactions;
+      }
       if (params.activeSession.messages.length !== preRetryMessages.length) {
         params.activeSession.agent.replaceMessages(preRetryMessages);
       }
@@ -484,64 +517,64 @@ export async function runEmbeddedAttempt(
       ? []
       : (() => {
           const allTools = createOpenClawCodingTools({
-          agentId: sessionAgentId,
-          trigger: params.trigger,
-          memoryFlushWritePath: params.memoryFlushWritePath,
-          exec: {
-            ...params.execOverrides,
-            elevated: params.bashElevated,
-          },
-          sandbox,
-          messageProvider: params.messageChannel ?? params.messageProvider,
-          agentAccountId: params.agentAccountId,
-          messageTo: params.messageTo,
-          messageThreadId: params.messageThreadId,
-          groupId: params.groupId,
-          groupChannel: params.groupChannel,
-          groupSpace: params.groupSpace,
-          spawnedBy: params.spawnedBy,
-          senderId: params.senderId,
-          senderName: params.senderName,
-          senderUsername: params.senderUsername,
-          senderE164: params.senderE164,
-          senderIsOwner: params.senderIsOwner,
-          allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
-          sessionKey: sandboxSessionKey,
-          sessionId: params.sessionId,
-          runId: params.runId,
-          agentDir,
-          workspaceDir: effectiveWorkspace,
-          // When sandboxing uses a copied workspace (`ro` or `none`), effectiveWorkspace points
-          // at the sandbox copy. Spawned subagents should inherit the real workspace instead.
-          spawnWorkspaceDir: resolveAttemptSpawnWorkspaceDir({
+            agentId: sessionAgentId,
+            trigger: params.trigger,
+            memoryFlushWritePath: params.memoryFlushWritePath,
+            exec: {
+              ...params.execOverrides,
+              elevated: params.bashElevated,
+            },
             sandbox,
-            resolvedWorkspace,
-          }),
-          config: params.config,
-          abortSignal: runAbortController.signal,
-          modelProvider: params.model.provider,
-          modelId: params.modelId,
-          modelCompat: params.model.compat,
-          modelApi: params.model.api,
-          modelContextWindowTokens: params.model.contextWindow,
-          modelAuthMode: resolveModelAuthMode(params.model.provider, params.config),
-          currentChannelId: params.currentChannelId,
-          currentThreadTs: params.currentThreadTs,
-          currentMessageId: params.currentMessageId,
-          replyToMode: params.replyToMode,
-          hasRepliedRef: params.hasRepliedRef,
-          modelHasVision,
-          requireExplicitMessageTarget:
-            params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
-          disableMessageTool: params.disableMessageTool,
-          onYield: (message) => {
-            yieldDetected = true;
-            yieldMessage = message;
-            queueYieldInterruptForSession?.();
-            runAbortController.abort("sessions_yield");
-            abortSessionForYield?.();
-          },
-        });
+            messageProvider: params.messageChannel ?? params.messageProvider,
+            agentAccountId: params.agentAccountId,
+            messageTo: params.messageTo,
+            messageThreadId: params.messageThreadId,
+            groupId: params.groupId,
+            groupChannel: params.groupChannel,
+            groupSpace: params.groupSpace,
+            spawnedBy: params.spawnedBy,
+            senderId: params.senderId,
+            senderName: params.senderName,
+            senderUsername: params.senderUsername,
+            senderE164: params.senderE164,
+            senderIsOwner: params.senderIsOwner,
+            allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
+            sessionKey: sandboxSessionKey,
+            sessionId: params.sessionId,
+            runId: params.runId,
+            agentDir,
+            workspaceDir: effectiveWorkspace,
+            // When sandboxing uses a copied workspace (`ro` or `none`), effectiveWorkspace points
+            // at the sandbox copy. Spawned subagents should inherit the real workspace instead.
+            spawnWorkspaceDir: resolveAttemptSpawnWorkspaceDir({
+              sandbox,
+              resolvedWorkspace,
+            }),
+            config: params.config,
+            abortSignal: runAbortController.signal,
+            modelProvider: params.model.provider,
+            modelId: params.modelId,
+            modelCompat: params.model.compat,
+            modelApi: params.model.api,
+            modelContextWindowTokens: params.model.contextWindow,
+            modelAuthMode: resolveModelAuthMode(params.model.provider, params.config),
+            currentChannelId: params.currentChannelId,
+            currentThreadTs: params.currentThreadTs,
+            currentMessageId: params.currentMessageId,
+            replyToMode: params.replyToMode,
+            hasRepliedRef: params.hasRepliedRef,
+            modelHasVision,
+            requireExplicitMessageTarget:
+              params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
+            disableMessageTool: params.disableMessageTool,
+            onYield: (message) => {
+              yieldDetected = true;
+              yieldMessage = message;
+              queueYieldInterruptForSession?.();
+              runAbortController.abort("sessions_yield");
+              abortSessionForYield?.();
+            },
+          });
           if (params.toolsAllow && params.toolsAllow.length > 0) {
             const allowSet = new Set(params.toolsAllow);
             return allTools.filter((tool) => allowSet.has(tool.name));
@@ -686,7 +719,7 @@ export async function runEmbeddedAttempt(
     const promptMode = resolvePromptModeForSession(params.sessionKey);
 
     // When toolsAllow is set, use minimal prompt and strip skills catalog
-    const effectivePromptMode = params.toolsAllow?.length ? "minimal" as const : promptMode;
+    const effectivePromptMode = params.toolsAllow?.length ? ("minimal" as const) : promptMode;
     const effectiveSkillsPrompt = params.toolsAllow?.length ? undefined : skillsPrompt;
     const docsPath = await resolveOpenClawDocsPath({
       workspaceDir: effectiveWorkspace,
@@ -1350,6 +1383,7 @@ export async function runEmbeddedAttempt(
         getMessagingToolSentTargets,
         getSuccessfulCronAdds,
         didSendViaMessagingTool,
+        didEmitReasoning,
         getLastToolError,
         getUsageTotals,
         getCompactionCount,
@@ -1635,6 +1669,8 @@ export async function runEmbeddedAttempt(
             toolMetas,
             didSendViaMessagingTool,
             getSuccessfulCronAdds,
+            didEmitReasoning,
+            getCompactionCount,
             abortSignal: runAbortController.signal,
             provider: params.provider,
             modelId: params.modelId,
