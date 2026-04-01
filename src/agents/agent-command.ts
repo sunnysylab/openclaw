@@ -747,9 +747,12 @@ async function agentCommandInternal(
         hasSessionModelOverride: Boolean(storedModelOverride),
       });
 
-      // Track model fallback attempts so retries on an existing session don't
-      // re-inject the original prompt as a duplicate user message.
-      let fallbackAttemptIndex = 0;
+      // Track fallback progress by unique candidate instead of raw invocation
+      // count. Same-candidate retries (for transient errors like rate limits)
+      // should preserve the original prompt; only switching to a new candidate
+      // should trigger fallback retry prompting.
+      let fallbackCandidateIndex = -1;
+      let activeCandidateKey: string | null = null;
       const fallbackResult = await runWithModelFallback({
         cfg,
         provider,
@@ -758,8 +761,12 @@ async function agentCommandInternal(
         agentDir,
         fallbacksOverride: effectiveFallbacksOverride,
         run: async (providerOverride, modelOverride, runOptions) => {
-          const isFallbackRetry = fallbackAttemptIndex > 0;
-          fallbackAttemptIndex += 1;
+          const candidateKey = `${providerOverride}:${modelOverride}`;
+          if (candidateKey !== activeCandidateKey) {
+            activeCandidateKey = candidateKey;
+            fallbackCandidateIndex += 1;
+          }
+          const isFallbackRetry = fallbackCandidateIndex > 0;
           return runAgentAttempt({
             providerOverride,
             modelOverride,
