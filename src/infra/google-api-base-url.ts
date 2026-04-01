@@ -10,13 +10,13 @@ export function normalizeGoogleApiBaseUrl(baseUrl?: string): string {
   const raw = trimTrailingSlashes(baseUrl?.trim() || DEFAULT_GOOGLE_API_BASE_URL);
   try {
     const url = new URL(raw);
-    url.hash = "";
-    url.search = "";
-    if (
-      url.hostname.toLowerCase() === DEFAULT_GOOGLE_API_HOST &&
-      trimTrailingSlashes(url.pathname || "") === ""
-    ) {
-      url.pathname = "/v1beta";
+    const isDefaultHost = url.hostname.toLowerCase() === DEFAULT_GOOGLE_API_HOST;
+    if (isDefaultHost) {
+      url.hash = "";
+      url.search = "";
+      if (trimTrailingSlashes(url.pathname || "") === "") {
+        url.pathname = "/v1beta";
+      }
     }
     return trimTrailingSlashes(url.toString());
   } catch {
