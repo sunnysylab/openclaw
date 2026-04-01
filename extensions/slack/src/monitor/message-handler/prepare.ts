@@ -34,6 +34,7 @@ import { resolveSlackReplyToMode, type ResolvedSlackAccount } from "../../accoun
 import { reactSlackMessage } from "../../actions.js";
 import { sendMessageSlack } from "../../send.js";
 import { hasSlackThreadParticipation } from "../../sent-thread-cache.js";
+import { hasPersistedThreadParticipation } from "../../thread-participation-store.js";
 import { resolveSlackThreadContext } from "../../threading.js";
 import type { SlackMessageEvent } from "../../types.js";
 import {
@@ -364,6 +365,10 @@ export async function prepareSlackMessage(params: {
     historyKey,
   } = routing;
 
+  const storePath = resolveStorePath(ctx.cfg.session?.store, {
+    agentId: route.agentId,
+  });
+
   const mentionRegexes = resolveCachedMentionRegexes(ctx, route.agentId);
   const hasAnyMention = /<@[^>]+>/.test(message.text ?? "");
   const explicitlyMentioned = Boolean(
@@ -381,12 +386,29 @@ export async function prepareSlackMessage(params: {
           canResolveExplicit: Boolean(ctx.botUserId),
         },
       }));
-  const implicitMention = Boolean(
+  const isParentBot =
     !isDirectMessage &&
     ctx.botUserId &&
     message.thread_ts &&
-    (message.parent_user_id === ctx.botUserId ||
-      hasSlackThreadParticipation(account.accountId, message.channel, message.thread_ts)),
+    message.parent_user_id === ctx.botUserId;
+  const hasCachedParticipation =
+    !isDirectMessage &&
+    ctx.botUserId &&
+    message.thread_ts &&
+    hasSlackThreadParticipation(account.accountId, message.channel, message.thread_ts);
+  const hasPersistedParticipationResult =
+    !isDirectMessage &&
+    ctx.botUserId &&
+    message.thread_ts &&
+    !hasCachedParticipation &&
+    hasPersistedThreadParticipation(
+      storePath,
+      account.accountId,
+      message.channel,
+      message.thread_ts,
+    );
+  const implicitMention = Boolean(
+    isParentBot || hasCachedParticipation || hasPersistedParticipationResult,
   );
 
   let resolvedSenderName = message.username?.trim() || undefined;
@@ -487,6 +509,31 @@ export async function prepareSlackMessage(params: {
     commandAuthorized,
   });
   const effectiveWasMentioned = mentionGate.effectiveWasMentioned;
+
+  // Diagnostic: log thread continuation decision at info level for traceability.
+  if (isThreadReply && message.thread_ts && isRoom) {
+    const reason = wasMentioned
+      ? "explicit-mention"
+      : isParentBot
+        ? "parent-bot"
+        : hasCachedParticipation
+          ? "cached-participation"
+          : hasPersistedParticipationResult
+            ? "persisted-participation"
+            : "none";
+    ctx.logger.info(
+      {
+        channel: message.channel,
+        threadTs: message.thread_ts,
+        requireMention: Boolean(shouldRequireMention),
+        implicitMention,
+        reason,
+        accepted: !mentionGate.shouldSkip,
+      },
+      "slack thread continuation decision",
+    );
+  }
+
   if (isRoom && shouldRequireMention && mentionGate.shouldSkip) {
     ctx.logger.info({ channel: message.channel, reason: "no-mention" }, "skipping channel message");
     const pendingText = (message.text ?? "").trim();
@@ -604,9 +651,6 @@ export async function prepareSlackMessage(params: {
       ? ` thread_ts: ${threadTs}${message.parent_user_id ? ` parent_user_id: ${message.parent_user_id}` : ""}`
       : "";
   const textWithId = `${rawBody}\n[slack message id: ${message.ts} channel: ${message.channel}${threadInfo}]`;
-  const storePath = resolveStorePath(ctx.cfg.session?.store, {
-    agentId: route.agentId,
-  });
   const envelopeOptions = resolveEnvelopeFormatOptions(ctx.cfg);
   const previousTimestamp = readSessionUpdatedAt({
     storePath,
@@ -806,5 +850,6 @@ export async function prepareSlackMessage(params: {
     ackReactionMessageTs,
     ackReactionValue,
     ackReactionPromise,
+    storePath,
   };
 }
