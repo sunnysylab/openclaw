@@ -1444,8 +1444,7 @@ describe("applyExtraParamsToAgent", () => {
     });
 
     const assistantMessage = (payload.messages as Array<Record<string, unknown>>)[0];
-    const toolCall = ((assistantMessage.tool_calls as Array<Record<string, unknown>>)[0] ??
-      {}) as Record<string, unknown>;
+    const toolCall = (assistantMessage.tool_calls as Array<Record<string, unknown>>)[0] ?? {};
     expect(toolCall.extra_content).toEqual({
       google: {
         thought_signature: "AQID",
@@ -1503,8 +1502,7 @@ describe("applyExtraParamsToAgent", () => {
     });
 
     const assistantMessage = (payload.messages as Array<Record<string, unknown>>)[0];
-    const toolCall = ((assistantMessage.tool_calls as Array<Record<string, unknown>>)[0] ??
-      {}) as Record<string, unknown>;
+    const toolCall = (assistantMessage.tool_calls as Array<Record<string, unknown>>)[0] ?? {};
     expect(toolCall.extra_content).toEqual({
       google: {
         thought_signature: "existing-signature",
@@ -1550,8 +1548,7 @@ describe("applyExtraParamsToAgent", () => {
     });
 
     const assistantMessage = (payload.messages as Array<Record<string, unknown>>)[0];
-    const toolCall = ((assistantMessage.tool_calls as Array<Record<string, unknown>>)[0] ??
-      {}) as Record<string, unknown>;
+    const toolCall = (assistantMessage.tool_calls as Array<Record<string, unknown>>)[0] ?? {};
     expect(toolCall).not.toHaveProperty("extra_content");
   });
   it("passes configured websocket transport through stream options", () => {
