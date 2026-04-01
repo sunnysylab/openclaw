@@ -141,8 +141,19 @@ export default definePluginEntry({
             }
           }
 
+          // Skip discovery when the user has explicitly configured models for
+          // this provider — the network call (up to 10s timeout) would be wasted
+          // since mergeImplicitProviderConfig keeps existing models.
+          const explicitModels =
+            ctx.config?.models?.providers?.["github-copilot"]?.models;
+          const hasExplicitModels =
+            Array.isArray(explicitModels) ? explicitModels.length > 0
+            : explicitModels != null && typeof explicitModels === "object"
+              ? Object.keys(explicitModels).length > 0
+              : false;
+
           let discoveredModels: ModelDefinitionConfig[] = [];
-          if (copilotToken) {
+          if (copilotToken && !hasExplicitModels) {
             try {
               const knownModelIds = new Set(getDefaultCopilotModelIds());
               discoveredModels = await discoverCopilotModels({
