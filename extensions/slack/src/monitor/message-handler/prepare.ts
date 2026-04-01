@@ -386,11 +386,15 @@ export async function prepareSlackMessage(params: {
           canResolveExplicit: Boolean(ctx.botUserId),
         },
       }));
-  const isParentBot =
+  // Split thread mention signals into two distinct gates:
+  //   implicitMention: bot is the thread parent (root-message signal)
+  //   threadContinuation: bot has previously replied in this thread (participation signal)
+  const isParentBot = Boolean(
     !isDirectMessage &&
     ctx.botUserId &&
     message.thread_ts &&
-    message.parent_user_id === ctx.botUserId;
+    message.parent_user_id === ctx.botUserId,
+  );
   const hasCachedParticipation =
     !isDirectMessage &&
     ctx.botUserId &&
@@ -407,9 +411,8 @@ export async function prepareSlackMessage(params: {
       message.channel,
       message.thread_ts,
     );
-  const implicitMention = Boolean(
-    isParentBot || hasCachedParticipation || hasPersistedParticipationResult,
-  );
+  const implicitMention = isParentBot;
+  const threadContinuation = Boolean(hasCachedParticipation || hasPersistedParticipationResult);
 
   let resolvedSenderName = message.username?.trim() || undefined;
   const resolveSenderName = async (): Promise<string> => {
@@ -503,6 +506,7 @@ export async function prepareSlackMessage(params: {
     canDetectMention,
     wasMentioned,
     implicitMention,
+    threadContinuation,
     hasAnyMention,
     allowTextCommands,
     hasControlCommand: hasControlCommandInMessage,
@@ -521,21 +525,28 @@ export async function prepareSlackMessage(params: {
           : hasPersistedParticipationResult
             ? "persisted-participation"
             : "none";
+    const gate = isParentBot ? "implicit" : threadContinuation ? "continuation" : "mention";
     ctx.logger.info(
       {
         channel: message.channel,
         threadTs: message.thread_ts,
         requireMention: Boolean(shouldRequireMention),
         implicitMention,
+        threadContinuation,
+        gate,
         reason,
         accepted: !mentionGate.shouldSkip,
+        ambiguous: Boolean(message._ambiguousThreadReply),
       },
       "slack thread continuation decision",
     );
   }
 
   if (isRoom && shouldRequireMention && mentionGate.shouldSkip) {
-    ctx.logger.info({ channel: message.channel, reason: "no-mention" }, "skipping channel message");
+    const skipReason = message._ambiguousThreadReply
+      ? "no-mention (ambiguous thread reply — thread_ts unresolved)"
+      : "no-mention";
+    ctx.logger.info({ channel: message.channel, reason: skipReason }, "skipping channel message");
     const pendingText = (message.text ?? "").trim();
     const fallbackFile = message.files?.[0]?.name
       ? `[Slack file: ${message.files[0].name}]`
