@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import type { OpenClawConfig } from "../../config/config.js";
+import { checkPathGuardStrict } from "../../security/path-guard.js";
 import { getMediaUnderstandingProvider } from "../../media-understanding/provider-registry.js";
 import { buildProviderRegistry } from "../../media-understanding/runner.js";
 import { loadWebMedia } from "../../media/web-media.js";
@@ -274,6 +275,7 @@ export function createImageTool(options?: {
     ? "Analyze one or more images with a vision model. Use image for a single path/URL, or images for multiple (up to 20). Only use this tool when images were NOT already provided in the user's message. Images mentioned in the prompt are automatically visible to you."
     : "Analyze one or more images with the configured image model (agents.defaults.imageModel). Use image for a single path/URL, or images for multiple (up to 20). Provide a prompt describing what to analyze.";
 
+
   return {
     label: "Image",
     name: "image",
@@ -427,6 +429,13 @@ export function createImageTool(options?: {
           },
           resolvedPath ? [resolvedPath] : undefined,
         );
+
+        if (resolvedPath && !isHttpUrl && !isDataUrl && options?.fsPolicy) {
+          const policyRoot = sandboxConfig?.root ?? options.workspaceDir;
+          if (policyRoot) {
+            await checkPathGuardStrict(resolvedPath, options.fsPolicy, policyRoot);
+          }
+        }
 
         const media = isDataUrl
           ? decodeDataUrl(resolvedImage)

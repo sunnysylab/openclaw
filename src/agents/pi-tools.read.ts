@@ -12,6 +12,8 @@ import {
 import { trySafeFileURLToPath } from "../infra/local-file-access.js";
 import { detectMime } from "../media/mime.js";
 import { sniffMimeFromBase64 } from "../media/sniff-mime-from-base64.js";
+import { checkPathGuardStrict, PathGuardError } from "../security/path-guard.js";
+import { pathGuardDeniedToolResult } from "./tools/policy-denial.js";
 import type { ImageSanitizationLimits } from "./image-sanitization.js";
 import { toRelativeWorkspacePath } from "./path-policy.js";
 import { wrapEditToolWithRecovery } from "./pi-tools.host-edit.js";
@@ -25,6 +27,7 @@ import {
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import { assertSandboxPath } from "./sandbox-paths.js";
 import type { SandboxFsBridge } from "./sandbox/fs-bridge.js";
+import type { ToolFsPolicy } from "./tool-fs-policy.js";
 import { sanitizeToolResultImages } from "./tool-images.js";
 
 export {
@@ -556,6 +559,7 @@ export function wrapToolWorkspaceRootGuardWithOptions(
   root: string,
   options?: {
     containerWorkdir?: string;
+    policy?: ToolFsPolicy;
   },
 ): AnyAgentTool {
   return {
@@ -572,7 +576,28 @@ export function wrapToolWorkspaceRootGuardWithOptions(
           root,
           containerWorkdir: options?.containerWorkdir,
         });
-        await assertSandboxPath({ filePath: sandboxPath, cwd: root, root });
+
+        // Only enforce sandbox/workspace-root escape checks when workspaceOnly is enabled.
+        // When workspaceOnly is false, callers may explicitly allowlist absolute paths outside
+        // the workspace via allowedPaths. In that mode, PathGuard should be the authority.
+        if (options?.policy?.workspaceOnly === true) {
+          await assertSandboxPath({ filePath: sandboxPath, cwd: root, root });
+        }
+
+        if (options?.policy) {
+          try {
+            await checkPathGuardStrict(sandboxPath, options.policy, root);
+          } catch (error: unknown) {
+            if (error instanceof PathGuardError) {
+              return pathGuardDeniedToolResult({
+                attemptedAction: tool.name,
+                whatIWasTryingToDo: `Access a file path for tool "${tool.name}".`,
+                err: error,
+              });
+            }
+            throw error;
+          }
+        }
       }
       return tool.execute(toolCallId, normalized ?? args, signal, onUpdate);
     },

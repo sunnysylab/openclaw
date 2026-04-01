@@ -20,6 +20,7 @@ import {
 import { emitSessionLifecycleEvent } from "../sessions/session-lifecycle-events.js";
 import { normalizeDeliveryContext } from "../utils/delivery-context.js";
 import { resolveAgentConfig } from "./agent-scope.js";
+import { combineToolFsPolicies, resolveToolFsConfig } from "./tool-fs-policy.js";
 import { AGENT_LANE_SUBAGENT } from "./lanes.js";
 import { resolveSubagentSpawnModelSelection } from "./model-selection.js";
 import { resolveSandboxRuntimeStatus } from "./sandbox/runtime-status.js";
@@ -86,6 +87,12 @@ export type SpawnSubagentParams = {
     mimeType?: string;
   }>;
   attachMountPath?: string;
+  /** Optional filesystem policy tightening for the spawned subagent (can only reduce access). */
+  fsPolicy?: {
+    workspaceOnly?: boolean;
+    allowedPaths?: string[];
+    denyPaths?: string[];
+  };
 };
 
 export type SpawnSubagentContext = {
@@ -497,6 +504,11 @@ export async function spawnSubagentDirect(
     modelOverride,
   });
 
+  // (FS policy ceiling for subagents)
+  // Implemented via sessions.patch(spawnedToolFsPolicy), but must NOT happen before
+  // spawnDepth/subagentRole/subagentControlScope patching (tests expect specific patch shapes).
+  // We'll apply it later, after the initialChildSessionPatch succeeds.
+
   const resolvedThinkingDefaultRaw =
     readStringParam(targetAgentConfig?.subagents ?? {}, "thinking") ??
     readStringParam(cfg.agents?.defaults?.subagents ?? {}, "thinking");
@@ -548,6 +560,52 @@ export async function spawnSubagentDirect(
       childSessionKey,
     };
   }
+
+  // Compute + persist an effective filesystem policy ceiling for the child subagent.
+  // Child policy = combine(global tools.fs, agent tools.fs, tools.subagents.fs, spawn params.fsPolicy).
+  // - workspaceOnly: OR
+  // - denyPaths: UNION
+  // - allowedPaths: INTERSECTION
+  const globalFs = resolveToolFsConfig({ cfg });
+  const agentFs = resolveToolFsConfig({ cfg, agentId: targetAgentId });
+  const subagentFs = cfg.tools?.subagents?.fs;
+  const effectiveFsPolicy = combineToolFsPolicies({
+    globalPolicy: globalFs,
+    agentPolicy: agentFs,
+    spawnPolicy: {
+      // Subagent defaults are an independent ceiling layer.
+      // Spawn-time overrides may only tighten further; they must not replace the ceiling.
+      workspaceOnly: subagentFs?.workspaceOnly === true || params.fsPolicy?.workspaceOnly === true,
+      allowedPaths: subagentFs?.allowedPaths ?? params.fsPolicy?.allowedPaths,
+      denyPaths:
+        subagentFs?.denyPaths || params.fsPolicy?.denyPaths
+          ? [...(subagentFs?.denyPaths ?? []), ...(params.fsPolicy?.denyPaths ?? [])]
+          : undefined,
+    },
+  });
+
+  if (
+    effectiveFsPolicy.workspaceOnly ||
+    // Persist explicit empty allowlists (deny-all) as a real ceiling.
+    effectiveFsPolicy.allowedPaths !== undefined ||
+    (effectiveFsPolicy.denyPaths?.length ?? 0) > 0
+  ) {
+    const fsPolicyPatchError = await patchChildSession({
+      spawnedToolFsPolicy: {
+        workspaceOnly: effectiveFsPolicy.workspaceOnly,
+        allowedPaths: effectiveFsPolicy.allowedPaths,
+        denyPaths: effectiveFsPolicy.denyPaths,
+      },
+    });
+    if (fsPolicyPatchError) {
+      return {
+        status: "error",
+        error: fsPolicyPatchError,
+        childSessionKey,
+      };
+    }
+  }
+
   if (resolvedModel) {
     const runtimeModelPersistError = await persistInitialChildSessionRuntimeModel({
       cfg,

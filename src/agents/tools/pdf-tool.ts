@@ -2,6 +2,7 @@ import { type Context, complete } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { OpenClawConfig } from "../../config/config.js";
 import { extractPdfContent, type PdfExtractedContent } from "../../media/pdf-extract.js";
+import { checkPathGuardStrict } from "../../security/path-guard.js";
 import { loadWebMediaRaw } from "../../media/web-media.js";
 import { resolveUserPath } from "../../utils.js";
 import {
@@ -327,6 +328,7 @@ export function createPdfTool(options?: {
       ? Math.floor(maxPagesDefault)
       : DEFAULT_MAX_PAGES;
 
+
   const description =
     "Analyze one or more PDF documents with a model. Supports native PDF analysis for Anthropic and Google models, with text/image extraction fallback for other providers. Use pdf for a single path/URL, or pdfs for multiple (up to 10). Provide a prompt describing what to analyze.";
 
@@ -474,6 +476,13 @@ export function createPdfTool(options?: {
           },
           [resolvedPathInfo.resolved],
         );
+
+        if (!isHttpUrl && !isDataUrl && options?.fsPolicy) {
+          const policyRoot = sandboxConfig?.root ?? options.workspaceDir;
+          if (policyRoot) {
+            await checkPathGuardStrict(resolvedPathInfo.resolved, options.fsPolicy, policyRoot);
+          }
+        }
 
         const media = sandboxConfig
           ? await loadWebMediaRaw(resolvedPathInfo.resolved, {

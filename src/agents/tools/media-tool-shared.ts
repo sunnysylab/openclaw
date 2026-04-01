@@ -1,6 +1,8 @@
+import path from "node:path";
 import { type Api, type Model } from "@mariozechner/pi-ai";
 import type { OpenClawConfig } from "../../config/config.js";
 import { getDefaultLocalRoots } from "../../media/web-media.js";
+import type { ToolFsPolicy } from "../tool-fs-policy.js";
 import type { ImageModelConfig } from "./image-tool.helpers.js";
 import type { ToolModelConfig } from "./model-config.helpers.js";
 import { getApiKeyForModel, normalizeWorkspaceDir, requireApiKey } from "./tool-runtime.helpers.js";
@@ -52,17 +54,36 @@ function applyAgentDefaultModelConfig(
   };
 }
 
+function uniqueNormalized(paths: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const candidate of paths) {
+    const normalized = path.resolve(candidate);
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      out.push(normalized);
+    }
+  }
+  return out;
+}
+
 export function resolveMediaToolLocalRoots(
   workspaceDirRaw: string | undefined,
-  options?: { workspaceOnly?: boolean },
+  options?: { fsPolicy?: ToolFsPolicy; workspaceOnly?: boolean },
   _mediaSources?: readonly string[],
 ): string[] {
-  const workspaceDir = normalizeWorkspaceDir(workspaceDirRaw);
-  if (options?.workspaceOnly) {
+  const workspaceDir = normalizeWorkspaceDir(workspaceDirRaw) ?? undefined;
+  const policy = options?.fsPolicy;
+
+  // For workspace-only mode we must hard-limit roots to workspace.
+  if (policy?.workspaceOnly) {
     return workspaceDir ? [workspaceDir] : [];
   }
-  const roots = getDefaultLocalRoots();
-  return workspaceDir ? Array.from(new Set([...roots, workspaceDir])) : [...roots];
+
+  // For allow/deny policies with glob semantics, root filtering alone is insufficient.
+  // Exact policy enforcement is applied per resolved file path in image/pdf tools via PathGuard.
+  const defaultRoots = getDefaultLocalRoots();
+  return uniqueNormalized(workspaceDir ? [...defaultRoots, workspaceDir] : defaultRoots);
 }
 
 export function resolvePromptAndModelOverride(
