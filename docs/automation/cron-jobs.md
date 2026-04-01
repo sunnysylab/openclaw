@@ -466,6 +466,7 @@ Configure `cron.retry` to override these defaults (see [Configuration](/automati
     },
     webhook: "https://example.invalid/legacy", // deprecated fallback for stored notify:true jobs
     webhookToken: "replace-with-dedicated-webhook-token", // optional bearer token for webhook mode
+    webhookAllowPrivateNetwork: false, // set true to allow delivery to loopback/private-network URLs
     sessionRetention: "24h", // duration string or false
     runLog: {
       maxBytes: "2mb", // default 2_000_000 bytes
@@ -489,6 +490,7 @@ Webhook behavior:
 - If `cron.webhookToken` is set, auth header is `Authorization: Bearer <cron.webhookToken>`.
 - If `cron.webhookToken` is not set, no `Authorization` header is sent.
 - Deprecated fallback: stored legacy jobs with `notify: true` still use `cron.webhook` when present.
+- By default, webhook delivery to loopback and private-network URLs is blocked by the SSRF guard (hardened for CVE-2026-27488). Set `cron.webhookAllowPrivateNetwork: true` to allow delivery to internal endpoints; only enable this when the webhook target is intentionally on a private network.
 
 Disable cron entirely:
 

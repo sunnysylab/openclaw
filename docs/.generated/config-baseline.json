@@ -40513,6 +40513,21 @@
       "hasChildren": false
     },
     {
+      "path": "cron.webhookAllowPrivateNetwork",
+      "kind": "core",
+      "type": "boolean",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "automation",
+        "security"
+      ],
+      "label": "Cron Webhook Allow Private Network",
+      "help": "Allow cron webhook POST delivery to loopback and private-network URLs (default: `false`). Enable only when the webhook endpoint is intentionally on a private network; operators who enable this accept that cron jobs may POST to internal IPs.",
+      "hasChildren": false
+    },
+    {
       "path": "cron.webhookToken",
       "kind": "core",
       "type": [
