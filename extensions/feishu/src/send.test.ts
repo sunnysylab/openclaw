@@ -405,15 +405,17 @@ describe("resolveFeishuCardTemplate", () => {
 });
 
 describe("buildStructuredCard", () => {
-  it("uses schema-2.0 forwarding config instead of legacy wide screen mode", () => {
+  it("uses schema-2.0 width config instead of legacy wide screen mode", () => {
     const card = buildStructuredCard("hello") as {
       config: {
+        width_mode?: string;
         enable_forward?: boolean;
         wide_screen_mode?: boolean;
       };
     };
 
-    expect(card.config.enable_forward).toBe(true);
+    expect(card.config.width_mode).toBe("fill");
+    expect(card.config.enable_forward).toBeUndefined();
     expect(card.config.wide_screen_mode).toBeUndefined();
   });
 
@@ -437,15 +439,17 @@ describe("buildStructuredCard", () => {
 });
 
 describe("buildMarkdownCard", () => {
-  it("uses schema-2.0 forwarding config instead of legacy wide screen mode", () => {
+  it("uses schema-2.0 width config instead of legacy wide screen mode", () => {
     const card = buildMarkdownCard("hello") as {
       config: {
+        width_mode?: string;
         enable_forward?: boolean;
         wide_screen_mode?: boolean;
       };
     };
 
-    expect(card.config.enable_forward).toBe(true);
+    expect(card.config.width_mode).toBe("fill");
+    expect(card.config.enable_forward).toBeUndefined();
     expect(card.config.wide_screen_mode).toBeUndefined();
   });
 });
