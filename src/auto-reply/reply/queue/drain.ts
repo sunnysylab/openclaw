@@ -1,7 +1,7 @@
 import { defaultRuntime } from "../../../runtime.js";
 import { resolveGlobalMap } from "../../../shared/global-singleton.js";
+import { renderDeferredBatch } from "../../../utils/deferred-render.js";
 import {
-  buildCollectPrompt,
   beginQueueDrain,
   clearQueueSummaryState,
   drainCollectQueueStep,
@@ -12,7 +12,7 @@ import {
 } from "../../../utils/queue-helpers.js";
 import { isRoutableChannel } from "../route-reply.js";
 import { FOLLOWUP_QUEUES } from "./state.js";
-import type { FollowupRun } from "./types.js";
+import { type FollowupRun } from "./types.js";
 
 // Persists the most recent runFollowup callback per queue key so that
 // enqueueFollowupRun can restart a drain that finished and deleted the queue.
@@ -123,14 +123,74 @@ export function scheduleFollowupDrain(
 
           const routing = resolveOriginRoutingMetadata(items);
 
-          const prompt = buildCollectPrompt({
-            title: "[Queued messages while agent was busy]",
-            items,
-            summary,
-            renderItem: (item, idx) => `---\nQueued #${idx + 1}\n${item.prompt}`.trim(),
-          });
+          const renderableItems = items
+            .map((item) => item.display)
+            .filter((item): item is NonNullable<typeof item> => Boolean(item));
+          const canBatchRender = renderableItems.length === items.length;
+
+          if (!canBatchRender) {
+            if (summary) {
+              const summaryTarget = items[0];
+              if (!summaryTarget) {
+                break;
+              }
+              await effectiveRunFollowup({
+                execution: { visibility: "internal", agentPrompt: summary },
+                display: { visibility: "user-visible", text: summary },
+                run,
+                enqueuedAt: Date.now(),
+                originatingChannel: summaryTarget.originatingChannel,
+                originatingTo: summaryTarget.originatingTo,
+                originatingAccountId: summaryTarget.originatingAccountId,
+                originatingThreadId: summaryTarget.originatingThreadId,
+                originatingChatType: summaryTarget.originatingChatType,
+              });
+              clearQueueSummaryState(queue);
+            }
+            while (queue.items.length > 0) {
+              if (!(await drainNextQueueItem(queue.items, effectiveRunFollowup))) {
+                break;
+              }
+            }
+            continue;
+          }
+
+          let prompt: string;
+          try {
+            prompt = renderDeferredBatch({
+              title: "[Queued messages while agent was busy]",
+              items: renderableItems,
+              summary,
+            });
+          } catch (err) {
+            defaultRuntime.error?.(
+              `collect-mode deferred batch render failed for ${key}; falling back to individual drain: ${String(err)}`,
+            );
+            if (summary) {
+              const summaryTarget = items[0];
+              if (!summaryTarget) {
+                break;
+              }
+              await effectiveRunFollowup({
+                execution: { visibility: "internal", agentPrompt: summary },
+                display: { visibility: "user-visible", text: summary },
+                run,
+                enqueuedAt: Date.now(),
+                originatingChannel: summaryTarget.originatingChannel,
+                originatingTo: summaryTarget.originatingTo,
+                originatingAccountId: summaryTarget.originatingAccountId,
+                originatingThreadId: summaryTarget.originatingThreadId,
+                originatingChatType: summaryTarget.originatingChatType,
+              });
+              clearQueueSummaryState(queue);
+            }
+            collectState.forceIndividualCollect = true;
+            continue;
+          }
+
           await effectiveRunFollowup({
-            prompt,
+            execution: { visibility: "internal", agentPrompt: prompt },
+            display: { visibility: "user-visible", text: prompt },
             run,
             enqueuedAt: Date.now(),
             ...routing,
@@ -151,7 +211,8 @@ export function scheduleFollowupDrain(
           if (
             !(await drainNextQueueItem(queue.items, async (item) => {
               await effectiveRunFollowup({
-                prompt: summaryPrompt,
+                execution: { visibility: "internal", agentPrompt: summaryPrompt },
+                display: { visibility: "user-visible", text: summaryPrompt },
                 run,
                 enqueuedAt: Date.now(),
                 originatingChannel: item.originatingChannel,

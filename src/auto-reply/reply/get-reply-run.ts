@@ -35,6 +35,7 @@ import { buildGroupChatContext, buildGroupIntro } from "./groups.js";
 import { buildInboundMetaSystemPrompt, buildInboundUserContextPrefix } from "./inbound-meta.js";
 import type { createModelSelectionState } from "./model-selection.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
+import type { FollowupRun } from "./queue.js";
 import { resolveQueueSettings } from "./queue/settings.js";
 import type { RouteReplyParams } from "./route-reply.js";
 import { buildBareSessionResetPrompt } from "./session-reset-prompt.js";
@@ -518,10 +519,12 @@ export async function runPreparedReply(
     isNewSession,
   });
   const authProfileIdSource = sessionEntry?.authProfileOverrideSource;
-  const followupRun = {
-    prompt: queuedBody,
+  const followupRun: FollowupRun = {
+    execution: { visibility: "internal", agentPrompt: queuedBody },
+    display: baseBodyTrimmedRaw
+      ? { visibility: "user-visible", summaryLine: baseBodyTrimmedRaw }
+      : undefined,
     messageId: sessionCtx.MessageSidFull ?? sessionCtx.MessageSid,
-    summaryLine: baseBodyTrimmedRaw,
     enqueuedAt: Date.now(),
     // Originating channel for reply routing.
     originatingChannel: ctx.OriginatingChannel,

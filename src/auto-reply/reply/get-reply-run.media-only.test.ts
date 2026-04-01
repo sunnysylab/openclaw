@@ -205,9 +205,9 @@ describe("runPreparedReply media-only handling", () => {
 
     const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
     expect(call).toBeTruthy();
-    expect(call?.followupRun.prompt).toContain("[Thread history - for context]");
-    expect(call?.followupRun.prompt).toContain("Earlier message in this thread");
-    expect(call?.followupRun.prompt).toContain("[User sent media without caption]");
+    expect(call?.followupRun.execution.agentPrompt).toContain("[Thread history - for context]");
+    expect(call?.followupRun.execution.agentPrompt).toContain("Earlier message in this thread");
+    expect(call?.followupRun.execution.agentPrompt).toContain("[User sent media without caption]");
   });
 
   it("keeps thread history context on follow-up turns", async () => {
@@ -220,8 +220,8 @@ describe("runPreparedReply media-only handling", () => {
 
     const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
     expect(call).toBeTruthy();
-    expect(call?.followupRun.prompt).toContain("[Thread history - for context]");
-    expect(call?.followupRun.prompt).toContain("Earlier message in this thread");
+    expect(call?.followupRun.execution.agentPrompt).toContain("[Thread history - for context]");
+    expect(call?.followupRun.execution.agentPrompt).toContain("Earlier message in this thread");
   });
 
   it("returns the empty-body reply when there is no text and no media", async () => {
@@ -404,7 +404,7 @@ describe("runPreparedReply media-only handling", () => {
     expect(call?.commandBody).toContain("System: [t] Node connected.");
   });
 
-  it("carries system events into followupRun.prompt for deferred turns", async () => {
+  it("carries system events into followupRun.execution.agentPrompt for deferred turns", async () => {
     // drainFormattedSystemEvents returns the events block; the caller prepends it to
     // effectiveBaseBody for the queue path so deferred turns see events.
     vi.mocked(drainFormattedSystemEvents).mockResolvedValueOnce("System: [t] Node connected.");
@@ -413,12 +413,12 @@ describe("runPreparedReply media-only handling", () => {
 
     const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
     expect(call).toBeTruthy();
-    expect(call?.followupRun.prompt).toContain("System: [t] Node connected.");
+    expect(call?.followupRun.execution.agentPrompt).toContain("System: [t] Node connected.");
   });
 
   it("does not strip think-hint token from deferred queue body", async () => {
     // In steer mode the inferred thinkLevel is never consumed, so the first token
-    // must not be stripped from the queue/steer body (followupRun.prompt).
+    // must not be stripped from the queue/steer execution payload.
     vi.mocked(drainFormattedSystemEvents).mockResolvedValueOnce(undefined);
 
     await runPreparedReply(
@@ -435,6 +435,6 @@ describe("runPreparedReply media-only handling", () => {
     const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
     expect(call).toBeTruthy();
     // Queue body (used by steer mode) must keep the full original text.
-    expect(call?.followupRun.prompt).toContain("low steer this conversation");
+    expect(call?.followupRun.execution.agentPrompt).toContain("low steer this conversation");
   });
 });

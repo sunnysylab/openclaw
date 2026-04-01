@@ -104,14 +104,15 @@ describe("runReplyAgent media path normalization", () => {
     const result = await runReplyAgent({
       commandBody: "generate",
       followupRun: createMockFollowupRun({
-        prompt: "generate",
+        execution: { visibility: "internal", agentPrompt: "generate" },
         run: {
+          ...createMockFollowupRun().run,
           agentId: "main",
           agentDir: "/tmp/agent",
           messageProvider: "telegram",
           workspaceDir: "/tmp/workspace",
         },
-      }) as unknown as FollowupRun,
+      }),
       queueKey: "main",
       resolvedQueue: { mode: "interrupt" } as QueueSettings,
       shouldSteer: false,

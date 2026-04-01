@@ -133,17 +133,19 @@ describe("runReplyAgent onAgentRunStart", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
         sessionId: "session",
         sessionKey: "main",
         messageProvider: "webchat",
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider,
         model,
         thinkLevel: "low",
@@ -244,8 +246,8 @@ describe("runReplyAgent authProfileId fallback scoping", () => {
 
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
         agentId: "main",
@@ -256,7 +258,7 @@ describe("runReplyAgent authProfileId fallback scoping", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude-opus",
         authProfileId: "anthropic:openclaw",
@@ -364,8 +366,8 @@ describe("runReplyAgent auto-compaction token update", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
         agentId: "main",
@@ -376,7 +378,7 @@ describe("runReplyAgent auto-compaction token update", () => {
         sessionFile: params.sessionFile ?? "/tmp/session.jsonl",
         workspaceDir: params.workspaceDir ?? "/tmp",
         config: params.config ?? {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
@@ -867,10 +869,12 @@ describe("runReplyAgent block streaming", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
         sessionId: "session",
         sessionKey: "main",
         messageProvider: "discord",
@@ -887,7 +891,7 @@ describe("runReplyAgent block streaming", () => {
             },
           },
         },
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
@@ -969,10 +973,12 @@ describe("runReplyAgent block streaming", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
         sessionId: "session",
         sessionKey: "main",
         messageProvider: "discord",
@@ -989,7 +995,7 @@ describe("runReplyAgent block streaming", () => {
             },
           },
         },
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
@@ -1050,17 +1056,19 @@ describe("runReplyAgent claude-cli routing", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
         sessionId: "session",
         sessionKey: "main",
         messageProvider: "webchat",
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "claude-cli",
         model: "opus-4.5",
         thinkLevel: "low",
@@ -1149,17 +1157,19 @@ describe("runReplyAgent messaging tool suppression", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
         sessionId: "session",
         sessionKey,
         messageProvider,
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
@@ -1372,17 +1382,19 @@ describe("runReplyAgent reminder commitment guard", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
         sessionId: "session",
         sessionKey: "main",
         messageProvider: "telegram",
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
@@ -1591,8 +1603,8 @@ describe("runReplyAgent fallback reasoning tags", () => {
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const sessionKey = params?.sessionKey ?? "main";
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
         agentId: "main",
@@ -1603,7 +1615,7 @@ describe("runReplyAgent fallback reasoning tags", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
@@ -1712,8 +1724,8 @@ describe("runReplyAgent response usage footer", () => {
     };
 
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
         agentId: "main",
@@ -1724,7 +1736,7 @@ describe("runReplyAgent response usage footer", () => {
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
@@ -1823,17 +1835,19 @@ describe("runReplyAgent transient HTTP retry", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
         sessionId: "session",
         sessionKey: "main",
         messageProvider: "telegram",
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
@@ -1899,17 +1913,19 @@ describe("runReplyAgent billing error classification", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
         sessionId: "session",
         sessionKey: "main",
         messageProvider: "telegram",
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
@@ -1960,17 +1976,19 @@ describe("runReplyAgent mid-turn rate-limit fallback", () => {
     } as unknown as TemplateContext;
     const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
     const followupRun = {
-      prompt: "hello",
-      summaryLine: "hello",
+      execution: { visibility: "internal", agentPrompt: "hello" },
+      display: { visibility: "user-visible", summaryLine: "hello" },
       enqueuedAt: Date.now(),
       run: {
+        agentId: "main",
+        agentDir: "/tmp/agent",
         sessionId: "session",
         sessionKey: "main",
         messageProvider: "telegram",
         sessionFile: "/tmp/session.jsonl",
         workspaceDir: "/tmp",
         config: {},
-        skillsSnapshot: {},
+        skillsSnapshot: { prompt: "", skills: [] },
         provider: "anthropic",
         model: "claude",
         thinkLevel: "low",
