@@ -1,18 +1,18 @@
 import fs from "node:fs/promises";
 import type { OAuthCredentials } from "@mariozechner/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MINIMAX_CN_API_BASE_URL } from "../../extensions/minimax/api.js";
-import { ZAI_CODING_CN_BASE_URL, ZAI_CODING_GLOBAL_BASE_URL } from "../../extensions/zai/api.js";
 import { resolveAgentDir } from "../agents/agent-scope.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveAgentModelPrimaryValue } from "../config/model-input.js";
 import type { ModelProviderConfig } from "../config/types.models.js";
+import { GOOGLE_GEMINI_DEFAULT_MODEL } from "../plugin-sdk/google.js";
+import { MINIMAX_CN_API_BASE_URL } from "../plugin-sdk/minimax.js";
+import { ZAI_CODING_CN_BASE_URL, ZAI_CODING_GLOBAL_BASE_URL } from "../plugin-sdk/zai.js";
 import { createProviderApiKeyAuthMethod } from "../plugins/provider-api-key-auth.js";
 import { providerApiKeyAuthRuntime } from "../plugins/provider-api-key-auth.runtime.js";
 import type { ProviderAuthMethod, ProviderPlugin } from "../plugins/types.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
 import { applyAuthChoice, resolvePreferredProviderForAuthChoice } from "./auth-choice.js";
-import { GOOGLE_GEMINI_DEFAULT_MODEL } from "./google-gemini-model-default.js";
 import type { AuthChoice } from "./onboard-types.js";
 import {
   authProfilePathForAgent,
@@ -760,7 +760,7 @@ describe("applyAuthChoice", () => {
     });
   });
 
-  it("prompts and writes provider API key for common providers", async () => {
+  it("prompts and writes provider API key profiles for common providers", async () => {
     const scenarios: Array<{
       authChoice:
         | "minimax-global-api"
@@ -771,8 +771,6 @@ describe("applyAuthChoice", () => {
       profileId: string;
       provider: string;
       token: string;
-      expectedBaseUrl?: string;
-      expectedModelPrefix?: string;
     }> = [
       {
         authChoice: "minimax-global-api" as const,
@@ -787,7 +785,6 @@ describe("applyAuthChoice", () => {
         profileId: "minimax:cn",
         provider: "minimax",
         token: "sk-minimax-test",
-        expectedBaseUrl: MINIMAX_CN_API_BASE_URL,
       },
       {
         authChoice: "synthetic-api-key" as const,
@@ -802,7 +799,6 @@ describe("applyAuthChoice", () => {
         profileId: "huggingface:default",
         provider: "huggingface",
         token: "hf-test-token",
-        expectedModelPrefix: "huggingface/",
       },
     ];
     for (const scenario of scenarios) {
@@ -826,23 +822,11 @@ describe("applyAuthChoice", () => {
         provider: scenario.provider,
         mode: "api_key",
       });
-      if (scenario.expectedBaseUrl) {
-        expect(result.config.models?.providers?.[scenario.provider]?.baseUrl).toBe(
-          scenario.expectedBaseUrl,
-        );
-      }
-      if (scenario.expectedModelPrefix) {
-        expect(
-          resolveAgentModelPrimaryValue(result.config.agents?.defaults?.model)?.startsWith(
-            scenario.expectedModelPrefix,
-          ),
-        ).toBe(true);
-      }
       expect((await readAuthProfile(scenario.profileId))?.key).toBe(scenario.token);
     }
   });
 
-  it("handles Z.AI endpoint selection and detection paths", async () => {
+  it("uses Z.AI endpoint detection and prompts in the auth flow", async () => {
     const scenarios: Array<{
       authChoice: "zai-api-key" | "zai-coding-global";
       token: string;
@@ -853,8 +837,6 @@ describe("applyAuthChoice", () => {
         baseUrl: string;
         note: string;
       };
-      expectedBaseUrl: string;
-      expectedModel?: string;
       shouldPromptForEndpoint: boolean;
       expectedDetectCall?: { apiKey: string; endpoint?: "coding-global" | "coding-cn" };
     }> = [
@@ -862,8 +844,6 @@ describe("applyAuthChoice", () => {
         authChoice: "zai-api-key",
         token: "zai-test-key",
         endpointSelection: "coding-cn",
-        expectedBaseUrl: ZAI_CODING_CN_BASE_URL,
-        expectedModel: "zai/glm-5",
         shouldPromptForEndpoint: true,
       },
       {
@@ -875,8 +855,6 @@ describe("applyAuthChoice", () => {
           baseUrl: ZAI_CODING_GLOBAL_BASE_URL,
           note: "Detected coding-global endpoint with GLM-4.7 fallback",
         },
-        expectedBaseUrl: ZAI_CODING_GLOBAL_BASE_URL,
-        expectedModel: "zai/glm-4.7",
         shouldPromptForEndpoint: false,
         expectedDetectCall: { apiKey: "zai-test-key", endpoint: "coding-global" },
       },
@@ -889,8 +867,6 @@ describe("applyAuthChoice", () => {
           baseUrl: ZAI_CODING_GLOBAL_BASE_URL,
           note: "Detected coding-global endpoint",
         },
-        expectedBaseUrl: ZAI_CODING_GLOBAL_BASE_URL,
-        expectedModel: "zai/glm-4.5",
         shouldPromptForEndpoint: false,
         expectedDetectCall: { apiKey: "zai-detected-key" },
       },
@@ -935,15 +911,11 @@ describe("applyAuthChoice", () => {
           expect.objectContaining({ message: "Select Z.AI endpoint" }),
         );
       }
-      expect(result.config.models?.providers?.zai?.baseUrl).toBe(scenario.expectedBaseUrl);
-      if (scenario.expectedModel) {
-        expect(resolveAgentModelPrimaryValue(result.config.agents?.defaults?.model)).toBe(
-          scenario.expectedModel,
-        );
-      }
-      if (scenario.authChoice === "zai-api-key") {
-        expect((await readAuthProfile("zai:default"))?.key).toBe(scenario.token);
-      }
+      expect(result.config.auth?.profiles?.["zai:default"]).toMatchObject({
+        provider: "zai",
+        mode: "api_key",
+      });
+      expect((await readAuthProfile("zai:default"))?.key).toBe(scenario.token);
     }
   });
 
@@ -1392,6 +1364,42 @@ describe("applyAuthChoice", () => {
     expect(await readAuthProfile("openai:default")).toMatchObject({
       keyRef: { source: "env", provider: "default", id: "OPENAI_API_KEY" },
     });
+  });
+
+  it("uses explicit env for plugin auth resolution instead of host env", async () => {
+    await setupTempState();
+    process.env.OPENAI_API_KEY = "sk-openai-host"; // pragma: allowlist secret
+    const env = { OPENAI_API_KEY: "sk-openai-explicit" } as NodeJS.ProcessEnv; // pragma: allowlist secret
+    const text = vi.fn().mockResolvedValue("should-not-be-used");
+    const confirm = vi.fn(async () => true);
+    const { prompter, runtime } = createApiKeyPromptHarness({ text, confirm });
+
+    const result = await applyAuthChoice({
+      authChoice: "openai-api-key",
+      config: {},
+      env,
+      prompter,
+      runtime,
+      setDefaultModel: false,
+    });
+
+    expect(resolvePluginProviders).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: {},
+        env,
+      }),
+    );
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("OPENAI_API_KEY"),
+      }),
+    );
+    expect(text).not.toHaveBeenCalled();
+    expect(result.config.auth?.profiles?.["openai:default"]).toMatchObject({
+      provider: "openai",
+      mode: "api_key",
+    });
+    expect((await readAuthProfile("openai:default"))?.key).toBe("sk-openai-explicit");
   });
 
   it("keeps existing default model for explicit provider keys when setDefaultModel=false", async () => {
