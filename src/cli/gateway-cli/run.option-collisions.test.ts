@@ -21,7 +21,7 @@ const runGatewayLoop = vi.fn(async ({ start }: { start: () => Promise<unknown> }
 });
 const configState = vi.hoisted(() => ({
   cfg: {} as Record<string, unknown>,
-  snapshot: { valid: true, exists: false, issues: [] } as Record<string, unknown>,
+  snapshot: { valid: true, exists: false, issues: [], config: {} } as Record<string, unknown>,
 }));
 
 const { runtimeErrors, defaultRuntime, resetRuntimeCapture } = createCliRuntimeCapture();
@@ -135,7 +135,7 @@ describe("gateway run option collisions", () => {
   beforeEach(() => {
     resetRuntimeCapture();
     configState.cfg = {};
-    configState.snapshot = { valid: true, exists: false, issues: [] };
+    configState.snapshot = { valid: true, exists: false, issues: [], config: {} };
     startGatewayServer.mockClear();
     setGatewayWsLogStyle.mockClear();
     setVerbose.mockClear();
