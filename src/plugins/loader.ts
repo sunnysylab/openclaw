@@ -91,6 +91,13 @@ export type PluginLoadOptions = {
    */
   preferSetupRuntimeForChannelPlugins?: boolean;
   activate?: boolean;
+  /**
+   * When true, downgrade "full" registration to "provider-only" so plugins
+   * skip expensive tool, hook, command, and channel registration. Only
+   * provider registration methods remain active. Use this for provider
+   * resolution paths that don't need full plugin capabilities.
+   */
+  providerOnly?: boolean;
   throwOnLoadError?: boolean;
 };
 
@@ -238,6 +245,7 @@ function buildCacheKey(params: {
   runtimeSubagentMode?: "default" | "explicit" | "gateway-bindable";
   pluginSdkResolution?: PluginSdkResolutionPreference;
   coreGatewayMethodNames?: string[];
+  providerOnly?: boolean;
 }): string {
   const { roots, loadPaths } = resolvePluginCacheInputs({
     workspaceDir: params.workspaceDir,
@@ -269,7 +277,7 @@ function buildCacheKey(params: {
     ...params.plugins,
     installs,
     loadPaths,
-  })}::${scopeKey}::${setupOnlyKey}::${startupChannelMode}::${params.runtimeSubagentMode ?? "default"}::${params.pluginSdkResolution ?? "auto"}::${gatewayMethodsKey}`;
+  })}::${scopeKey}::${setupOnlyKey}::${startupChannelMode}::${params.runtimeSubagentMode ?? "default"}::${params.pluginSdkResolution ?? "auto"}::${gatewayMethodsKey}::${params.providerOnly === true ? "provider-only" : "full"}`;
 }
 
 function normalizeScopedPluginIds(ids?: string[]): string[] | undefined {
@@ -302,7 +310,8 @@ function hasExplicitCompatibilityInputs(options: PluginLoadOptions): boolean {
     options.pluginSdkResolution !== undefined ||
     options.coreGatewayHandlers !== undefined ||
     options.includeSetupOnlyChannelPlugins === true ||
-    options.preferSetupRuntimeForChannelPlugins === true,
+    options.preferSetupRuntimeForChannelPlugins === true ||
+    options.providerOnly === true,
   );
 }
 
@@ -325,6 +334,7 @@ function resolvePluginLoadCacheContext(options: PluginLoadOptions = {}) {
     runtimeSubagentMode: resolveRuntimeSubagentMode(options.runtimeOptions),
     pluginSdkResolution: options.pluginSdkResolution,
     coreGatewayMethodNames,
+    providerOnly: options.providerOnly,
   });
   return {
     env,
@@ -1074,7 +1084,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       });
     };
 
-    const registrationMode = enableState.enabled
+    const baseRegistrationMode = enableState.enabled
       ? !validateOnly &&
         shouldLoadChannelPluginInSetupRuntime({
           manifestChannels: manifestRecord.channels,
@@ -1090,6 +1100,19 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       : includeSetupOnlyChannelPlugins && !validateOnly && manifestRecord.channels.length > 0
         ? "setup-only"
         : null;
+
+    // When providerOnly is set, downgrade runtime-bearing modes to
+    // "provider-only" so plugins skip expensive tool, hook, command, and
+    // channel registration while still loading the full plugin entry needed to
+    // surface provider metadata. This is used by resolvePluginProviders which
+    // only needs provider metadata.
+    // Note: !shouldActivate alone is NOT sufficient — channel setup snapshot
+    // loads also use activate:false but need registerChannel to work.
+    const registrationMode =
+      options.providerOnly &&
+      (baseRegistrationMode === "full" || baseRegistrationMode === "setup-runtime")
+        ? "provider-only"
+        : baseRegistrationMode;
 
     if (!registrationMode) {
       record.status = "disabled";
@@ -1166,7 +1189,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     // Fast-path bundled memory plugins that are guaranteed disabled by slot policy.
     // This avoids opening/importing heavy memory plugin modules that will never register.
     if (
-      registrationMode === "full" &&
+      (registrationMode === "full" || registrationMode === "provider-only") &&
       candidate.origin === "bundled" &&
       hasKind(manifestRecord.kind, "memory")
     ) {
@@ -1284,7 +1307,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       memorySlotMatched = true;
     }
 
-    if (registrationMode === "full") {
+    if (registrationMode === "full" || registrationMode === "provider-only") {
       const memoryDecision = resolveMemorySlotDecision({
         id: record.id,
         kind: record.kind,
