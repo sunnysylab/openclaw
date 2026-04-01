@@ -789,6 +789,16 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                 type: "number",
                 exclusiveMinimum: 0,
               },
+              overloadedProfileRotations: {
+                type: "integer",
+                minimum: 0,
+                maximum: 9007199254740991,
+              },
+              overloadedBackoffMs: {
+                type: "integer",
+                minimum: 0,
+                maximum: 9007199254740991,
+              },
             },
             additionalProperties: false,
           },
@@ -10796,6 +10806,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                   },
                 ],
               },
+              searchTool: {
+                type: "string",
+                minLength: 1,
+              },
               includeDefaultMemory: {
                 type: "boolean",
               },
@@ -11028,6 +11042,25 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                 url: {
                   type: "string",
                   format: "uri",
+                },
+                headers: {
+                  type: "object",
+                  propertyNames: {
+                    type: "string",
+                  },
+                  additionalProperties: {
+                    anyOf: [
+                      {
+                        type: "string",
+                      },
+                      {
+                        type: "number",
+                      },
+                      {
+                        type: "boolean",
+                      },
+                    ],
+                  },
                 },
               },
               additionalProperties: {},
@@ -15390,6 +15423,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
     "tools.web.search.perplexity.apiKey": {
       sensitive: true,
       tags: ["security", "auth", "tools"],
+    },
+    "mcp.servers.*.headers.*": {
+      sensitive: true,
+      tags: ["security"],
     },
     "skills.entries.*.apiKey": {
       sensitive: true,
