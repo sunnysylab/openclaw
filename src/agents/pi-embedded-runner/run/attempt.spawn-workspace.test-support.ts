@@ -24,8 +24,26 @@ const hoisted = vi.hoisted(() => {
   const createAgentSessionMock = vi.fn();
   const sessionManagerOpenMock = vi.fn();
   const resolveSandboxContextMock = vi.fn();
-  const subscribeEmbeddedPiSessionMock = vi.fn();
-  const acquireSessionWriteLockMock = vi.fn();
+  const subscribeEmbeddedPiSessionMock = vi.fn(() => ({
+    assistantTexts: [],
+    toolMetas: [],
+    unsubscribe: () => {},
+    waitForCompactionRetry: async () => {},
+    getMessagingToolSentTexts: () => [],
+    getMessagingToolSentMediaUrls: () => [],
+    getMessagingToolSentTargets: () => [],
+    getSuccessfulCronAdds: () => 0,
+    didSendViaMessagingTool: () => false,
+    didSendDeterministicApprovalPrompt: () => false,
+    getLastToolError: () => undefined,
+    getUsageTotals: () => undefined,
+    getToolTokenTotal: () => undefined,
+    getCompactionCount: () => 0,
+    isCompacting: () => false,
+  }));
+  const acquireSessionWriteLockMock = vi.fn(async () => ({
+    release: async () => {},
+  }));
   const resolveBootstrapContextForRunMock = vi.fn<() => Promise<BootstrapContext>>(async () => ({
     bootstrapFiles: [],
     contextFiles: [],
@@ -209,7 +227,8 @@ vi.mock("../system-prompt.js", () => ({
 }));
 
 vi.mock("../extra-params.js", () => ({
-  applyExtraParamsToAgent: () => {},
+  applyExtraParamsToAgent: () => ({ effectiveExtraParams: undefined }),
+  resolveAgentTransportOverride: () => undefined,
 }));
 
 vi.mock("../../openai-ws-stream.js", () => ({
@@ -251,6 +270,7 @@ vi.mock("../../pi-tools.js", () => ({
 
 vi.mock("../../pi-bundle-mcp-tools.js", () => ({
   createBundleMcpToolRuntime: async () => undefined,
+  getOrCreateSessionMcpRuntime: async () => undefined,
 }));
 
 vi.mock("../../pi-bundle-lsp-runtime.js", () => ({
@@ -459,6 +479,7 @@ export function createSubscriptionMock() {
     didSendDeterministicApprovalPrompt: () => false,
     getLastToolError: () => undefined,
     getUsageTotals: () => undefined,
+    getToolTokenTotal: () => undefined,
     getCompactionCount: () => 0,
     isCompacting: () => false,
   };
