@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseByteSize } from "../cli/parse-bytes.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
+import { MAX_SESSION_USAGE_CACHE_MAX_ENTRIES } from "./gateway-sessions-list-limits.js";
 import { ToolsSchema } from "./zod-schema.agent-runtime.js";
 import { AgentsSchema, AudioSchema, BindingsSchema, BroadcastSchema } from "./zod-schema.agents.js";
 import { ApprovalsSchema } from "./zod-schema.approvals.js";
@@ -871,6 +872,19 @@ export const OpenClawSchema = z
               .optional(),
             allowCommands: z.array(z.string()).optional(),
             denyCommands: z.array(z.string()).optional(),
+          })
+          .strict()
+          .optional(),
+        sessionsList: z
+          .object({
+            usageCacheMaxEntries: z
+              .number()
+              .int()
+              .positive()
+              .max(MAX_SESSION_USAGE_CACHE_MAX_ENTRIES)
+              .optional(),
+            prewarmUsageCache: z.boolean().optional(),
+            prewarmConcurrency: z.number().int().min(1).max(64).optional(),
           })
           .strict()
           .optional(),
