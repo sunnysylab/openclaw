@@ -16,6 +16,23 @@ function isOpenRouterAnthropicModel(provider: string, modelId: string): boolean 
   return provider.toLowerCase() === "openrouter" && modelId.toLowerCase().startsWith("anthropic/");
 }
 
+const CACHEABLE_BLOCK_TYPES = new Set(["text", "image", "tool_result"]);
+
+function applyCacheControl(msg: { content?: unknown }): void {
+  const cacheControl = { type: "ephemeral" };
+  if (typeof msg.content === "string") {
+    msg.content = [{ type: "text", text: msg.content, cache_control: cacheControl }];
+  } else if (Array.isArray(msg.content) && msg.content.length > 0) {
+    for (let i = msg.content.length - 1; i >= 0; i--) {
+      const block = msg.content[i];
+      if (block && typeof block === "object" && CACHEABLE_BLOCK_TYPES.has((block as { type?: string }).type ?? "")) {
+        (block as Record<string, unknown>).cache_control = cacheControl;
+        break;
+      }
+    }
+  }
+}
+
 function mapThinkingLevelToOpenRouterReasoningEffort(
   thinkingLevel: ThinkLevel,
 ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
@@ -69,22 +86,28 @@ export function createOpenRouterSystemCacheWrapper(baseStreamFn: StreamFn | unde
 
     return streamWithPayloadPatch(underlying, model, context, options, (payloadObj) => {
       const messages = payloadObj.messages;
-      if (Array.isArray(messages)) {
-        for (const msg of messages as Array<{ role?: string; content?: unknown }>) {
-          if (msg.role !== "system" && msg.role !== "developer") {
-            continue;
-          }
-          if (typeof msg.content === "string") {
-            msg.content = [
-              { type: "text", text: msg.content, cache_control: { type: "ephemeral" } },
-            ];
-          } else if (Array.isArray(msg.content) && msg.content.length > 0) {
-            const last = msg.content[msg.content.length - 1];
-            if (last && typeof last === "object") {
-              (last as Record<string, unknown>).cache_control = { type: "ephemeral" };
-            }
-          }
+      if (!Array.isArray(messages)) {
+        return;
+      }
+      const typedMessages = messages as Array<{ role?: string; content?: unknown }>;
+      // Anthropic allows max 4 explicit cache_control breakpoints per request.
+      // We use at most 2: one on the last system/developer message (caches the
+      // stable instruction prefix) and one on the last user message (caches
+      // conversation history). Marking only the *last* system message is
+      // sufficient because caching is a prefix match — everything before the
+      // breakpoint is cached together.
+      let lastSystemMsg: { role?: string; content?: unknown } | undefined;
+      for (const msg of typedMessages) {
+        if (msg.role === "system" || msg.role === "developer") {
+          lastSystemMsg = msg;
         }
+      }
+      if (lastSystemMsg) {
+        applyCacheControl(lastSystemMsg);
+      }
+      const lastMsg = typedMessages[typedMessages.length - 1];
+      if (lastMsg?.role === "user") {
+        applyCacheControl(lastMsg);
       }
     });
   };
