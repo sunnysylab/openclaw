@@ -39,19 +39,23 @@ function resolveAgentLookupCache(cfg: OpenClawConfig): AgentLookupCache {
   return next;
 }
 
-export function pickFirstExistingAgentId(cfg: OpenClawConfig, agentId: string): string {
+export function resolveConfiguredAgentId(cfg: OpenClawConfig, agentId: string): string | null {
   const lookup = resolveAgentLookupCache(cfg);
   const trimmed = (agentId ?? "").trim();
   if (!trimmed) {
-    return lookup.fallbackDefaultAgentId;
+    return null;
   }
-  const normalized = normalizeAgentId(trimmed);
   if (lookup.byNormalizedId.size === 0) {
     return sanitizeAgentId(trimmed);
   }
-  const resolved = lookup.byNormalizedId.get(normalized);
+  const normalized = normalizeAgentId(trimmed);
+  return lookup.byNormalizedId.get(normalized) ?? null;
+}
+
+export function pickFirstExistingAgentId(cfg: OpenClawConfig, agentId: string): string {
+  const resolved = resolveConfiguredAgentId(cfg, agentId);
   if (resolved) {
     return resolved;
   }
-  return lookup.fallbackDefaultAgentId;
+  return resolveAgentLookupCache(cfg).fallbackDefaultAgentId;
 }

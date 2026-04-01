@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveDiscordAccount, resolveDiscordMaxLinesPerMessage } from "./accounts.js";
+import {
+  resolveConfiguredDiscordBotAgentIdsByBotUserId,
+  resolveDiscordAccount,
+  resolveDiscordMaxLinesPerMessage,
+} from "./accounts.js";
 
 describe("resolveDiscordAccount allowFrom precedence", () => {
   it("prefers accounts.default.allowFrom over top-level for default account", () => {
@@ -113,5 +117,56 @@ describe("resolveDiscordMaxLinesPerMessage", () => {
     });
 
     expect(resolved).toBe(80);
+  });
+});
+
+describe("resolveConfiguredDiscordBotAgentIdsByBotUserId", () => {
+  it("maps the current account bot id to its explicitly owned agent", () => {
+    const cfg = {
+      channels: {
+        discord: {
+          accounts: {
+            ops: { token: "MTIz.abc.def" },
+          },
+        },
+      },
+      bindings: [
+        {
+          agentId: "ops-agent",
+          match: { channel: "discord", accountId: "ops" },
+        },
+      ],
+    };
+
+    expect(
+      resolveConfiguredDiscordBotAgentIdsByBotUserId({
+        cfg,
+        currentAccountId: "ops",
+        currentBotUserId: "BOT-OPS",
+      }),
+    ).toEqual(new Map([["BOT-OPS", "ops-agent"]]));
+  });
+
+  it("skips accounts that do not have an explicit ownership binding", () => {
+    const cfg = {
+      agents: {
+        list: [{ id: "main", default: true, model: "gpt-5" }],
+      },
+      channels: {
+        discord: {
+          accounts: {
+            ops: { token: "MTIz.abc.def" },
+          },
+        },
+      },
+    };
+
+    expect(
+      resolveConfiguredDiscordBotAgentIdsByBotUserId({
+        cfg,
+        currentAccountId: "ops",
+        currentBotUserId: "BOT-OPS",
+      }).size,
+    ).toBe(0);
   });
 });

@@ -3,7 +3,7 @@ import { normalizeChatChannelId } from "../channels/registry.js";
 import { listRouteBindings } from "../config/bindings.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { AgentRouteBinding } from "../config/types.agents.js";
-import { pickFirstExistingAgentId } from "./agent-lookup.js";
+import { resolveConfiguredAgentId } from "./agent-lookup.js";
 import { normalizeAccountId, normalizeAgentId } from "./session-key.js";
 
 function normalizeBindingChannelId(raw?: string | null): string | null {
@@ -137,20 +137,31 @@ export function resolveOwningAgentIdForChannelAccount(
   }
   const normalizedAccountId = normalizeAccountId(accountId);
   let wildcardAgentId: string | null = null;
+  let sawExactMatch = false;
   for (const binding of listBindings(cfg)) {
     const resolved = resolveOwnershipBindingMatch(binding);
     if (!resolved || resolved.channelId !== normalizedChannel) {
       continue;
     }
     if (resolved.isWildcard) {
-      wildcardAgentId ??= pickFirstExistingAgentId(cfg, resolved.agentId);
+      const resolvedAgentId = resolveConfiguredAgentId(cfg, resolved.agentId);
+      if (resolvedAgentId) {
+        wildcardAgentId ??= resolvedAgentId;
+      }
       continue;
     }
     if (resolved.accountId === normalizedAccountId) {
-      return pickFirstExistingAgentId(cfg, resolved.agentId);
+      sawExactMatch = true;
+      const resolvedAgentId = resolveConfiguredAgentId(cfg, resolved.agentId);
+      if (resolvedAgentId) {
+        return resolvedAgentId;
+      }
     }
   }
-  return wildcardAgentId ?? pickFirstExistingAgentId(cfg, resolveDefaultAgentId(cfg));
+  if (sawExactMatch) {
+    return null;
+  }
+  return wildcardAgentId;
 }
 
 export function buildChannelAccountBindings(cfg: OpenClawConfig) {

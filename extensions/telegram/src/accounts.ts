@@ -218,7 +218,7 @@ export function listEnabledTelegramAccounts(cfg: OpenClawConfig): ResolvedTelegr
     .filter((account) => account.enabled);
 }
 
-const telegramSenderAgentIdsByBotIdCache = new WeakMap<OpenClawConfig, Map<string, string>>();
+const telegramIdentityAgentIdsByBotIdCache = new WeakMap<OpenClawConfig, Map<string, string>>();
 
 function parseTelegramBotIdFromToken(token: string | undefined): string | undefined {
   const match = /^(\d+):/.exec(token?.trim() ?? "");
@@ -228,7 +228,7 @@ function parseTelegramBotIdFromToken(token: string | undefined): string | undefi
 export function resolveConfiguredTelegramBotAgentIdsByBotId(
   cfg: OpenClawConfig,
 ): ReadonlyMap<string, string> {
-  const cached = telegramSenderAgentIdsByBotIdCache.get(cfg);
+  const cached = telegramIdentityAgentIdsByBotIdCache.get(cfg);
   if (cached) {
     return cached;
   }
@@ -243,6 +243,6 @@ export function resolveConfiguredTelegramBotAgentIdsByBotId(
       ids.set(botId, senderAgentId);
     }
   }
-  telegramSenderAgentIdsByBotIdCache.set(cfg, ids);
+  telegramIdentityAgentIdsByBotIdCache.set(cfg, ids);
   return ids;
 }

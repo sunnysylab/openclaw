@@ -63,17 +63,30 @@ describe("resolveOwningAgentIdForChannelAccount", () => {
     expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "default")).toBe("default-agent");
   });
 
-  it("falls back to the default agent when no binding matches", () => {
+  it("preserves explicit ownership bindings when no configured agent list is present", () => {
+    const cfg = {
+      bindings: [
+        {
+          agentId: "ops-agent",
+          match: { channel: "discord", accountId: "ops" },
+        },
+      ],
+    } as OpenClawConfig;
+
+    expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "ops")).toBe("ops-agent");
+  });
+
+  it("returns null when no ownership binding matches", () => {
     const cfg = {
       agents: {
         list: [{ id: "default-agent", default: true, model: "gpt-5" }],
       },
     } as OpenClawConfig;
 
-    expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "ops")).toBe("default-agent");
+    expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "ops")).toBeNull();
   });
 
-  it("canonicalizes stale binding agent ids to the configured default agent", () => {
+  it("returns null when an exact ownership binding points at a stale agent id", () => {
     const cfg = {
       agents: {
         list: [{ id: "default-agent", default: true, model: "gpt-5" }],
@@ -86,6 +99,26 @@ describe("resolveOwningAgentIdForChannelAccount", () => {
       ],
     } as OpenClawConfig;
 
-    expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "ops")).toBe("default-agent");
+    expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "ops")).toBeNull();
+  });
+
+  it("does not fall back to a wildcard binding when an exact ownership binding is stale", () => {
+    const cfg = {
+      agents: {
+        list: [{ id: "default-agent", default: true, model: "gpt-5" }],
+      },
+      bindings: [
+        {
+          agentId: "removed-agent",
+          match: { channel: "discord", accountId: "ops" },
+        },
+        {
+          agentId: "default-agent",
+          match: { channel: "discord", accountId: "*" },
+        },
+      ],
+    } as OpenClawConfig;
+
+    expect(resolveOwningAgentIdForChannelAccount(cfg, "discord", "ops")).toBeNull();
   });
 });
