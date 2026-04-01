@@ -957,7 +957,20 @@ describe("buildStatusMessage", () => {
     });
   }
 
-  function buildTranscriptStatusText(params: { sessionId: string; sessionKey: string }) {
+  function buildTranscriptStatusText(params: {
+    sessionId: string;
+    sessionKey: string;
+    sessionEntry?: Partial<{
+      cacheRead: number;
+      cacheWrite: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      contextTokens: number;
+      updatedAt: number;
+      sessionId: string;
+    }>;
+  }) {
     return buildStatusMessage({
       agent: {
         model: "anthropic/claude-opus-4-5",
@@ -968,6 +981,7 @@ describe("buildStatusMessage", () => {
         updatedAt: 0,
         totalTokens: 3,
         contextTokens: 32_000,
+        ...params.sessionEntry,
       },
       sessionKey: params.sessionKey,
       sessionScope: "per-sender",
@@ -993,6 +1007,56 @@ describe("buildStatusMessage", () => {
         });
 
         expect(normalizeTestText(text)).toContain("Context: 1.0k/32k");
+      },
+      { prefix: "openclaw-status-" },
+    );
+  });
+
+  it("hydrates cache usage from transcript fallback when session entry omits cache fields", async () => {
+    await withTempHome(
+      async (dir) => {
+        const sessionId = "sess-cache-fallback";
+        writeBaselineTranscriptUsageLog({
+          dir,
+          agentId: "main",
+          sessionId,
+        });
+
+        const text = buildTranscriptStatusText({
+          sessionId,
+          sessionKey: "agent:main:main",
+        });
+
+        const normalized = normalizeTestText(text);
+        expect(normalized).toContain("Cache: 100% hit");
+        expect(normalized).toContain("1.0k cached");
+      },
+      { prefix: "openclaw-status-" },
+    );
+  });
+
+  it("does not overwrite nonzero cache fields already present on the session entry", async () => {
+    await withTempHome(
+      async (dir) => {
+        const sessionId = "sess-cache-precedence";
+        writeBaselineTranscriptUsageLog({
+          dir,
+          agentId: "main",
+          sessionId,
+        });
+
+        const text = buildTranscriptStatusText({
+          sessionId,
+          sessionKey: "agent:main:main",
+          sessionEntry: {
+            cacheRead: 250,
+            cacheWrite: 50,
+          },
+        });
+
+        const normalized = normalizeTestText(text);
+        expect(normalized).toContain("250 cached");
+        expect(normalized).not.toContain("1.0k cached");
       },
       { prefix: "openclaw-status-" },
     );
