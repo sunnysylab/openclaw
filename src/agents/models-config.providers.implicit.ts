@@ -31,6 +31,23 @@ const PROVIDER_IMPLICIT_MERGERS: Partial<
   >
 > = {
   ollama: ({ implicit }) => implicit,
+  "github-copilot": ({ existing, implicit }) => {
+    // Deep-merge headers so IDE headers are preserved as defaults while
+    // user-configured headers can override individual keys.
+    const mergedHeaders =
+      implicit.headers || existing?.headers
+        ? { ...implicit.headers, ...existing?.headers }
+        : undefined;
+    return {
+      ...implicit,
+      ...existing,
+      ...(mergedHeaders ? { headers: mergedHeaders } : {}),
+      models:
+        Array.isArray(existing?.models) && existing.models.length > 0
+          ? existing.models
+          : implicit.models,
+    };
+  },
 };
 
 const PLUGIN_DISCOVERY_ORDERS = ["simple", "profile", "paired", "late"] as const;

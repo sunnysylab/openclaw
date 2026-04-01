@@ -5,6 +5,9 @@ import {
   listProfilesForProvider,
 } from "openclaw/plugin-sdk/provider-auth";
 import { githubCopilotLoginCommand } from "openclaw/plugin-sdk/provider-auth-login";
+import type { ModelDefinitionConfig } from "openclaw/plugin-sdk/provider-model-shared";
+import { discoverCopilotModels, COPILOT_IDE_HEADERS } from "./discovery.js";
+import { getDefaultCopilotModelIds } from "./models-defaults.js";
 import { PROVIDER_ID, resolveCopilotForwardCompatModel } from "./models.js";
 import { DEFAULT_COPILOT_API_BASE_URL, resolveCopilotApiToken } from "./token.js";
 import { fetchCopilotUsage } from "./usage.js";
@@ -124,21 +127,50 @@ export default definePluginEntry({
             return null;
           }
           let baseUrl = DEFAULT_COPILOT_API_BASE_URL;
+          let copilotToken: string | undefined;
           if (githubToken) {
             try {
-              const token = await resolveCopilotApiToken({
+              const resolved = await resolveCopilotApiToken({
                 githubToken,
                 env: ctx.env,
               });
-              baseUrl = token.baseUrl;
+              baseUrl = resolved.baseUrl;
+              copilotToken = resolved.token;
             } catch {
               baseUrl = DEFAULT_COPILOT_API_BASE_URL;
             }
           }
+
+          // Skip discovery when the user has explicitly configured models for
+          // this provider — the network call (up to 10s timeout) would be wasted
+          // since mergeImplicitProviderConfig keeps existing models.
+          const explicitModels =
+            ctx.config?.models?.providers?.["github-copilot"]?.models;
+          const hasExplicitModels =
+            Array.isArray(explicitModels) ? explicitModels.length > 0
+            : explicitModels != null && typeof explicitModels === "object"
+              ? Object.keys(explicitModels).length > 0
+              : false;
+
+          let discoveredModels: ModelDefinitionConfig[] = [];
+          if (copilotToken && !hasExplicitModels) {
+            try {
+              const knownModelIds = new Set(getDefaultCopilotModelIds());
+              discoveredModels = await discoverCopilotModels({
+                baseUrl,
+                copilotToken,
+                knownModelIds,
+              });
+            } catch {
+              // best-effort: discovery failure is not fatal
+            }
+          }
+
           return {
             provider: {
               baseUrl,
-              models: [],
+              headers: COPILOT_IDE_HEADERS,
+              models: discoveredModels,
             },
           };
         },
