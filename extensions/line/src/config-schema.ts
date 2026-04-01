@@ -2,7 +2,7 @@ import { buildChannelConfigSchema } from "openclaw/plugin-sdk/channel-config-sch
 import { z } from "openclaw/plugin-sdk/zod";
 
 const DmPolicySchema = z.enum(["open", "allowlist", "pairing", "disabled"]);
-const GroupPolicySchema = z.enum(["open", "allowlist", "disabled"]);
+const GroupPolicySchema = z.enum(["open", "allowlist", "disabled", "members"]);
 const ThreadBindingsSchema = z
   .object({
     enabled: z.boolean().optional(),

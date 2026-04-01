@@ -159,7 +159,8 @@ export type CoreConfig = {
   channels?: {
     matrix?: MatrixConfig;
     defaults?: {
-      groupPolicy?: "open" | "allowlist" | "disabled";
+      groupPolicy?: "open" | "allowlist" | "disabled" | "members";
+      groupAllowFrom?: Array<string | number>;
     };
   };
   commands?: {

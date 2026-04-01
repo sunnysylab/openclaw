@@ -94,7 +94,7 @@ export function resolveFeishuGroupToolPolicy(
 }
 
 export function isFeishuGroupAllowed(params: {
-  groupPolicy: "open" | "allowlist" | "disabled" | "allowall";
+  groupPolicy: "open" | "allowlist" | "disabled" | "allowall" | "members";
   allowFrom: Array<string | number>;
   senderId: string;
   senderIds?: Array<string | null | undefined>;
@@ -118,7 +118,7 @@ export function resolveFeishuReplyPolicy(params: {
    * defaults to false so that non-text messages (e.g. images) that cannot carry
    * @-mentions are still delivered to the agent.
    */
-  groupPolicy?: "open" | "allowlist" | "disabled" | "allowall";
+  groupPolicy?: "open" | "allowlist" | "disabled" | "allowall" | "members";
 }): { requireMention: boolean } {
   if (params.isDirectMessage) {
     return { requireMention: false };

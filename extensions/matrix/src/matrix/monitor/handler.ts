@@ -78,7 +78,7 @@ export type MatrixMonitorHandlerParams = {
   roomsConfig?: Record<string, MatrixRoomConfig>;
   accountAllowBots?: boolean | "mentions";
   configuredBotUserIds?: ReadonlySet<string>;
-  groupPolicy: "open" | "allowlist" | "disabled";
+  groupPolicy: "open" | "allowlist" | "disabled" | "members";
   replyToMode: ReplyToMode;
   threadReplies: "off" | "inbound" | "always";
   /** DM-specific threadReplies override. Falls back to threadReplies when absent. */

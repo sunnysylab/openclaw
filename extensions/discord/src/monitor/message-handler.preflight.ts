@@ -21,6 +21,7 @@ import {
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/routing";
 import { logVerbose, shouldLogVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { getChildLogger } from "openclaw/plugin-sdk/runtime-env";
+import { normalizeNonTelegramGroupPolicy } from "openclaw/plugin-sdk/runtime-group-policy";
 import { logDebug } from "openclaw/plugin-sdk/text-runtime";
 import {
   isDiscordGroupAllowedByPolicy,
@@ -289,8 +290,9 @@ export async function preflightDiscordMessage(
   const pluralkitConfig = params.discordConfig?.pluralkit;
   const webhookId = resolveDiscordWebhookId(message);
   const shouldCheckPluralKit = Boolean(pluralkitConfig?.enabled) && !webhookId;
-  let pluralkitInfo: Awaited<ReturnType<typeof import("../pluralkit.js").fetchPluralKitMessageInfo>> =
-    null;
+  let pluralkitInfo: Awaited<
+    ReturnType<typeof import("../pluralkit.js").fetchPluralKitMessageInfo>
+  > = null;
   if (shouldCheckPluralKit) {
     try {
       const { fetchPluralKitMessageInfo } = await loadPluralKitRuntime();
@@ -656,7 +658,8 @@ export async function preflightDiscordMessage(
   if (
     isGuildMessage &&
     !isDiscordGroupAllowedByPolicy({
-      groupPolicy: params.groupPolicy,
+      // Normalize "members" to "open": Discord has no Bot API member-check equivalent.
+      groupPolicy: normalizeNonTelegramGroupPolicy(params.groupPolicy),
       guildAllowlisted: Boolean(guildInfo),
       channelAllowlistConfigured,
       channelAllowed,

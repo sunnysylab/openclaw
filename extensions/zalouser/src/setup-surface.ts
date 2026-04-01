@@ -64,7 +64,7 @@ function setZalouserAccountScopedConfig(
 function setZalouserGroupPolicy(
   cfg: OpenClawConfig,
   accountId: string,
-  groupPolicy: "open" | "allowlist" | "disabled",
+  groupPolicy: "open" | "allowlist" | "disabled" | "members",
 ): OpenClawConfig {
   return setZalouserAccountScopedConfig(cfg, accountId, {
     groupPolicy,

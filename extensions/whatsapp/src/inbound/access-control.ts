@@ -25,10 +25,10 @@ const PAIRING_REPLY_HISTORY_GRACE_MS = 30_000;
 
 function resolveWhatsAppRuntimeGroupPolicy(params: {
   providerConfigPresent: boolean;
-  groupPolicy?: "open" | "allowlist" | "disabled";
-  defaultGroupPolicy?: "open" | "allowlist" | "disabled";
+  groupPolicy?: "open" | "allowlist" | "disabled" | "members";
+  defaultGroupPolicy?: "open" | "allowlist" | "disabled" | "members";
 }): {
-  groupPolicy: "open" | "allowlist" | "disabled";
+  groupPolicy: "open" | "allowlist" | "disabled" | "members";
   providerMissingFallbackApplied: boolean;
 } {
   return resolveOpenProviderRuntimeGroupPolicy({

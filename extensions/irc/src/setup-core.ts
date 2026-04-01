@@ -75,7 +75,7 @@ export function setIrcNickServ(
 export function setIrcGroupAccess(
   cfg: CoreConfig,
   accountId: string,
-  policy: "open" | "allowlist" | "disabled",
+  policy: "open" | "allowlist" | "disabled" | "members",
   entries: string[],
   normalizeGroupEntry: (raw: string) => string | null,
 ): CoreConfig {
