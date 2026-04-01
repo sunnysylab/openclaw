@@ -541,11 +541,16 @@ describe("channel import guardrails", () => {
   });
 
   it("keeps core production files off plugin-private src imports", () => {
+    const pluginPrivateSrcPath = /extensions\/[^/]+\/src\//;
     for (const file of collectCoreSourceFiles()) {
-      const text = readSource(file);
-      expect(text, `${file} should not import plugin-private src paths`).not.toMatch(
-        /["'][^"']*extensions\/[^/"']+\/src\//,
-      );
+      const analysis = getSourceAnalysis(file);
+      for (const spec of analysis.importSpecifiers) {
+        const normalized = spec.replaceAll("\\", "/");
+        expect(
+          normalized,
+          `${file} should not import plugin-private src paths (got ${spec})`,
+        ).not.toMatch(pluginPrivateSrcPath);
+      }
     }
   });
 

@@ -15,8 +15,11 @@ afterEach(() => {
 
 describe("method scope resolution", () => {
   it.each([
+    ["sessions.search", ["operator.read"]],
+    ["sessions.recall", ["operator.read"]],
     ["sessions.resolve", ["operator.read"]],
     ["config.schema.lookup", ["operator.read"]],
+    ["hive.sync", ["operator.admin"]],
     ["sessions.create", ["operator.write"]],
     ["sessions.send", ["operator.write"]],
     ["sessions.abort", ["operator.write"]],

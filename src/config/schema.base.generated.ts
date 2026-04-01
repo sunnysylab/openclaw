@@ -6716,7 +6716,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
             properties: {
               visibility: {
                 type: "string",
-                enum: ["self", "tree", "agent", "all"],
+                enum: ["self", "tree", "agent", "all", "consortium"],
               },
             },
             additionalProperties: false,
@@ -10459,6 +10459,15 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
         },
         additionalProperties: false,
       },
+      research: {
+        type: "object",
+        properties: {
+          enabled: {
+            type: "boolean",
+          },
+        },
+        additionalProperties: false,
+      },
       memory: {
         type: "object",
         properties: {
@@ -10975,6 +10984,38 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
               },
               additionalProperties: false,
             },
+          },
+          hive: {
+            type: "object",
+            properties: {
+              enabled: {
+                type: "boolean",
+              },
+              consortiums: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: {
+                      type: "string",
+                      minLength: 1,
+                    },
+                    memberAgentIds: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
+                    label: {
+                      type: "string",
+                    },
+                  },
+                  required: ["id"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            additionalProperties: false,
           },
         },
         additionalProperties: false,
@@ -13294,6 +13335,16 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
     memory: {
       label: "Memory",
       help: "Memory backend configuration (global).",
+      tags: ["advanced"],
+    },
+    research: {
+      label: "Research",
+      help: "Research feature gate for experimental telemetry/export/replay surfaces. Keep this disabled in normal product use so no research artifacts or listeners are activated unless explicitly requested.",
+      tags: ["advanced"],
+    },
+    "research.enabled": {
+      label: "Research Enabled",
+      help: "Master toggle for research primitives such as event emission, trajectory export, and replay/control endpoints (default: false). Keep off unless you intentionally run research workflows.",
       tags: ["advanced"],
     },
     "memory.backend": {

@@ -280,6 +280,7 @@ export function createSessionStatusTool(opts?: {
           sandboxed: opts?.sandboxed === true,
         }),
         a2aPolicy,
+        cfg,
       });
 
       const requestedKeyParam = readStringParam(params, "sessionKey");

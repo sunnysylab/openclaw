@@ -25,6 +25,45 @@ export const SessionsListParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const SessionsSearchParamsSchema = Type.Object(
+  {
+    query: Type.String({ minLength: 1 }),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+    activeMinutes: Type.Optional(Type.Integer({ minimum: 1 })),
+    /**
+     * Filter tokens whose semantics depend on `kindScope`:
+     * - `row`: gateway store row kinds (`direct`, `group`, `global`, `unknown`) from `classifySessionKey`.
+     * - `session`: same labels as `sessions_list` (`main`, `group`, `cron`, `hook`, `node`, `other`) via `classifySessionKind`.
+     * - `auto` (default): legacy heuristic — if the set mixes gateway-only and tool-only tokens, tool semantics win for all.
+     */
+    kinds: Type.Optional(Type.Array(NonEmptyString)),
+    /**
+     * When `kinds` is set, selects which vocabulary applies. Prefer `row` or `session` for explicit intent;
+     * `auto` preserves backward compatibility with older clients.
+     */
+    kindScope: Type.Optional(
+      Type.Union([Type.Literal("row"), Type.Literal("session"), Type.Literal("auto")]),
+    ),
+    keys: Type.Optional(Type.Array(NonEmptyString)),
+    requesterSessionKey: Type.Optional(NonEmptyString),
+    sandboxed: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
+export const SessionsRecallParamsSchema = Type.Object(
+  {
+    query: Type.String({ minLength: 1 }),
+    maxTokens: Type.Optional(Type.Integer({ minimum: 256, maximum: 4000 })),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
+    /** Flat string enum for generated clients (avoid anyOf union drift). */
+    scope: Type.Optional(Type.String({ enum: ["recent", "all"] })),
+    requesterSessionKey: Type.Optional(NonEmptyString),
+    sandboxed: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
 export const SessionsPreviewParamsSchema = Type.Object(
   {
     keys: Type.Array(NonEmptyString, { minItems: 1 }),

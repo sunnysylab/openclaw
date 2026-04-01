@@ -254,6 +254,7 @@ export function createSessionsSendTool(opts?: {
         requesterSessionKey: effectiveRequesterKey,
         visibility: sessionVisibility,
         a2aPolicy,
+        cfg,
       });
       const access = visibilityGuard.check(resolvedKey);
       if (!access.allowed) {
