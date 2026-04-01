@@ -112,6 +112,7 @@ function createBackendSandboxConfig(params?: { binds?: string[]; target?: string
     }),
     tools: { allow: [], deny: [] },
     prune: createSandboxPruneConfig(),
+    initTimeoutMs: 300_000,
   };
 }
 
@@ -286,6 +287,7 @@ describe("ssh sandbox backend", () => {
         },
         tools: { allow: [], deny: [] },
         prune: { idleHours: 24, maxAgeDays: 7 },
+        initTimeoutMs: 300_000,
       },
     });
 

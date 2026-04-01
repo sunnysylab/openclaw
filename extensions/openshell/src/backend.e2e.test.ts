@@ -375,6 +375,7 @@ describe("openshell sandbox backend e2e", () => {
         browser: createSandboxBrowserConfig(),
         tools: { allow: [], deny: [] },
         prune: createSandboxPruneConfig(),
+        initTimeoutMs: 300_000,
       };
 
       const pluginConfig = resolveOpenShellPluginConfig({
