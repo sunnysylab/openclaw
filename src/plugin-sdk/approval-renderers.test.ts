@@ -145,7 +145,7 @@ describe("plugin-sdk/approval-renderers", () => {
       },
     },
   ])("$name", ({ payload, textExpected, interactiveExpected, channelDataExpected }) => {
-    textExpected(payload.text);
+    textExpected(payload.text!);
     if (interactiveExpected) {
       expect(payload.interactive).toEqual(interactiveExpected);
     }
