@@ -27,6 +27,7 @@ export function createTestPluginApi(api: TestPluginApiInput): OpenClawPluginApi 
     onConversationBindingResolved() {},
     registerCommand() {},
     registerContextEngine() {},
+    registerStreamFnWrapper() {},
     registerMemoryPromptSection() {},
     registerMemoryFlushPlan() {},
     registerMemoryRuntime() {},

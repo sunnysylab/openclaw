@@ -37,6 +37,7 @@ export const createTestRegistry = (channels: TestChannelRegistration[] = []): Pl
   commands: [],
   conversationBindingResolvedHandlers: [],
   diagnostics: [],
+  streamFnWrappers: [],
 });
 
 export const createChannelTestPluginBase = (params: {
