@@ -319,12 +319,7 @@ function validateImageGenerationCapabilities(params: {
     }
   }
 
-  if (params.resolution) {
-    if (!modeCaps.supportsResolution) {
-      throw new ToolInputError(
-        `${provider.id} ${isEdit ? "edit" : "generate"} does not support resolution overrides.`,
-      );
-    }
+  if (params.resolution && modeCaps.supportsResolution) {
     if (
       (geometry?.resolutions?.length ?? 0) > 0 &&
       !geometry?.resolutions?.includes(params.resolution)
