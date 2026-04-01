@@ -490,7 +490,7 @@ Webhook behavior:
 - If `cron.webhookToken` is set, auth header is `Authorization: Bearer <cron.webhookToken>`.
 - If `cron.webhookToken` is not set, no `Authorization` header is sent.
 - Deprecated fallback: stored legacy jobs with `notify: true` still use `cron.webhook` when present.
-- By default, webhook delivery to loopback and private-network URLs is blocked by the SSRF guard (hardened for CVE-2026-27488). Set `cron.webhookAllowPrivateNetwork: true` to allow delivery to internal endpoints; only enable this when the webhook target is intentionally on a private network.
+- By default, webhook delivery to loopback and private-network URLs is blocked by the SSRF guard (hardened for CVE-2026-27488). Set `cron.webhookAllowPrivateNetwork: true` to allow delivery to internal endpoints; only enable this when the webhook target is intentionally on a private network. This setting applies to all cron webhook paths: delivery, failure destination, failure alert, and the deprecated legacy `cron.webhook` fallback.
 
 Disable cron entirely:
 
