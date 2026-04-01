@@ -450,7 +450,19 @@ export async function runDiscordGatewayLifecycle(params: {
       registerForceStop: statusObserver.registerForceStop,
     });
   } catch (err) {
-    if (!sawDisallowedIntents && !params.isDisallowedIntentsError(err)) {
+    // Reconnect-exhausted outside of intentional shutdown means the WebSocket
+    // connection was lost and Carbon ran out of retry attempts.  Exit the
+    // lifecycle cleanly so the channel health monitor can restart it instead of
+    // crashing the entire gateway process.
+    const isReconnectExhausted =
+      err instanceof Error && /Max reconnect attempts/i.test(err.message);
+    if (isReconnectExhausted) {
+      params.runtime.error?.(
+        danger(
+          `discord: gateway reconnect attempts exhausted — lifecycle exiting for restart: ${String(err)}`,
+        ),
+      );
+    } else if (!sawDisallowedIntents && !params.isDisallowedIntentsError(err)) {
       throw err;
     }
   } finally {
