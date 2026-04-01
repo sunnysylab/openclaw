@@ -549,6 +549,9 @@ function classifyFailoverClassificationFromHttpStatus(
     }
     return toReasonClassification("auth");
   }
+  if (status === 404) {
+    return "model_not_found";
+  }
   if (status === 408) {
     return toReasonClassification("timeout");
   }
