@@ -22,6 +22,7 @@ import type { ResolvedAgentRoute } from "openclaw/plugin-sdk/routing";
 import { resolveInboundLastRouteSessionKey } from "openclaw/plugin-sdk/routing";
 import { logVerbose, shouldLogVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { resolvePinnedMainDmOwnerFromAllowlist } from "openclaw/plugin-sdk/security-runtime";
+import { resolveConfiguredTelegramBotAgentIdsByBotId } from "./accounts.js";
 import { normalizeAllowFrom } from "./bot-access.js";
 import type {
   TelegramMediaRef,
@@ -185,6 +186,9 @@ export async function buildTelegramInboundContextPayload(params: {
           timestamp: entry.timestamp,
         }))
       : undefined;
+  const senderAgentId = senderId
+    ? resolveConfiguredTelegramBotAgentIdsByBotId(cfg).get(senderId)
+    : undefined;
   const currentMediaForContext = stickerCacheHit ? [] : allMedia;
   const contextMedia = [...currentMediaForContext, ...replyMedia];
   const ctxPayload = finalizeInboundContext({
@@ -203,6 +207,7 @@ export async function buildTelegramInboundContextPayload(params: {
     GroupSystemPrompt: isGroup || (!isGroup && groupConfig) ? groupSystemPrompt : undefined,
     SenderName: senderName,
     SenderId: senderId || undefined,
+    SenderAgentId: senderAgentId,
     SenderUsername: senderUsername || undefined,
     Provider: "telegram",
     Surface: "telegram",
