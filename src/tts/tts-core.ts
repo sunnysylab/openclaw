@@ -73,6 +73,331 @@ export function normalizeSeed(seed?: number): number | undefined {
   return next;
 }
 
+function parseBooleanValue(value: string): boolean | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
+}
+
+function parseNumberValue(value: string): number | undefined {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function parseTtsDirectives(
+  text: string,
+  policy: ResolvedTtsModelOverrides,
+  openaiBaseUrl?: string,
+): TtsDirectiveParseResult {
+  if (!policy.enabled) {
+    return { cleanedText: text, overrides: {}, warnings: [], hasDirective: false };
+  }
+
+  const overrides: TtsDirectiveOverrides = {};
+  const warnings: string[] = [];
+  let cleanedText = text;
+  let hasDirective = false;
+
+  const blockRegex = /\[\[tts:text\]\]([\s\S]*?)\[\[\/tts:text\]\]/gi;
+  cleanedText = cleanedText.replace(blockRegex, (_match, inner: string) => {
+    hasDirective = true;
+    if (policy.allowText && overrides.ttsText == null) {
+      overrides.ttsText = inner.trim();
+    }
+    return "";
+  });
+
+  const directiveRegex = /\[\[tts:([^\]]+)\]\]/gi;
+  cleanedText = cleanedText.replace(directiveRegex, (_match, body: string) => {
+    hasDirective = true;
+    const tokens = body.split(/\s+/).filter(Boolean);
+    for (const token of tokens) {
+      const eqIndex = token.indexOf("=");
+      if (eqIndex === -1) {
+        continue;
+      }
+      const rawKey = token.slice(0, eqIndex).trim();
+      const rawValue = token.slice(eqIndex + 1).trim();
+      if (!rawKey || !rawValue) {
+        continue;
+      }
+      const key = rawKey.toLowerCase();
+      try {
+        switch (key) {
+          case "provider":
+            if (!policy.allowProvider) {
+              break;
+            }
+            {
+              const providerId = rawValue.trim().toLowerCase();
+              if (providerId) {
+                overrides.provider = providerId;
+              } else {
+                warnings.push("invalid provider id");
+              }
+            }
+            break;
+          case "voice":
+          case "openai_voice":
+          case "openaivoice":
+            if (!policy.allowVoice) {
+              break;
+            }
+            if (isValidOpenAIVoice(rawValue, openaiBaseUrl)) {
+              overrides.openai = { ...overrides.openai, voice: rawValue };
+            } else {
+              warnings.push(`invalid OpenAI voice "${rawValue}"`);
+            }
+            break;
+
+          case "azure_voice":
+          case "azurevoice":
+            if (!policy.allowVoice) {
+              break;
+            }
+            // Azure voice names are ShortName format like "zh-HK-HiuMaanNeural"
+            // Basic validation: non-empty string
+            if (rawValue && rawValue.trim().length > 0) {
+              overrides.azure = { ...overrides.azure, voice: rawValue };
+            } else {
+              warnings.push(`invalid Azure voice "${rawValue}"`);
+            }
+            break;
+          case "voiceid":
+          case "voice_id":
+          case "elevenlabs_voice":
+          case "elevenlabsvoice":
+            if (!policy.allowVoice) {
+              break;
+            }
+            if (isValidVoiceId(rawValue)) {
+              overrides.elevenlabs = { ...overrides.elevenlabs, voiceId: rawValue };
+            } else {
+              warnings.push(`invalid ElevenLabs voiceId "${rawValue}"`);
+            }
+            break;
+          case "model":
+          case "modelid":
+          case "model_id":
+          case "elevenlabs_model":
+          case "elevenlabsmodel":
+          case "openai_model":
+          case "openaimodel":
+            if (!policy.allowModelId) {
+              break;
+            }
+            if (isValidOpenAIModel(rawValue, openaiBaseUrl)) {
+              overrides.openai = { ...overrides.openai, model: rawValue };
+            } else {
+              overrides.elevenlabs = { ...overrides.elevenlabs, modelId: rawValue };
+            }
+            break;
+          case "stability":
+            if (!policy.allowVoiceSettings) {
+              break;
+            }
+            {
+              const value = parseNumberValue(rawValue);
+              if (value == null) {
+                warnings.push("invalid stability value");
+                break;
+              }
+              requireInRange(value, 0, 1, "stability");
+              overrides.elevenlabs = {
+                ...overrides.elevenlabs,
+                voiceSettings: { ...overrides.elevenlabs?.voiceSettings, stability: value },
+              };
+            }
+            break;
+          case "similarity":
+          case "similarityboost":
+          case "similarity_boost":
+            if (!policy.allowVoiceSettings) {
+              break;
+            }
+            {
+              const value = parseNumberValue(rawValue);
+              if (value == null) {
+                warnings.push("invalid similarityBoost value");
+                break;
+              }
+              requireInRange(value, 0, 1, "similarityBoost");
+              overrides.elevenlabs = {
+                ...overrides.elevenlabs,
+                voiceSettings: { ...overrides.elevenlabs?.voiceSettings, similarityBoost: value },
+              };
+            }
+            break;
+          case "style":
+            if (!policy.allowVoiceSettings) {
+              break;
+            }
+            {
+              const value = parseNumberValue(rawValue);
+              if (value == null) {
+                warnings.push("invalid style value");
+                break;
+              }
+              requireInRange(value, 0, 1, "style");
+              overrides.elevenlabs = {
+                ...overrides.elevenlabs,
+                voiceSettings: { ...overrides.elevenlabs?.voiceSettings, style: value },
+              };
+            }
+            break;
+          case "speed":
+            if (!policy.allowVoiceSettings) {
+              break;
+            }
+            {
+              const value = parseNumberValue(rawValue);
+              if (value == null) {
+                warnings.push("invalid speed value");
+                break;
+              }
+              requireInRange(value, 0.5, 2, "speed");
+              overrides.elevenlabs = {
+                ...overrides.elevenlabs,
+                voiceSettings: { ...overrides.elevenlabs?.voiceSettings, speed: value },
+              };
+            }
+            break;
+          case "speakerboost":
+          case "speaker_boost":
+          case "usespeakerboost":
+          case "use_speaker_boost":
+            if (!policy.allowVoiceSettings) {
+              break;
+            }
+            {
+              const value = parseBooleanValue(rawValue);
+              if (value == null) {
+                warnings.push("invalid useSpeakerBoost value");
+                break;
+              }
+              overrides.elevenlabs = {
+                ...overrides.elevenlabs,
+                voiceSettings: { ...overrides.elevenlabs?.voiceSettings, useSpeakerBoost: value },
+              };
+            }
+            break;
+          case "normalize":
+          case "applytextnormalization":
+          case "apply_text_normalization":
+            if (!policy.allowNormalization) {
+              break;
+            }
+            overrides.elevenlabs = {
+              ...overrides.elevenlabs,
+              applyTextNormalization: normalizeApplyTextNormalization(rawValue),
+            };
+            break;
+          case "language":
+          case "languagecode":
+          case "language_code":
+            if (!policy.allowNormalization) {
+              break;
+            }
+            overrides.elevenlabs = {
+              ...overrides.elevenlabs,
+              languageCode: normalizeLanguageCode(rawValue),
+            };
+            break;
+          case "seed":
+            if (!policy.allowSeed) {
+              break;
+            }
+            overrides.elevenlabs = {
+              ...overrides.elevenlabs,
+              seed: normalizeSeed(Number.parseInt(rawValue, 10)),
+            };
+            break;
+          default:
+            break;
+        }
+      } catch (err) {
+        warnings.push((err as Error).message);
+      }
+    }
+    return "";
+  });
+
+  return {
+    cleanedText,
+    ttsText: overrides.ttsText,
+    hasDirective,
+    overrides,
+    warnings,
+  };
+}
+
+export const OPENAI_TTS_MODELS = ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"] as const;
+
+/**
+ * Custom OpenAI-compatible TTS endpoint.
+ * When set, model/voice validation is relaxed to allow non-OpenAI models.
+ * Example: OPENAI_TTS_BASE_URL=http://localhost:8880/v1
+ *
+ * Note: Read at runtime (not module load) to support config.env loading.
+ */
+function getOpenAITtsBaseUrl(): string {
+  return normalizeOpenAITtsBaseUrl(process.env.OPENAI_TTS_BASE_URL);
+}
+
+function isCustomOpenAIEndpoint(baseUrl?: string): boolean {
+  if (baseUrl != null) {
+    return normalizeOpenAITtsBaseUrl(baseUrl) !== DEFAULT_OPENAI_BASE_URL;
+  }
+  return getOpenAITtsBaseUrl() !== DEFAULT_OPENAI_BASE_URL;
+}
+export const OPENAI_TTS_VOICES = [
+  "alloy",
+  "ash",
+  "ballad",
+  "cedar",
+  "coral",
+  "echo",
+  "fable",
+  "juniper",
+  "marin",
+  "onyx",
+  "nova",
+  "sage",
+  "shimmer",
+  "verse",
+] as const;
+
+type OpenAiTtsVoice = (typeof OPENAI_TTS_VOICES)[number];
+
+export function isValidOpenAIModel(model: string, baseUrl?: string): boolean {
+  // Allow any model when using custom endpoint (e.g., Kokoro, LocalAI)
+  if (isCustomOpenAIEndpoint(baseUrl)) {
+    return true;
+  }
+  return OPENAI_TTS_MODELS.includes(model as (typeof OPENAI_TTS_MODELS)[number]);
+}
+
+export function resolveOpenAITtsInstructions(
+  model: string,
+  instructions?: string,
+): string | undefined {
+  const next = trimToUndefined(instructions);
+  return next && model.includes("gpt-4o-mini-tts") ? next : undefined;
+}
+
+export function isValidOpenAIVoice(voice: string, baseUrl?: string): voice is OpenAiTtsVoice {
+  // Allow any voice when using custom endpoint (e.g., Kokoro Chinese voices)
+  if (isCustomOpenAIEndpoint(baseUrl)) {
+    return true;
+  }
+  return OPENAI_TTS_VOICES.includes(voice as OpenAiTtsVoice);
+}
+
 type SummarizeResult = {
   summary: string;
   latencyMs: number;

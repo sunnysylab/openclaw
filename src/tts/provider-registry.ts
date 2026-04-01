@@ -2,6 +2,17 @@ import type { OpenClawConfig } from "../config/config.js";
 import { resolvePluginCapabilityProviders } from "../plugins/capability-provider-runtime.js";
 import type { SpeechProviderPlugin } from "../plugins/types.js";
 import type { SpeechProviderId } from "./provider-types.js";
+import { buildAzureSpeechProvider } from "./providers/azure.js";
+import { buildElevenLabsSpeechProvider } from "./providers/elevenlabs.js";
+import { buildMicrosoftSpeechProvider } from "./providers/microsoft.js";
+import { buildOpenAISpeechProvider } from "./providers/openai.js";
+
+const BUILTIN_SPEECH_PROVIDER_BUILDERS = [
+  buildOpenAISpeechProvider,
+  buildElevenLabsSpeechProvider,
+  buildMicrosoftSpeechProvider,
+  buildAzureSpeechProvider,
+] as const satisfies readonly (() => SpeechProviderPlugin)[];
 
 function trimToUndefined(value: string | undefined): string | undefined {
   const trimmed = value?.trim().toLowerCase();

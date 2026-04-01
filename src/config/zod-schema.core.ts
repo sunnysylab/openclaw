@@ -383,16 +383,20 @@ const TtsProviderConfigSchema = z
   .object({
     apiKey: SecretInputSchema.optional().register(sensitive),
   })
-  .catchall(
-    z.union([
-      z.string(),
-      z.number(),
-      z.boolean(),
-      z.null(),
-      z.array(z.unknown()),
-      z.record(z.string(), z.unknown()),
-    ]),
-  );
+  .strict()
+  .optional();
+const TtsAzureConfigSchema = z
+  .object({
+    apiKey: SecretInputSchema.optional().register(sensitive),
+    region: z.string().optional(),
+    baseUrl: z.string().optional(),
+    voice: z.string().optional(),
+    lang: z.string().optional(),
+    outputFormat: z.string().optional(),
+    timeoutMs: z.number().int().min(1000).max(120000).optional(),
+  })
+  .strict()
+  .optional();
 export const TtsConfigSchema = z
   .object({
     auto: TtsAutoSchema.optional(),
@@ -413,7 +417,42 @@ export const TtsConfigSchema = z
       })
       .strict()
       .optional(),
-    providers: z.record(z.string(), TtsProviderConfigSchema).optional(),
+    elevenlabs: z
+      .object({
+        apiKey: SecretInputSchema.optional().register(sensitive),
+        baseUrl: z.string().optional(),
+        voiceId: z.string().optional(),
+        modelId: z.string().optional(),
+        seed: z.number().int().min(0).max(4294967295).optional(),
+        applyTextNormalization: z.enum(["auto", "on", "off"]).optional(),
+        languageCode: z.string().optional(),
+        voiceSettings: z
+          .object({
+            stability: z.number().min(0).max(1).optional(),
+            similarityBoost: z.number().min(0).max(1).optional(),
+            style: z.number().min(0).max(1).optional(),
+            useSpeakerBoost: z.boolean().optional(),
+            speed: z.number().min(0.5).max(2).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    openai: z
+      .object({
+        apiKey: SecretInputSchema.optional().register(sensitive),
+        baseUrl: z.string().optional(),
+        model: z.string().optional(),
+        voice: z.string().optional(),
+        speed: z.number().min(0.25).max(4).optional(),
+        instructions: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    edge: TtsMicrosoftConfigSchema,
+    microsoft: TtsMicrosoftConfigSchema,
+    azure: TtsAzureConfigSchema,
     prefsPath: z.string().optional(),
     maxTextLength: z.number().int().min(1).optional(),
     timeoutMs: z.number().int().min(1000).max(120000).optional(),

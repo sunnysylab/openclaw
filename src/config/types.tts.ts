@@ -83,23 +83,16 @@ export type LegacyTtsConfigCompat = {
     proxy?: string;
     timeoutMs?: number;
   };
-};
-
-export type TtsConfig = LegacyTtsConfigCompat & {
-  /** Auto-TTS mode (preferred). */
-  auto?: TtsAutoMode;
-  /** Legacy: enable auto-TTS when `auto` is not set. */
-  enabled?: boolean;
-  /** Apply TTS to final replies only or to all replies (tool/block/final). */
-  mode?: TtsMode;
-  /** Primary TTS provider (fallbacks are automatic). */
-  provider?: TtsProvider;
-  /** Optional model override for TTS auto-summary (provider/model or alias). */
-  summaryModel?: string;
-  /** Allow the model to override TTS parameters. */
-  modelOverrides?: TtsModelOverrideConfig;
-  /** Provider-specific TTS settings keyed by speech provider id. */
-  providers?: TtsProviderConfigMap;
+  /** Azure Speech configuration. */
+  azure?: {
+    apiKey?: SecretInput;
+    region?: string;
+    baseUrl?: string;
+    voice?: string;
+    lang?: string;
+    outputFormat?: string;
+    timeoutMs?: number;
+  };
   /** Optional path for local TTS user preferences JSON. */
   prefsPath?: string;
   /** Hard cap for text sent to TTS (chars). */
