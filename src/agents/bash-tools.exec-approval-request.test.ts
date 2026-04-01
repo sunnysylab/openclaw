@@ -8,8 +8,21 @@ vi.mock("./tools/gateway.js", () => ({
   callGatewayTool: vi.fn(),
 }));
 
+vi.mock("../config/config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../config/config.js")>();
+  return {
+    ...actual,
+    loadConfig: vi.fn(() => ({})),
+  };
+});
+
+vi.mock("../research/events/runtime-hooks.js", () => ({
+  emitStandaloneResearchEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 let callGatewayTool: typeof import("./tools/gateway.js").callGatewayTool;
 let requestExecApprovalDecision: typeof import("./bash-tools.exec-approval-request.js").requestExecApprovalDecision;
+let emitStandaloneResearchEvent: typeof import("../research/events/runtime-hooks.js").emitStandaloneResearchEvent;
 
 describe("requestExecApprovalDecision", () => {
   async function loadFreshApprovalRequestModulesForTest() {
@@ -24,7 +37,9 @@ describe("requestExecApprovalDecision", () => {
 
   beforeEach(async () => {
     await loadFreshApprovalRequestModulesForTest();
+    ({ emitStandaloneResearchEvent } = await import("../research/events/runtime-hooks.js"));
     vi.mocked(callGatewayTool).mockClear();
+    vi.mocked(emitStandaloneResearchEvent).mockClear();
   });
 
   it("returns string decisions", async () => {
@@ -46,6 +61,8 @@ describe("requestExecApprovalDecision", () => {
       agentId: "main",
       resolvedPath: "/usr/bin/echo",
       sessionKey: "session",
+      sessionId: "ephemeral-session-uuid",
+      agentRunId: "agent-run-telemetry",
       turnSourceChannel: "whatsapp",
       turnSourceTo: "+15555550123",
       turnSourceAccountId: "work",
@@ -67,6 +84,8 @@ describe("requestExecApprovalDecision", () => {
         agentId: "main",
         resolvedPath: "/usr/bin/echo",
         sessionKey: "session",
+        sessionId: "ephemeral-session-uuid",
+        agentRunId: "agent-run-telemetry",
         turnSourceChannel: "whatsapp",
         turnSourceTo: "+15555550123",
         turnSourceAccountId: "work",
@@ -80,8 +99,24 @@ describe("requestExecApprovalDecision", () => {
       2,
       "exec.approval.waitDecision",
       { timeoutMs: DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS },
-      { id: "approval-id" },
+      {
+        id: "approval-id",
+        sessionKey: "session",
+        agentId: "main",
+        sessionId: "ephemeral-session-uuid",
+      },
     );
+    expect(emitStandaloneResearchEvent).toHaveBeenCalled();
+    const emitCalls = vi.mocked(emitStandaloneResearchEvent).mock.calls;
+    const allowCall = emitCalls.find(
+      (c) => c[0]?.event && (c[0].event as { kind?: string }).kind === "approval.allow",
+    );
+    expect(allowCall?.[0]).toMatchObject({
+      runId: "agent-run-telemetry",
+      sessionId: "ephemeral-session-uuid",
+      sessionKey: "session",
+      agentId: "main",
+    });
   });
 
   it("returns null for missing or non-string decisions", async () => {
@@ -175,9 +210,34 @@ describe("requestExecApprovalDecision", () => {
       host: "gateway",
       security: "allowlist",
       ask: "on-miss",
+      sessionId: "session-1",
+      agentRunId: "run-1",
     });
 
     expect(result).toBe("deny");
     expect(vi.mocked(callGatewayTool).mock.calls).toHaveLength(1);
+    const kinds = vi
+      .mocked(emitStandaloneResearchEvent)
+      .mock.calls.map((c) => (c[0]?.event as { kind?: string } | undefined)?.kind);
+    expect(kinds).toEqual(["approval.request", "approval.deny"]);
+    const denyCall = vi.mocked(emitStandaloneResearchEvent).mock.calls.find((c) => {
+      const first = c[0];
+      if (!first || !first.event) {
+        return false;
+      }
+      return (first.event as { kind?: string }).kind === "approval.deny";
+    });
+    expect(denyCall?.[0]).toMatchObject({
+      runId: "run-1",
+      sessionId: "session-1",
+      event: {
+        kind: "approval.deny",
+        payload: expect.objectContaining({
+          approvalId: "approval-id",
+          agentRunId: "run-1",
+          decision: "deny",
+        }),
+      },
+    });
   });
 });

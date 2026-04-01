@@ -8,6 +8,7 @@ import {
 import { sleepWithAbort } from "../../infra/backoff.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { enqueueCommandInLane } from "../../process/command-queue.js";
+import { createResearchRunContext } from "../../research/events/runtime-hooks.js";
 import { sanitizeForLog } from "../../terminal/ansi.js";
 import { isMarkdownCapableMessageChannel } from "../../utils/message-channel.js";
 import { resolveOpenClawAgentDir } from "../agent-paths.js";
@@ -118,6 +119,15 @@ export async function runEmbeddedPiAgent(
   return enqueueSession(() =>
     enqueueGlobal(async () => {
       const started = Date.now();
+      const research = createResearchRunContext({
+        cfg: params.config,
+        runId: params.runId,
+        sessionId: params.sessionId,
+        sessionKey: params.sessionKey,
+        agentId: params.agentId ?? "default",
+      });
+      let endUsage: { input?: number; output?: number; total?: number } | undefined;
+      let endTimedOut = false;
       const workspaceResolution = resolveRunWorkspaceDir({
         workspaceDir: params.workspaceDir,
         sessionKey: params.sessionKey,
@@ -125,6 +135,9 @@ export async function runEmbeddedPiAgent(
         config: params.config,
       });
       const resolvedWorkspace = workspaceResolution.workspaceDir;
+      // R4: When `workspaceResolution.agentId` differs from `research.agentId`, we intentionally do
+      // not override `research.agentId` from `createResearchRunContext` — stable run-scoped identity
+      // for research events must stay tied to the context created at run start, not workspace fallback.
       const redactedSessionId = redactRunIdentifier(params.sessionId);
       const redactedSessionKey = redactRunIdentifier(params.sessionKey);
       const redactedWorkspace = redactRunIdentifier(resolvedWorkspace);
@@ -185,6 +198,14 @@ export async function runEmbeddedPiAgent(
         });
       }
       let runtimeModel = model;
+      await research.emit({
+        kind: "run.start",
+        payload: {
+          provider,
+          model: modelId,
+          trigger: params.trigger,
+        },
+      });
 
       const resolvedRuntimeModel = resolveEffectiveRuntimeModel({
         cfg: params.config,
@@ -474,6 +495,19 @@ export async function runEmbeddedPiAgent(
           const prompt =
             provider === "anthropic" ? scrubAnthropicRefusalMagic(params.prompt) : params.prompt;
 
+          const exportScrubbedContent =
+            params.config?.research?.learningBridge?.exportScrubbedContent === true;
+          await research.emit({
+            kind: "llm.request",
+            payload: {
+              provider,
+              model: modelId,
+              promptChars: params.prompt.length,
+              ...(exportScrubbedContent ? { promptScrubbed: prompt } : {}),
+              imageCount: params.images?.length ?? 0,
+            },
+          });
+
           const attempt = await runEmbeddedAttempt({
             sessionId: params.sessionId,
             sessionKey: params.sessionKey,
@@ -541,6 +575,28 @@ export async function runEmbeddedPiAgent(
             onReasoningStream: params.onReasoningStream,
             onReasoningEnd: params.onReasoningEnd,
             onToolResult: params.onToolResult,
+            onResearchEvent: async (payload) => {
+              if (payload.kind === "tool.start") {
+                await research.emit({
+                  kind: "tool.start",
+                  payload: {
+                    toolName: payload.toolName,
+                    toolCallId: payload.toolCallId,
+                    argsSummary: payload.argsSummary,
+                  },
+                });
+              } else {
+                await research.emit({
+                  kind: "tool.end",
+                  payload: {
+                    toolName: payload.toolName,
+                    toolCallId: payload.toolCallId,
+                    ok: payload.ok !== false,
+                    resultSummary: payload.resultSummary,
+                  },
+                });
+              }
+            },
             onAgentEvent: params.onAgentEvent,
             extraSystemPrompt: params.extraSystemPrompt,
             inputProvenance: params.inputProvenance,
@@ -560,7 +616,9 @@ export async function runEmbeddedPiAgent(
             timedOutDuringCompaction,
             sessionIdUsed,
             lastAssistant,
+            assistantTexts,
           } = attempt;
+          endTimedOut = timedOut;
           bootstrapPromptWarningSignaturesSeen =
             attempt.bootstrapPromptWarningSignaturesSeen ??
             (attempt.bootstrapPromptWarningSignature
@@ -572,6 +630,24 @@ export async function runEmbeddedPiAgent(
                 )
               : bootstrapPromptWarningSignaturesSeen);
           const lastAssistantUsage = normalizeUsage(lastAssistant?.usage as UsageLike);
+          await research.emit({
+            kind: "llm.response",
+            payload: {
+              provider: lastAssistant?.provider ?? provider,
+              model: lastAssistant?.model ?? modelId,
+              stopReason: lastAssistant?.stopReason,
+              ...(exportScrubbedContent
+                ? {
+                    responseScrubbed: (assistantTexts.at(-1) ?? "").trim() || undefined,
+                  }
+                : {}),
+              usage: {
+                input: lastAssistantUsage?.input,
+                output: lastAssistantUsage?.output,
+                total: lastAssistantUsage?.total,
+              },
+            },
+          });
           const attemptUsage = attempt.attemptUsage ?? lastAssistantUsage;
           mergeUsageIntoAccumulator(usageAccumulator, attemptUsage);
           // Keep prompt size from the latest model call so session totalTokens
@@ -1278,6 +1354,13 @@ export async function runEmbeddedPiAgent(
             lastRunPromptUsage,
             lastTurnTotal,
           });
+          endUsage = usageMeta.usage
+            ? {
+                input: usageMeta.usage.input,
+                output: usageMeta.usage.output,
+                total: usageMeta.usage.total,
+              }
+            : undefined;
           const agentMeta: EmbeddedPiAgentMeta = {
             sessionId: sessionIdUsed,
             provider: lastAssistant?.provider ?? provider,
@@ -1462,6 +1545,16 @@ export async function runEmbeddedPiAgent(
       } finally {
         await contextEngine.dispose?.();
         stopRuntimeAuthRefreshTimer();
+        await research.emit({
+          kind: "run.end",
+          payload: {
+            durationMs: Date.now() - started,
+            aborted: params.abortSignal?.aborted === true,
+            timedOut: endTimedOut,
+            usage: endUsage,
+          },
+        });
+        await research.close();
         if (params.cleanupBundleMcpOnRunEnd === true) {
           await disposeSessionMcpRuntime(params.sessionId).catch((error) => {
             log.warn(

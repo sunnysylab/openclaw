@@ -63,6 +63,8 @@ export type ProcessGatewayAllowlistParams = {
   scopeKey?: string;
   warnings: string[];
   notifySessionKey?: string;
+  sessionId?: string;
+  agentRunId?: string;
   approvalRunningNoticeMs: number;
   maxOutput: number;
   pendingMaxOutput: number;
@@ -185,11 +187,13 @@ export async function processGatewayAllowlist(
           agentId: params.agentId,
           sessionKey: params.sessionKey,
         }),
+        sessionId: params.sessionId,
         resolvedPath: resolveApprovalAuditCandidatePath(
           allowlistEval.segments[0]?.resolution ?? null,
           params.workdir,
         ),
         ...buildExecApprovalTurnSourceContext(params),
+        agentRunId: params.agentRunId,
       });
     const {
       approvalId,
@@ -223,6 +227,10 @@ export async function processGatewayAllowlist(
       const decision = await resolveApprovalDecisionOrUndefined({
         approvalId,
         preResolvedDecision,
+        sessionKey: params.notifySessionKey,
+        agentId: params.agentId,
+        sessionId: params.sessionId,
+        agentRunId: params.agentRunId,
         onFailure: () =>
           void sendExecApprovalFollowupResult(
             followupTarget,
