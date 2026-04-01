@@ -103,6 +103,8 @@ vi.mock("./prompt.js", () => ({
 vi.mock("../plugins/install.js", () => ({
   PLUGIN_INSTALL_ERROR_CODE: {
     NPM_PACKAGE_NOT_FOUND: "npm_package_not_found",
+    SECURITY_SCAN_BLOCKED: "security_scan_blocked",
+    SECURITY_SCAN_FAILED: "security_scan_failed",
   },
   installPluginFromNpmSpec: (...args: unknown[]) => installPluginFromNpmSpec(...args),
   installPluginFromPath: (...args: unknown[]) => installPluginFromPath(...args),
