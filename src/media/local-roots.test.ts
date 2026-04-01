@@ -61,14 +61,6 @@ describe("local media roots", () => {
     expect(normalizedRoots).not.toContain(picturesRoot);
   }
 
-  function expectPicturesRootAbsent(roots: readonly string[], picturesRoot?: string) {
-    expectPicturesRootPresence({
-      roots,
-      shouldContainPictures: false,
-      picturesRoot,
-    });
-  }
-
   function expectAgentMediaRootsCase(params: {
     stateDir: string;
     getRoots: () => readonly LocalMediaRoot[];
