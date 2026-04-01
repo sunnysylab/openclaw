@@ -533,6 +533,7 @@ export const AgentSandboxSchema = z
     ssh: SandboxSshSchema,
     browser: SandboxBrowserSchema,
     prune: SandboxPruneSchema,
+    initTimeoutMs: z.number().int().positive().optional(),
   })
   .strict()
   .superRefine((data, ctx) => {

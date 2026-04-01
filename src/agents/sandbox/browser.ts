@@ -374,7 +374,7 @@ export async function ensureSandboxBrowser(params: {
             params.cfg.browser.autoStartTimeoutMs,
           );
           try {
-            const currentState = await dockerContainerState(containerName);
+            const currentState = await dockerContainerState(containerName, attachCtrl.signal);
             if (currentState.exists && !currentState.running) {
               await execDocker(["start", containerName], { signal: attachCtrl.signal });
             }

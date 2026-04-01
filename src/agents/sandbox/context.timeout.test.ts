@@ -52,7 +52,7 @@ afterEach(() => {
 });
 
 describe("resolveSandboxContext – timeout guard", () => {
-  it("rejects with a descriptive error when initialization hangs beyond 60 s", async () => {
+  it("rejects with a descriptive error when initialization hangs beyond the configured timeout", async () => {
     vi.useFakeTimers();
 
     const promise = resolveSandboxContext({
@@ -63,6 +63,7 @@ describe("resolveSandboxContext – timeout guard", () => {
 
     // Register the rejection handler before advancing the clock to prevent
     // the rejection from being unhandled (follows compaction-safety-timeout pattern).
+    // Default Docker backend timeout is 60s.
     const assertion = expect(promise).rejects.toThrow(/timed out after 60s/i);
 
     await vi.advanceTimersByTimeAsync(60_001);
@@ -174,5 +175,63 @@ describe("resolveSandboxContext – timeout guard", () => {
     // The signal must be aborted even though no timeout fired — the .finally()
     // handler aborts the controller to clean up detached inner work.
     expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it("uses a longer timeout for SSH (remote) backends", async () => {
+    vi.useFakeTimers();
+
+    const sshCfg: OpenClawConfig = {
+      agents: {
+        defaults: {
+          sandbox: { mode: "all", scope: "session", backend: "ssh" },
+        },
+      },
+    };
+
+    const promise = resolveSandboxContext({
+      config: sshCfg,
+      sessionKey: "agent:worker:ssh-timeout-test",
+      workspaceDir: "/tmp/openclaw-ssh-timeout-test",
+    });
+
+    // At 60s the Docker default would fire, but SSH uses 300s.
+    // Register rejection handler early.
+    const assertion = expect(promise).rejects.toThrow(/timed out after 300s/i);
+
+    // Advance past the Docker default — should NOT have timed out yet.
+    await vi.advanceTimersByTimeAsync(60_001);
+    // Timer should still be active (SSH backend has 300s default).
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    // Advance to 300s+ to trigger the actual timeout.
+    await vi.advanceTimersByTimeAsync(240_000);
+    await assertion;
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("respects a custom initTimeoutMs from config", async () => {
+    vi.useFakeTimers();
+
+    const customCfg: OpenClawConfig = {
+      agents: {
+        defaults: {
+          sandbox: { mode: "all", scope: "session", initTimeoutMs: 10_000 },
+        },
+      },
+    };
+
+    const promise = resolveSandboxContext({
+      config: customCfg,
+      sessionKey: "agent:worker:custom-timeout-test",
+      workspaceDir: "/tmp/openclaw-custom-timeout-test",
+    });
+
+    const assertion = expect(promise).rejects.toThrow(/timed out after 10s/i);
+
+    await vi.advanceTimersByTimeAsync(10_001);
+    await assertion;
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
