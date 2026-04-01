@@ -45,6 +45,7 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`tui`](/cli/tui)
 - [`browser`](/cli/browser)
 - [`cron`](/cli/cron)
+- [`flows`](/cli/flows)
 - [`dns`](/cli/dns)
 - [`docs`](/cli/docs)
 - [`hooks`](/cli/hooks)
@@ -64,6 +65,7 @@ This page describes the current CLI behavior. If commands change, update this do
 
 - `--dev`: isolate state under `~/.openclaw-dev` and shift default ports.
 - `--profile <name>`: isolate state under `~/.openclaw-<name>`.
+- `--container <name>`: target a named container for execution.
 - `--no-color`: disable ANSI colors.
 - `--update`: shorthand for `openclaw update` (source installs only).
 - `-V`, `--version`, `-v`: print version and exit.
@@ -169,6 +171,10 @@ openclaw [--dev] [--profile <name>] <command>
     list
     show
     notify
+    cancel
+  flows
+    list
+    show
     cancel
   gateway
     call
@@ -408,8 +414,11 @@ Options:
 - `--daemon-runtime <node|bun>`
 - `--skip-channels`
 - `--skip-skills`
+- `--skip-search`
 - `--skip-health`
 - `--skip-ui`
+- `--cloudflare-ai-gateway-account-id <id>`
+- `--cloudflare-ai-gateway-gateway-id <id>`
 - `--node-manager <npm|pnpm|bun>` (pnpm recommended; bun not recommended for Gateway runtime)
 - `--json`
 
@@ -797,12 +806,21 @@ Notes:
 
 ### `tasks`
 
-List and manage task runs across agents.
+List and manage [background task](/automation/tasks) runs across agents.
 
 - `tasks list` — show active and recent task runs
 - `tasks show <id>` — show details for a specific task run
-- `tasks notify <id>` — send a notification for a task run
+- `tasks notify <id>` — change notification policy for a task run
 - `tasks cancel <id>` — cancel a running task
+- `tasks audit` — surface operational issues (stale, lost, delivery failures)
+
+### `flows`
+
+List and manage [ClawFlow](/automation/clawflow) jobs across agents.
+
+- `flows list` — show active and recent flows
+- `flows show <id>` — show details for a specific flow
+- `flows cancel <id>` — cancel a flow and its active child tasks
 
 ## Gateway
 
@@ -861,10 +879,16 @@ Notes:
 
 Tail Gateway file logs via RPC.
 
-Notes:
+Options:
 
-- TTY sessions render a colorized, structured view; non-TTY falls back to plain text.
-- `--json` emits line-delimited JSON (one log event per line).
+- `--limit <n>`: maximum number of log lines to return
+- `--max-bytes <n>`: maximum bytes to read from the log file
+- `--follow`: follow the log file (tail -f style)
+- `--interval <ms>`: polling interval in ms when following
+- `--local-time`: display timestamps in local time
+- `--json`: emit line-delimited JSON
+- `--plain`: disable structured formatting
+- `--no-color`: disable ANSI colors
 
 Examples:
 
@@ -894,12 +918,14 @@ Subcommands:
 
 Common RPCs:
 
+- `config.set` (validate + write full config; use `baseHash` for optimistic concurrency)
 - `config.apply` (validate + write config + restart + wake)
 - `config.patch` (merge a partial update + restart + wake)
 - `update.run` (run update + restart + wake)
 
 Tip: when calling `config.set`/`config.apply`/`config.patch` directly, pass `baseHash` from
 `config.get` if a config already exists.
+Tip: these config write RPCs preflight active SecretRef resolution for refs in the submitted config payload and reject writes when an effectively active submitted ref is unresolved.
 
 ## Models
 
