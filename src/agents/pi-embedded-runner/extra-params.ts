@@ -290,9 +290,11 @@ function resolveConfiguredGoogleSafetySettings(
 
 function createGoogleSafetySettingsWrapper(
   baseStreamFn: StreamFn | undefined,
+  installedProvider: string,
   safetySettings?: GoogleSafetySetting[],
 ): StreamFn {
   const underlying = baseStreamFn ?? streamSimple;
+  const normalizedInstalledProvider = normalizeProviderId(installedProvider);
   return (model, context, options) => {
     const onPayload = options?.onPayload;
     return underlying(model, context, {
@@ -300,6 +302,7 @@ function createGoogleSafetySettingsWrapper(
       onPayload: (payload) => {
         if (
           safetySettings &&
+          normalizeProviderId(model.provider) === normalizedInstalledProvider &&
           model.api === "google-generative-ai" &&
           payload &&
           typeof payload === "object"
@@ -394,6 +397,7 @@ function applyPrePluginStreamWrappers(ctx: ApplyExtraParamsContext): void {
     log.debug(`applying Google safety settings for ${ctx.provider}/${ctx.modelId}`);
     ctx.agent.streamFn = createGoogleSafetySettingsWrapper(
       ctx.agent.streamFn,
+      ctx.provider,
       googleSafetySettings,
     );
   }

@@ -1576,6 +1576,46 @@ describe("applyExtraParamsToAgent", () => {
     });
   });
 
+  it("does not leak configured Gemini safety settings across provider aliases", () => {
+    const payloads: Record<string, unknown>[] = [];
+    const baseStreamFn: StreamFn = (_model, _context, options) => {
+      const payload: Record<string, unknown> = {
+        contents: [{ role: "user", parts: [{ text: "hello" }] }],
+      };
+      options?.onPayload?.(payload, _model);
+      payloads.push(payload);
+      return {} as ReturnType<StreamFn>;
+    };
+    const agent = { streamFn: baseStreamFn };
+    const cfg = {
+      models: {
+        providers: {
+          google: {
+            baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+            api: "google-generative-ai" as const,
+            models: [],
+            safetySettings: {
+              harassment: "BLOCK_NONE" as const,
+            },
+          },
+        },
+      },
+    };
+
+    applyExtraParamsToAgent(agent, cfg, "google", "gemini-3.1-pro-preview");
+
+    const model = {
+      api: "google-generative-ai",
+      provider: "google-ai-studio",
+      id: "gemini-3.1-pro-preview",
+    } as Model<"google-generative-ai">;
+    const context: Context = { messages: [] };
+    void agent.streamFn?.(model, context, {});
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).not.toHaveProperty("config.safetySettings");
+  });
+
   it("adds OpenRouter attribution headers to stream options", () => {
     const { calls, agent } = createOptionsCaptureAgent();
 
