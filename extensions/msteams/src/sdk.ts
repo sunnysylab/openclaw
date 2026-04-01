@@ -221,7 +221,7 @@ function createSendContext(params: {
         from: params.bot?.id
           ? { id: params.bot.id, name: params.bot.name ?? "", role: "bot" }
           : undefined,
-        conversation: params.conversation ?? { id: conversationId },
+        conversation: params.conversation,
         ...(params.replyToActivityId && !msg.replyToId
           ? { replyToId: params.replyToActivityId }
           : {}),
