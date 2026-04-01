@@ -18,7 +18,7 @@ import {
   recomputeNextRunsForMaintenance,
 } from "./jobs.js";
 import { locked } from "./locked.js";
-import type { CronServiceState } from "./state.js";
+import { formatMsToIso, type CronServiceState } from "./state.js";
 import { ensureLoaded, persist, warnIfDisabled } from "./store.js";
 import {
   applyJobResult,
@@ -132,11 +132,13 @@ export async function start(state: CronServiceState) {
       await persist(state);
     }
     armTimer(state);
+    const startWakeMs = nextWakeAtMs(state) ?? null;
     state.deps.log.info(
       {
         enabled: true,
         jobs: state.store?.jobs.length ?? 0,
-        nextWakeAtMs: nextWakeAtMs(state) ?? null,
+        nextWakeAtMs: startWakeMs,
+        nextWakeAt: formatMsToIso(startWakeMs ?? undefined) ?? null,
       },
       "cron: started",
     );
@@ -150,11 +152,13 @@ export function stop(state: CronServiceState) {
 export async function status(state: CronServiceState) {
   return await locked(state, async () => {
     await ensureLoadedForRead(state);
+    const wakeMs = state.deps.cronEnabled ? (nextWakeAtMs(state) ?? null) : null;
     return {
       enabled: state.deps.cronEnabled,
       storePath: state.deps.storePath,
       jobs: state.store?.jobs.length ?? 0,
-      nextWakeAtMs: state.deps.cronEnabled ? (nextWakeAtMs(state) ?? null) : null,
+      nextWakeAtMs: wakeMs,
+      nextWakeAt: formatMsToIso(wakeMs ?? undefined) ?? null,
     };
   });
 }
@@ -264,6 +268,7 @@ export async function add(state: CronServiceState, input: CronJobCreate) {
         jobId: job.id,
         jobName: job.name,
         nextRunAtMs: job.state.nextRunAtMs,
+        nextRunAt: formatMsToIso(job.state.nextRunAtMs),
         schedulerNextWakeAtMs: nextWakeAtMs(state) ?? null,
         timerArmed: state.timer !== null,
         cronEnabled: state.deps.cronEnabled,
@@ -275,6 +280,7 @@ export async function add(state: CronServiceState, input: CronJobCreate) {
       jobId: job.id,
       action: "added",
       nextRunAtMs: job.state.nextRunAtMs,
+      nextRunAt: formatMsToIso(job.state.nextRunAtMs),
     });
     return job;
   });
@@ -329,6 +335,7 @@ export async function update(state: CronServiceState, id: string, patch: CronJob
       jobId: id,
       action: "updated",
       nextRunAtMs: job.state.nextRunAtMs,
+      nextRunAt: formatMsToIso(job.state.nextRunAtMs),
     });
     return job;
   });
@@ -609,6 +616,7 @@ async function finishPreparedManualRun(
       runAtMs: startedAt,
       durationMs: job.state.lastDurationMs,
       nextRunAtMs: job.state.nextRunAtMs,
+      nextRunAt: formatMsToIso(job.state.nextRunAtMs),
       model: coreResult.model,
       provider: coreResult.provider,
       usage: coreResult.usage,
