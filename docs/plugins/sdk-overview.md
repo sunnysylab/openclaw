@@ -91,7 +91,7 @@ subpaths is in `scripts/lib/plugin-sdk-entrypoints.json`.
     | --- | --- |
     | `plugin-sdk/runtime-store` | `createPluginRuntimeStore` |
     | `plugin-sdk/config-runtime` | Config load/write helpers |
-    | `plugin-sdk/approval-runtime` | Exec and plugin approval helpers |
+    | `plugin-sdk/approval-runtime` | Exec/plugin approval helpers, approval-capability builders, auth/profile helpers, native routing/runtime helpers |
     | `plugin-sdk/infra-runtime` | System event/heartbeat helpers |
     | `plugin-sdk/collection-runtime` | Small bounded cache helpers |
     | `plugin-sdk/diagnostic-runtime` | Diagnostic flag and event helpers |
@@ -140,15 +140,14 @@ methods:
 
 ### Infrastructure
 
-| Method                                         | What it registers          |
-| ---------------------------------------------- | -------------------------- |
-| `api.registerHook(events, handler, opts?)`     | Event hook                 |
-| `api.registerHttpRoute(params)`                | Gateway HTTP endpoint      |
-| `api.registerGatewayMethod(name, handler)`     | Gateway RPC method         |
-| `api.registerCli(registrar, opts?)`            | CLI subcommand             |
-| `api.registerService(service)`                 | Background service         |
-| `api.registerInteractiveHandler(registration)` | Interactive handler        |
-| `api.registerOperationsRuntime(runtime)`       | Durable operations runtime |
+| Method                                         | What it registers     |
+| ---------------------------------------------- | --------------------- |
+| `api.registerHook(events, handler, opts?)`     | Event hook            |
+| `api.registerHttpRoute(params)`                | Gateway HTTP endpoint |
+| `api.registerGatewayMethod(name, handler)`     | Gateway RPC method    |
+| `api.registerCli(registrar, opts?)`            | CLI subcommand        |
+| `api.registerService(service)`                 | Background service    |
+| `api.registerInteractiveHandler(registration)` | Interactive handler   |
 
 ### CLI registration metadata
 
