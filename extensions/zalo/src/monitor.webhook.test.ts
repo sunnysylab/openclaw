@@ -294,29 +294,30 @@ describe("handleZaloWebhookRequest", () => {
     }
   });
 
-  it("keeps replay dedupe isolated across different accounts on different webhook paths", async () => {
+  it("keeps replay dedupe isolated when path/account values collide under colon-joined keys", async () => {
     const sinkA = vi.fn();
     const sinkB = vi.fn();
+    // Old key format `${path}:${accountId}:${event_name}:${messageId}` would collide for these two targets.
     const unregisterA = registerTarget({
-      path: "/hook-replay-account-a",
+      path: "/hook-replay-collision:a",
       secret: "secret-a",
       statusSink: sinkA,
       account: {
         ...DEFAULT_ACCOUNT,
-        accountId: "a",
+        accountId: "team",
       },
     });
     const unregisterB = registerTarget({
-      path: "/hook-replay-account-b",
+      path: "/hook-replay-collision",
       secret: "secret-b",
       statusSink: sinkB,
       account: {
         ...DEFAULT_ACCOUNT,
-        accountId: "b",
+        accountId: "a:team",
       },
     });
     const payload = createTextUpdate({
-      messageId: "msg-replay-cross-account-1",
+      messageId: "msg-replay-collision-1",
       userId: "123",
       userName: "",
       chatId: "123",
@@ -325,7 +326,7 @@ describe("handleZaloWebhookRequest", () => {
 
     try {
       await withServer(webhookRequestHandler, async (baseUrl) => {
-        const first = await fetch(`${baseUrl}/hook-replay-account-a`, {
+        const first = await fetch(`${baseUrl}/hook-replay-collision:a`, {
           method: "POST",
           headers: {
             "x-bot-api-secret-token": "secret-a",
@@ -333,7 +334,7 @@ describe("handleZaloWebhookRequest", () => {
           },
           body: JSON.stringify(payload),
         });
-        const second = await fetch(`${baseUrl}/hook-replay-account-b`, {
+        const second = await fetch(`${baseUrl}/hook-replay-collision`, {
           method: "POST",
           headers: {
             "x-bot-api-secret-token": "secret-b",
