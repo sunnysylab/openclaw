@@ -960,7 +960,16 @@ describe("buildStatusMessage", () => {
   function buildTranscriptStatusText(params: {
     sessionId: string;
     sessionKey: string;
-    sessionEntry?: Partial<SessionListEntry>;
+    sessionEntry?: Partial<{
+      cacheRead: number;
+      cacheWrite: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      contextTokens: number;
+      updatedAt: number;
+      sessionId: string;
+    }>;
   }) {
     return buildStatusMessage({
       agent: {
