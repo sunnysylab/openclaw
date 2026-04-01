@@ -129,6 +129,7 @@ import {
 import { dropThinkingBlocks } from "../thinking.js";
 import { collectAllowedToolNames } from "../tool-name-allowlist.js";
 import { installToolResultContextGuard } from "../tool-result-context-guard.js";
+import { resolveToolResultMaxTokens } from "../tool-result-truncation.js";
 import { splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { flushPendingToolResultsAfterIdle } from "../wait-for-idle-before-flush.js";
@@ -864,6 +865,15 @@ export async function runEmbeddedAttempt(
           Math.floor(
             params.model.contextWindow ?? params.model.maxTokens ?? DEFAULT_CONTEXT_TOKENS,
           ),
+        ),
+        toolResultMaxTokens: resolveToolResultMaxTokens(
+          Math.max(
+            1,
+            Math.floor(
+              params.model.contextWindow ?? params.model.maxTokens ?? DEFAULT_CONTEXT_TOKENS,
+            ),
+          ),
+          params.config,
         ),
       });
       const cacheTrace = createCacheTrace({

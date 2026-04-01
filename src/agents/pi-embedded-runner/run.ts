@@ -86,6 +86,7 @@ import type { RunEmbeddedPiAgentParams } from "./run/params.js";
 import { buildEmbeddedRunPayloads } from "./run/payloads.js";
 import { resolveEffectiveRuntimeModel, resolveHookModelSelection } from "./run/setup.js";
 import {
+  resolveToolResultMaxTokens,
   sessionLikelyHasOversizedToolResults,
   truncateOversizedToolResultsInSession,
 } from "./tool-result-truncation.js";
@@ -866,10 +867,15 @@ export async function runEmbeddedPiAgent(
             // context window and compaction cannot reduce it further.
             if (!toolResultTruncationAttempted) {
               const contextWindowTokens = ctxInfo.tokens;
+              const toolResultMaxTokens = resolveToolResultMaxTokens(
+                contextWindowTokens,
+                params.config,
+              );
               const hasOversized = attempt.messagesSnapshot
                 ? sessionLikelyHasOversizedToolResults({
                     messages: attempt.messagesSnapshot,
                     contextWindowTokens,
+                    toolResultMaxTokens,
                   })
                 : false;
 
@@ -889,6 +895,8 @@ export async function runEmbeddedPiAgent(
                 const truncResult = await truncateOversizedToolResultsInSession({
                   sessionFile: params.sessionFile,
                   contextWindowTokens,
+                  toolResultMaxTokens,
+                  cfg: params.config,
                   sessionId: params.sessionId,
                   sessionKey: params.sessionKey,
                 });
