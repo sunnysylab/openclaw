@@ -1,10 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEnv } from "../runtime.js";
 import { makeTempWorkspace } from "../test-helpers/workspace.js";
 import { captureEnv } from "../test-utils/env.js";
 import { createThrowingRuntime, readJsonFile } from "./onboard-non-interactive.test-helpers.js";
+import type { installGatewayDaemonNonInteractive } from "./onboard-non-interactive/local/daemon-install.js";
 
 const gatewayClientCalls: Array<{
   url?: string;
@@ -14,8 +15,9 @@ const gatewayClientCalls: Array<{
   onClose?: (code: number, reason: string) => void;
 }> = [];
 const ensureWorkspaceAndSessionsMock = vi.fn(async (..._args: unknown[]) => {});
+type InstallGatewayDaemonResult = Awaited<ReturnType<typeof installGatewayDaemonNonInteractive>>;
 const installGatewayDaemonNonInteractiveMock = vi.hoisted(() =>
-  vi.fn(async () => ({ installed: true as const })),
+  vi.fn(async (): Promise<InstallGatewayDaemonResult> => ({ installed: true })),
 );
 const gatewayServiceMock = vi.hoisted(() => ({
   label: "LaunchAgent",
@@ -88,16 +90,76 @@ vi.mock("../daemon/diagnostics.js", () => ({
   readLastGatewayErrorLine: readLastGatewayErrorLineMock,
 }));
 
-const { runNonInteractiveOnboarding } = await import("./onboard-non-interactive.js");
-const { resolveConfigPath: resolveStateConfigPath } = await import("../config/paths.js");
-const { resolveConfigPath } = await import("../config/config.js");
-const { callGateway } = await import("../gateway/call.js");
+let runNonInteractiveSetup: typeof import("./onboard-non-interactive.js").runNonInteractiveSetup;
+let resolveStateConfigPath: typeof import("../config/paths.js").resolveConfigPath;
+let resolveConfigPath: typeof import("../config/config.js").resolveConfigPath;
+let callGateway: typeof import("../gateway/call.js").callGateway;
+
+async function loadGatewayOnboardModules(): Promise<void> {
+  vi.resetModules();
+  ({ runNonInteractiveSetup } = await import("./onboard-non-interactive.js"));
+  ({ resolveConfigPath: resolveStateConfigPath } = await import("../config/paths.js"));
+  ({ resolveConfigPath } = await import("../config/config.js"));
+  ({ callGateway } = await import("../gateway/call.js"));
+}
 
 function getPseudoPort(base: number): number {
   return base + (process.pid % 1000);
 }
 
 const runtime = createThrowingRuntime();
+
+function createJsonCaptureRuntime() {
+  let capturedJson = "";
+  const runtimeWithCapture: RuntimeEnv = {
+    log: (...args: unknown[]) => {
+      const firstArg = args[0];
+      capturedJson =
+        typeof firstArg === "string"
+          ? firstArg
+          : firstArg instanceof Error
+            ? firstArg.message
+            : (JSON.stringify(firstArg) ?? "");
+    },
+    error: (...args: unknown[]) => {
+      const firstArg = args[0];
+      const capturedError =
+        typeof firstArg === "string"
+          ? firstArg
+          : firstArg instanceof Error
+            ? firstArg.message
+            : (JSON.stringify(firstArg) ?? "");
+      throw new Error(capturedError);
+    },
+    exit: (_code: number) => {
+      throw new Error("exit should not be reached after runtime.error");
+    },
+  };
+
+  return {
+    runtimeWithCapture,
+    readCapturedJson: () => capturedJson,
+  };
+}
+
+async function expectLocalJsonSetupFailure(stateDir: string, runtimeWithCapture: RuntimeEnv) {
+  await expect(
+    runNonInteractiveSetup(
+      {
+        nonInteractive: true,
+        mode: "local",
+        workspace: path.join(stateDir, "openclaw"),
+        authChoice: "skip",
+        skipSkills: true,
+        skipHealth: false,
+        installDaemon: true,
+        gatewayBind: "loopback",
+        json: true,
+      },
+      runtimeWithCapture,
+    ),
+  ).rejects.toThrow("exit should not be reached after runtime.error");
+}
 
 describe("onboard (non-interactive): gateway and remote auth", () => {
   let envSnapshot: ReturnType<typeof captureEnv>;
@@ -146,6 +208,12 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
 
     tempHome = await makeTempWorkspace("openclaw-onboard-");
     process.env.HOME = tempHome;
+
+    await loadGatewayOnboardModules();
+  });
+
+  beforeEach(() => {
+    gatewayClientCalls.length = 0;
   });
 
   afterAll(async () => {
@@ -161,6 +229,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
     gatewayServiceMock.isLoaded.mockClear();
     gatewayServiceMock.readRuntime.mockClear();
     readLastGatewayErrorLineMock.mockClear();
+    gatewayClientCalls.length = 0;
   });
 
   it("writes gateway token auth into config", async () => {
@@ -168,7 +237,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
       const token = "tok_test_123";
       const workspace = path.join(stateDir, "openclaw");
 
-      await runNonInteractiveOnboarding(
+      await runNonInteractiveSetup(
         {
           nonInteractive: true,
           mode: "local",
@@ -206,7 +275,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
       process.env.OPENCLAW_GATEWAY_TOKEN = envToken;
 
       try {
-        await runNonInteractiveOnboarding(
+        await runNonInteractiveSetup(
           {
             nonInteractive: true,
             mode: "local",
@@ -246,7 +315,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
       process.env.OPENCLAW_GATEWAY_TOKEN = envToken;
 
       try {
-        await runNonInteractiveOnboarding(
+        await runNonInteractiveSetup(
           {
             nonInteractive: true,
             mode: "local",
@@ -290,7 +359,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
       delete process.env.MISSING_GATEWAY_TOKEN_ENV;
       try {
         await expect(
-          runNonInteractiveOnboarding(
+          runNonInteractiveSetup(
             {
               nonInteractive: true,
               mode: "local",
@@ -320,7 +389,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
     await withStateDir("state-remote-", async () => {
       const port = getPseudoPort(30_000);
       const token = "tok_remote_123";
-      await runNonInteractiveOnboarding(
+      await runNonInteractiveSetup(
         {
           nonInteractive: true,
           mode: "remote",
@@ -357,7 +426,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
       }));
 
       await expect(
-        runNonInteractiveOnboarding(
+        runNonInteractiveSetup(
           {
             nonInteractive: true,
             mode: "local",
@@ -384,7 +453,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
         return { ok: true };
       });
 
-      await runNonInteractiveOnboarding(
+      await runNonInteractiveSetup(
         {
           nonInteractive: true,
           mode: "local",
@@ -410,23 +479,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
         skippedReason: "systemd-user-unavailable",
       });
 
-      let capturedError = "";
-      const runtimeWithCapture: RuntimeEnv = {
-        log: () => {},
-        error: (...args: unknown[]) => {
-          const firstArg = args[0];
-          capturedError =
-            typeof firstArg === "string"
-              ? firstArg
-              : firstArg instanceof Error
-                ? firstArg.message
-                : (JSON.stringify(firstArg) ?? "");
-          throw new Error(capturedError);
-        },
-        exit: (_code: number) => {
-          throw new Error("exit should not be reached after runtime.error");
-        },
-      };
+      const { runtimeWithCapture, readCapturedJson } = createJsonCaptureRuntime();
 
       const originalPlatform = process.platform;
       Object.defineProperty(process, "platform", {
@@ -435,22 +488,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
       });
 
       try {
-        await expect(
-          runNonInteractiveOnboarding(
-            {
-              nonInteractive: true,
-              mode: "local",
-              workspace: path.join(stateDir, "openclaw"),
-              authChoice: "skip",
-              skipSkills: true,
-              skipHealth: false,
-              installDaemon: true,
-              gatewayBind: "loopback",
-              json: true,
-            },
-            runtimeWithCapture,
-          ),
-        ).rejects.toThrow(/"phase": "daemon-install"/);
+        await expectLocalJsonSetupFailure(stateDir, runtimeWithCapture);
       } finally {
         Object.defineProperty(process, "platform", {
           configurable: true,
@@ -458,7 +496,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
         });
       }
 
-      const parsed = JSON.parse(capturedError) as {
+      const parsed = JSON.parse(readCapturedJson()) as {
         ok: boolean;
         phase: string;
         daemonInstall?: {
@@ -488,42 +526,10 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
         detail: "gateway closed (1006 abnormal closure (no close frame)): no close reason",
       }));
 
-      let capturedError = "";
-      const runtimeWithCapture: RuntimeEnv = {
-        log: () => {},
-        error: (...args: unknown[]) => {
-          const firstArg = args[0];
-          capturedError =
-            typeof firstArg === "string"
-              ? firstArg
-              : firstArg instanceof Error
-                ? firstArg.message
-                : (JSON.stringify(firstArg) ?? "");
-          throw new Error(capturedError);
-        },
-        exit: (_code: number) => {
-          throw new Error("exit should not be reached after runtime.error");
-        },
-      };
+      const { runtimeWithCapture, readCapturedJson } = createJsonCaptureRuntime();
+      await expectLocalJsonSetupFailure(stateDir, runtimeWithCapture);
 
-      await expect(
-        runNonInteractiveOnboarding(
-          {
-            nonInteractive: true,
-            mode: "local",
-            workspace: path.join(stateDir, "openclaw"),
-            authChoice: "skip",
-            skipSkills: true,
-            skipHealth: false,
-            installDaemon: true,
-            gatewayBind: "loopback",
-            json: true,
-          },
-          runtimeWithCapture,
-        ),
-      ).rejects.toThrow(/"phase": "gateway-health"/);
-
-      const parsed = JSON.parse(capturedError) as {
+      const parsed = JSON.parse(readCapturedJson()) as {
         ok: boolean;
         phase: string;
         installDaemon: boolean;
@@ -566,7 +572,7 @@ describe("onboard (non-interactive): gateway and remote auth", () => {
       const port = getPseudoPort(40_000);
       const workspace = path.join(stateDir, "openclaw");
 
-      await runNonInteractiveOnboarding(
+      await runNonInteractiveSetup(
         {
           nonInteractive: true,
           mode: "local",
