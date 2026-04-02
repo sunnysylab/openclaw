@@ -606,6 +606,9 @@ describe("device-pair /pair approve", () => {
       }),
     );
 
+    expect(vi.mocked(approveDevicePairing)).toHaveBeenCalledWith("req-1", {
+      callerScopes: ["operator.write", "operator.pairing"],
+    });
     expect(result).toEqual({
       text: "⚠️ Cannot approve a request requiring operator.admin.",
     });
