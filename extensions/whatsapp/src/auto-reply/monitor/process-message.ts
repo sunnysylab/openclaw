@@ -14,7 +14,10 @@ import {
   buildHistoryContextFromEntries,
   type HistoryEntry,
 } from "openclaw/plugin-sdk/reply-history";
-import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
+import {
+  resolveSendableOutboundReplyParts,
+  resolveToolDeliveryPayload,
+} from "openclaw/plugin-sdk/reply-payload";
 import { resolveChunkMode, resolveTextChunkLimit } from "openclaw/plugin-sdk/reply-runtime";
 import type { getReplyFromConfig } from "openclaw/plugin-sdk/reply-runtime";
 import { finalizeInboundContext } from "openclaw/plugin-sdk/reply-runtime";
@@ -413,14 +416,23 @@ export async function processMessage(params: {
         }
       },
       deliver: async (payload: ReplyPayload, info) => {
+        const deliveryPayload =
+          info.kind === "final"
+            ? payload
+            : resolveToolDeliveryPayload(payload, {
+                allowText: false,
+                allowExecApproval: false,
+              });
         if (info.kind !== "final") {
-          // Only deliver final replies to external messaging channels (WhatsApp).
-          // Block (reasoning/thinking) and tool updates are meant for the internal
-          // web UI only; sending them here leaks chain-of-thought to end users.
-          return;
+          // Block (reasoning/thinking) updates are meant for the internal web UI only.
+          // Media-only tool/block results, such as TTS audio flushed at agent end,
+          // still need delivery.
+          if (!deliveryPayload) {
+            return;
+          }
         }
         await deliverWebReply({
-          replyResult: payload,
+          replyResult: deliveryPayload ?? payload,
           msg: params.msg,
           mediaLocalRoots,
           maxMediaBytes: params.maxMediaBytes,
@@ -432,19 +444,22 @@ export async function processMessage(params: {
           tableMode,
         });
         didSendReply = true;
-        const shouldLog = payload.text ? true : undefined;
-        params.rememberSentText(payload.text, {
-          combinedBody,
-          combinedBodySessionKey: params.route.sessionKey,
-          logVerboseMessage: shouldLog,
-        });
+        const delivered = deliveryPayload ?? payload;
+        const shouldLog = delivered.text ? true : undefined;
+        if (info.kind === "final") {
+          params.rememberSentText(delivered.text, {
+            combinedBody,
+            combinedBodySessionKey: params.route.sessionKey,
+            logVerboseMessage: shouldLog,
+          });
+        }
         const fromDisplay =
           params.msg.chatType === "group" ? conversationId : (params.msg.from ?? "unknown");
-        const reply = resolveSendableOutboundReplyParts(payload);
+        const reply = resolveSendableOutboundReplyParts(delivered);
         const hasMedia = reply.hasMedia;
         whatsappOutboundLog.info(`Auto-replied to ${fromDisplay}${hasMedia ? " (media)" : ""}`);
         if (shouldLogVerbose()) {
-          const preview = payload.text != null ? elide(reply.text, 400) : "<media>";
+          const preview = delivered.text != null ? elide(reply.text, 400) : "<media>";
           whatsappOutboundLog.debug(`Reply body: ${preview}${hasMedia ? " (media)" : ""}`);
         }
       },

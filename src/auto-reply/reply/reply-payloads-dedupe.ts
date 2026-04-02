@@ -112,14 +112,61 @@ function targetsMatchForSuppression(params: {
 
   const origin = parseExplicitTargetForChannel("telegram", params.originTarget);
   const target = parseExplicitTargetForChannel("telegram", params.targetKey);
-  if (!origin || !target) {
+  const parseFallbackTelegramTarget = (
+    raw: string,
+  ): { to: string; threadId?: string } | undefined => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    let normalized = trimmed;
+    let hasProviderPrefix = false;
+    while (true) {
+      const withProviderRemoved = normalized
+        .replace(/^(telegram|tg):/i, "")
+        .trim()
+        .replace(/^(telegram|tg):/i, "")
+        .trim();
+      if (withProviderRemoved !== normalized) {
+        hasProviderPrefix = true;
+        normalized = withProviderRemoved;
+        continue;
+      }
+      if (hasProviderPrefix && /^group:/i.test(normalized)) {
+        normalized = normalized.replace(/^group:/i, "").trim();
+        continue;
+      }
+      break;
+    }
+
+    const topicMatch = /^(.+?):topic:(\d+)$/i.exec(normalized);
+    if (topicMatch) {
+      return {
+        to: topicMatch[1].trim(),
+        threadId: topicMatch[2],
+      };
+    }
+    const colonMatch = /^(.+):(\d+)$/i.exec(normalized);
+    if (colonMatch) {
+      return {
+        to: colonMatch[1].trim(),
+        threadId: colonMatch[2],
+      };
+    }
+    return { to: normalized.trim() };
+  };
+
+  const parsedOrigin = origin ?? parseFallbackTelegramTarget(params.originTarget);
+  const parsedTarget = target ?? parseFallbackTelegramTarget(params.targetKey);
+  if (!parsedOrigin || !parsedTarget) {
     return params.targetKey === params.originTarget;
   }
   const explicitTargetThreadId = normalizeThreadIdForComparison(params.targetThreadId);
   const targetThreadId =
-    explicitTargetThreadId ?? (target.threadId != null ? String(target.threadId) : undefined);
-  const originThreadId = origin.threadId != null ? String(origin.threadId) : undefined;
-  if (origin.to.trim().toLowerCase() !== target.to.trim().toLowerCase()) {
+    explicitTargetThreadId ??
+    (parsedTarget.threadId != null ? String(parsedTarget.threadId) : undefined);
+  const originThreadId = parsedOrigin.threadId != null ? String(parsedOrigin.threadId) : undefined;
+  if (parsedOrigin.to.trim().toLowerCase() !== parsedTarget.to.trim().toLowerCase()) {
     return false;
   }
   if (originThreadId && targetThreadId != null) {

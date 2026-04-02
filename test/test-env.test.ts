@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { importFreshModule } from "./helpers/import-fresh.js";
 import { installTestEnv } from "./test-env.js";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -37,6 +36,7 @@ function createTempHome(): string {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   while (cleanupFns.length > 0) {
     cleanupFns.pop()?.();
   }
@@ -141,9 +141,49 @@ describe("installTestEnv", () => {
     expect(process.env.TEST_PROFILE_ONLY).toBe("from-profile");
   });
 
-  it("falls back to parsing ~/.profile when bash is unavailable", async () => {
+  it("falls back to direct .profile parsing when bash is unavailable", () => {
     const realHome = createTempHome();
     writeFile(path.join(realHome, ".profile"), "export TEST_PROFILE_ONLY=from-profile\n");
+
+    const existsSync = fs.existsSync.bind(fs);
+    vi.spyOn(fs, "existsSync").mockImplementation((targetPath) => {
+      if (targetPath === "/bin/bash") {
+        return false;
+      }
+      return existsSync(targetPath);
+    });
+    process.env.HOME = realHome;
+    process.env.USERPROFILE = realHome;
+    process.env.OPENCLAW_LIVE_TEST = "1";
+    process.env.OPENCLAW_LIVE_USE_REAL_HOME = "1";
+    process.env.OPENCLAW_LIVE_TEST_QUIET = "1";
+
+    const testEnv = installTestEnv();
+
+    expect(testEnv.tempHome).toBe(realHome);
+    expect(process.env.TEST_PROFILE_ONLY).toBe("from-profile");
+  });
+
+  it("ignores malformed .profile parse failures during fallback parsing", () => {
+    const realHome = createTempHome();
+    writeFile(path.join(realHome, ".profile"), "export TEST_PROFILE_ONLY=from-profile\n");
+
+    const existsSync = fs.existsSync.bind(fs);
+    const readFileSync = fs.readFileSync.bind(fs);
+
+    vi.spyOn(fs, "existsSync").mockImplementation((targetPath) => {
+      if (targetPath === "/bin/bash") {
+        return false;
+      }
+      return existsSync(targetPath);
+    });
+
+    vi.spyOn(fs, "readFileSync").mockImplementation((targetPath, encoding?: string) => {
+      if (String(targetPath) === path.join(realHome, ".profile")) {
+        throw new Error("failed to read profile");
+      }
+      return readFileSync(targetPath as fs.PathLike, encoding);
+    });
 
     process.env.HOME = realHome;
     process.env.USERPROFILE = realHome;
@@ -151,19 +191,9 @@ describe("installTestEnv", () => {
     process.env.OPENCLAW_LIVE_USE_REAL_HOME = "1";
     process.env.OPENCLAW_LIVE_TEST_QUIET = "1";
 
-    vi.doMock("node:child_process", () => ({
-      execFileSync: () => {
-        throw Object.assign(new Error("bash missing"), { code: "ENOENT" });
-      },
-    }));
-
-    const { installTestEnv: installFreshTestEnv } = await importFreshModule<
-      typeof import("./test-env.js")
-    >(import.meta.url, "./test-env.js?scope=profile-fallback");
-
-    const testEnv = installFreshTestEnv();
-
-    expect(testEnv.tempHome).toBe(realHome);
-    expect(process.env.TEST_PROFILE_ONLY).toBe("from-profile");
+    expect(() => {
+      const testEnv = installTestEnv();
+      expect(testEnv.tempHome).toBe(realHome);
+    }).not.toThrow();
   });
 });
