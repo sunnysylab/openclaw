@@ -310,13 +310,13 @@ export async function executeNodeHostCommand(
       inlineApprovalId = approvalId;
     } else {
       const followupTarget = execHostShared.buildExecApprovalFollowupTarget({
-        approvalId,
-        sessionKey: params.notifySessionKey,
-        turnSourceChannel: params.turnSourceChannel,
-        turnSourceTo: params.turnSourceTo,
-        turnSourceAccountId: params.turnSourceAccountId,
-        turnSourceThreadId: params.turnSourceThreadId,
-      });
+      approvalId,
+      sessionKey: params.notifySessionKey ?? params.sessionKey,
+      turnSourceChannel: params.turnSourceChannel,
+      turnSourceTo: params.turnSourceTo,
+      turnSourceAccountId: params.turnSourceAccountId,
+      turnSourceThreadId: params.turnSourceThreadId,
+    });
 
       void (async () => {
         const decision = await execHostShared.resolveApprovalDecisionOrUndefined({

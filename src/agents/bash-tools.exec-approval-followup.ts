@@ -29,6 +29,20 @@ function buildExecDeniedFollowupPrompt(resultText: string): string {
   ].join("\n");
 }
 
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "unknown error";
+  }
+}
+
 export function buildExecApprovalFollowupPrompt(resultText: string): string {
   const trimmed = resultText.trim();
   if (trimmed.startsWith("Exec denied (")) {
@@ -70,49 +84,62 @@ export async function sendExecApprovalFollowup(
       ? normalizedTurnSourceChannel
       : undefined;
 
+  let sessionError: unknown = null;
+
   if (sessionKey) {
-    await callGatewayTool(
-      "agent",
-      { timeoutMs: 60_000 },
-      {
-        sessionKey,
-        message: buildExecApprovalFollowupPrompt(resultText),
-        deliver: deliveryTarget.deliver,
-        ...(deliveryTarget.deliver ? { bestEffortDeliver: true as const } : {}),
-        channel: deliveryTarget.deliver ? deliveryTarget.channel : sessionOnlyOriginChannel,
-        to: deliveryTarget.deliver
-          ? deliveryTarget.to
-          : sessionOnlyOriginChannel
-            ? params.turnSourceTo
-            : undefined,
-        accountId: deliveryTarget.deliver
-          ? deliveryTarget.accountId
-          : sessionOnlyOriginChannel
-            ? params.turnSourceAccountId
-            : undefined,
-        threadId: deliveryTarget.deliver
-          ? deliveryTarget.threadId
-          : sessionOnlyOriginChannel
-            ? params.turnSourceThreadId
-            : undefined,
-        idempotencyKey: `exec-approval-followup:${params.approvalId}`,
-      },
-      { expectFinal: true },
-    );
-    return true;
+    try {
+      await callGatewayTool(
+        "agent",
+        { timeoutMs: 60_000 },
+        {
+          sessionKey,
+          message: buildExecApprovalFollowupPrompt(resultText),
+          deliver: deliveryTarget.deliver,
+          ...(deliveryTarget.deliver ? { bestEffortDeliver: true as const } : {}),
+          channel: deliveryTarget.deliver ? deliveryTarget.channel : sessionOnlyOriginChannel,
+          to: deliveryTarget.deliver
+            ? deliveryTarget.to
+            : sessionOnlyOriginChannel
+              ? params.turnSourceTo
+              : undefined,
+          accountId: deliveryTarget.deliver
+            ? deliveryTarget.accountId
+            : sessionOnlyOriginChannel
+              ? params.turnSourceAccountId
+              : undefined,
+          threadId: deliveryTarget.deliver
+            ? deliveryTarget.threadId
+            : sessionOnlyOriginChannel
+              ? params.turnSourceThreadId
+              : undefined,
+          idempotencyKey: `exec-approval-followup:${params.approvalId}`,
+        },
+        { expectFinal: true },
+      );
+      return true;
+    } catch (err) {
+      sessionError = err;
+    }
   }
 
   if (deliveryTarget.deliver) {
+    const prefix = sessionError
+      ? "Approved async command finished, but automatic session resume failed. Sending the exact result directly.\n\n"
+      : "";
     await sendMessage({
       channel: deliveryTarget.channel,
       to: deliveryTarget.to ?? "",
       accountId: deliveryTarget.accountId,
       threadId: deliveryTarget.threadId,
-      content: resultText,
+      content: `${prefix}${resultText}`,
       agentId: undefined,
       idempotencyKey: `exec-approval-followup:${params.approvalId}`,
     });
     return true;
+  }
+
+  if (sessionError) {
+    throw new Error(`Session followup failed: ${formatUnknownError(sessionError)}`);
   }
 
   throw new Error("Session key or deliverable origin route is required");

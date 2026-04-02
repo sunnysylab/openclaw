@@ -287,31 +287,42 @@ async function deliverToTargets(params: {
   deliver: typeof deliverOutboundPayloads;
   beforeDeliver?: (target: ForwardTarget, payload: ReplyPayload) => Promise<void> | void;
   shouldSend?: () => boolean;
-}) {
-  const deliveries = params.targets.map(async (target) => {
-    if (params.shouldSend && !params.shouldSend()) {
-      return;
+}): Promise<number> {
+  const deliveries = await Promise.allSettled(
+    params.targets.map(async (target) => {
+      if (params.shouldSend && !params.shouldSend()) {
+        return false;
+      }
+      const channel = normalizeMessageChannel(target.channel) ?? target.channel;
+      if (!isDeliverableMessageChannel(channel)) {
+        return false;
+      }
+      try {
+        const payload = params.buildPayload(target);
+        await params.beforeDeliver?.(target, payload);
+        await params.deliver({
+          cfg: params.cfg,
+          channel,
+          to: target.to,
+          accountId: target.accountId,
+          threadId: target.threadId,
+          payloads: [payload],
+        });
+        return true;
+      } catch (err) {
+        log.error(`exec approvals: failed to deliver to ${channel}:${target.to}: ${String(err)}`);
+        return false;
+      }
+    }),
+  );
+
+  let delivered = 0;
+  for (const result of deliveries) {
+    if (result.status === "fulfilled" && result.value === true) {
+      delivered += 1;
     }
-    const channel = normalizeMessageChannel(target.channel) ?? target.channel;
-    if (!isDeliverableMessageChannel(channel)) {
-      return;
-    }
-    try {
-      const payload = params.buildPayload(target);
-      await params.beforeDeliver?.(target, payload);
-      await params.deliver({
-        cfg: params.cfg,
-        channel,
-        to: target.to,
-        accountId: target.accountId,
-        threadId: target.threadId,
-        payloads: [payload],
-      });
-    } catch (err) {
-      log.error(`exec approvals: failed to deliver to ${channel}:${target.to}: ${String(err)}`);
-    }
-  });
-  await Promise.allSettled(deliveries);
+  }
+  return delivered;
 }
 
 function buildExecPendingPayload(params: {
@@ -523,7 +534,7 @@ function createApprovalHandlers<
       return false;
     }
 
-    void deliverToTargets({
+    const deliveredCount = await deliverToTargets({
       cfg,
       targets: filteredTargets,
       buildPayload: (target) =>
@@ -551,11 +562,20 @@ function createApprovalHandlers<
       },
       deliver: params.deliver,
       shouldSend: () => pending.get(requestId) === pendingEntry,
-    }).catch((err) => {
-      log.error(
-        `${params.strategy.kind} approvals: failed to deliver request ${requestId}: ${String(err)}`,
-      );
     });
+
+    if (pending.get(requestId) !== pendingEntry) {
+      return false;
+    }
+
+    if (deliveredCount === 0) {
+      if (pendingEntry.timeoutId) {
+        clearTimeout(pendingEntry.timeoutId);
+      }
+      pending.delete(requestId);
+      return false;
+    }
+
     return true;
   };
 
