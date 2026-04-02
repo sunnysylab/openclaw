@@ -594,15 +594,36 @@ export function createImageGenerateTool(options?: {
       });
 
       const savedImages = await Promise.all(
-        result.images.map((image) =>
-          saveMediaBuffer(
-            image.buffer,
+        result.images.map(async (image) => {
+          let buffer = image.buffer;
+          // If buffer is missing but URL is available, fetch the image
+          if (!buffer && image.url) {
+            const controller = new AbortController();
+            const fetchTimeout = setTimeout(() => controller.abort(), 10_000);
+            let response: Response;
+            try {
+              response = await fetch(image.url, { signal: controller.signal });
+            } finally {
+              clearTimeout(fetchTimeout);
+            }
+            if (!response.ok) {
+              throw new Error(
+                `Failed to fetch image from URL (${response.status} ${response.statusText}): ${image.url}`,
+              );
+            }
+            buffer = Buffer.from(await response.arrayBuffer());
+          }
+          if (!buffer) {
+            throw new Error("Image generation result has neither buffer nor url");
+          }
+          return saveMediaBuffer(
+            buffer,
             image.mimeType,
             "tool-image-generation",
             undefined,
             filename || image.fileName,
-          ),
-        ),
+          );
+        }),
       );
 
       const revisedPrompts = result.images

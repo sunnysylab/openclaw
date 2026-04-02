@@ -2,12 +2,14 @@ import type { AuthProfileStore } from "../agents/auth-profiles.js";
 import type { OpenClawConfig } from "../config/config.js";
 
 export type GeneratedImageAsset = {
-  buffer: Buffer;
   mimeType: string;
   fileName?: string;
   revisedPrompt?: string;
   metadata?: Record<string, unknown>;
-};
+} & (
+  | { buffer: Buffer; url?: never }
+  | { url: string; buffer?: never }
+);
 
 export type ImageGenerationResolution = "1K" | "2K" | "4K";
 
