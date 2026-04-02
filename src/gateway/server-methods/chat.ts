@@ -1234,11 +1234,15 @@ export const chatHandlers: GatewayRequestHandlers = {
     const sessionAgentId = resolveSessionAgentId({ sessionKey, config: cfg });
     const sessionId = entry?.sessionId;
     const resolvedSessionModel = resolveSessionModelRef(cfg, entry, sessionAgentId);
+    // Use the actual runtime provider for CLI import decisions, not the resolved one.
+    // When modelIsFromFallback is true, resolveSessionModelRef intentionally skips the
+    // runtime model, but we still need the real provider to decide CLI history imports.
+    const providerForCliImport = entry?.modelProvider?.trim() || resolvedSessionModel.provider;
     const localMessages =
       sessionId && storePath ? readSessionMessages(sessionId, storePath, entry?.sessionFile) : [];
     const rawMessages = augmentChatHistoryWithCliSessionImports({
       entry,
-      provider: resolvedSessionModel.provider,
+      provider: providerForCliImport,
       localMessages,
     });
     const hardMax = 1000;
