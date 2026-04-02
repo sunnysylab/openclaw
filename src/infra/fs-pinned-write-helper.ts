@@ -101,6 +101,49 @@ const LOCAL_PINNED_WRITE_PYTHON = [
   "    os.close(root_fd)",
 ].join("\n");
 
+const LOCAL_PINNED_UNLINK_PYTHON = [
+  "import os",
+  "import sys",
+  "",
+  "root_path = sys.argv[1]",
+  "relative_parent = sys.argv[2]",
+  "basename = sys.argv[3]",
+  "",
+  "DIR_FLAGS = os.O_RDONLY",
+  "if hasattr(os, 'O_DIRECTORY'):",
+  "    DIR_FLAGS |= os.O_DIRECTORY",
+  "if hasattr(os, 'O_NOFOLLOW'):",
+  "    DIR_FLAGS |= os.O_NOFOLLOW",
+  "",
+  "def open_dir(path_value, dir_fd=None):",
+  "    return os.open(path_value, DIR_FLAGS, dir_fd=dir_fd)",
+  "",
+  "def walk_parent(root_fd, rel_parent):",
+  "    current_fd = os.dup(root_fd)",
+  "    try:",
+  "        for segment in [part for part in rel_parent.split('/') if part and part != '.']:",
+  "            if segment == '..':",
+  "                raise OSError('path traversal is not allowed')",
+  "            next_fd = open_dir(segment, dir_fd=current_fd)",
+  "            os.close(current_fd)",
+  "            current_fd = next_fd",
+  "        return current_fd",
+  "    except Exception:",
+  "        os.close(current_fd)",
+  "        raise",
+  "",
+  "root_fd = open_dir(root_path)",
+  "parent_fd = None",
+  "try:",
+  "    parent_fd = walk_parent(root_fd, relative_parent)",
+  "    os.unlink(basename, dir_fd=parent_fd)",
+  "    os.fsync(parent_fd)",
+  "finally:",
+  "    if parent_fd is not None:",
+  "        os.close(parent_fd)",
+  "    os.close(root_fd)",
+].join("\n");
+
 const PINNED_WRITE_PYTHON_CANDIDATES = [
   process.env.OPENCLAW_PINNED_WRITE_PYTHON,
   "/usr/bin/python3",
@@ -152,6 +195,32 @@ function parsePinnedIdentity(stdout: string): FileIdentityStat {
   return { dev, ino };
 }
 
+function trackSpawnLifecycle(child: ReturnType<typeof spawn>): {
+  exitPromise: Promise<[number | null, NodeJS.Signals | null]>;
+  errorPromise: Promise<never>;
+  getSpawnError: () => Error | null;
+} {
+  let spawnError: Error | null = null;
+  const exitPromise = once(child, "close") as Promise<[number | null, NodeJS.Signals | null]>;
+  const errorPromise = new Promise<never>((_, reject) => {
+    child.once("error", (error) => {
+      spawnError = error instanceof Error ? error : new Error(String(error));
+      reject(spawnError);
+    });
+  });
+  return {
+    exitPromise,
+    errorPromise,
+    getSpawnError: () => spawnError,
+  };
+}
+
+function createPinnedUnlinkSpawnError(error: Error): Error {
+  return new Error(`Pinned unlink helper failed to start: ${error.message}`, {
+    cause: error,
+  });
+}
+
 export async function runPinnedWriteHelper(params: {
   rootPath: string;
   relativeParentPath: string;
@@ -187,7 +256,8 @@ export async function runPinnedWriteHelper(params: {
     stderr += chunk;
   });
 
-  const exitPromise = once(child, "close") as Promise<[number | null, NodeJS.Signals | null]>;
+  const { exitPromise, errorPromise, getSpawnError } = trackSpawnLifecycle(child);
+  let inputStarted = false;
   try {
     if (!child.stdin) {
       const identity = await runPinnedWriteFallback(params);
@@ -197,19 +267,24 @@ export async function runPinnedWriteHelper(params: {
 
     if (params.input.kind === "buffer") {
       const input = params.input;
-      await new Promise<void>((resolve, reject) => {
-        child.stdin.once("error", reject);
-        if (typeof input.data === "string") {
-          child.stdin.end(input.data, input.encoding ?? "utf8", () => resolve());
-          return;
-        }
-        child.stdin.end(input.data, () => resolve());
-      });
+      inputStarted = true;
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          child.stdin.once("error", reject);
+          if (typeof input.data === "string") {
+            child.stdin.end(input.data, input.encoding ?? "utf8", () => resolve());
+            return;
+          }
+          child.stdin.end(input.data, () => resolve());
+        }),
+        errorPromise,
+      ]);
     } else {
-      await pipeline(params.input.stream, child.stdin);
+      inputStarted = true;
+      await Promise.race([pipeline(params.input.stream, child.stdin), errorPromise]);
     }
 
-    const [code, signal] = await exitPromise;
+    const [code, signal] = await Promise.race([exitPromise, errorPromise]);
     if (code !== 0) {
       throw new Error(
         stderr.trim() ||
@@ -218,8 +293,60 @@ export async function runPinnedWriteHelper(params: {
     }
     return parsePinnedIdentity(stdout);
   } catch (error) {
-    child.kill("SIGKILL");
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Best-effort cleanup only.
+    }
     await exitPromise.catch(() => {});
+
+    if (getSpawnError() && (params.input.kind === "buffer" || !inputStarted)) {
+      return await runPinnedWriteFallback(params);
+    }
+
+    throw error;
+  }
+}
+
+export async function runPinnedUnlinkHelper(params: {
+  rootPath: string;
+  relativeParentPath: string;
+  basename: string;
+}): Promise<void> {
+  const child = spawn(
+    resolvePinnedWritePython(),
+    ["-c", LOCAL_PINNED_UNLINK_PYTHON, params.rootPath, params.relativeParentPath, params.basename],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  let stderr = "";
+  child.stderr.setEncoding?.("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+
+  const { exitPromise, errorPromise, getSpawnError } = trackSpawnLifecycle(child);
+  try {
+    const [code, signal] = await Promise.race([exitPromise, errorPromise]);
+    if (code !== 0) {
+      throw new Error(
+        stderr.trim() ||
+          `Pinned unlink helper failed with code ${code ?? "null"} (${signal ?? "?"})`,
+      );
+    }
+  } catch (error) {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Best-effort cleanup only.
+    }
+    await exitPromise.catch(() => {});
+    const spawnError = getSpawnError();
+    if (spawnError) {
+      throw createPinnedUnlinkSpawnError(spawnError);
+    }
     throw error;
   }
 }

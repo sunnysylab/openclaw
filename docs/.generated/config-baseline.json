@@ -1087,6 +1087,20 @@
       "hasChildren": false
     },
     {
+      "path": "agents.defaults.compaction.notifyUser",
+      "kind": "core",
+      "type": "boolean",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "advanced"
+      ],
+      "label": "Compaction Notify User",
+      "help": "When enabled, sends a brief compaction notice to the user (e.g. '🧹 Compacting context...') when compaction starts. Disabled by default to keep compaction silent and non-intrusive.",
+      "hasChildren": false
+    },
+    {
       "path": "agents.defaults.compaction.postCompactionSections",
       "kind": "core",
       "type": "array",
@@ -2194,16 +2208,6 @@
       "path": "agents.defaults.memorySearch.multimodal.modalities.*",
       "kind": "core",
       "type": "string",
-      "required": false,
-      "deprecated": false,
-      "sensitive": false,
-      "tags": [],
-      "hasChildren": false
-    },
-    {
-      "path": "agents.defaults.memorySearch.notifyUser",
-      "kind": "core",
-      "type": "boolean",
       "required": false,
       "deprecated": false,
       "sensitive": false,
@@ -7140,6 +7144,64 @@
       "sensitive": false,
       "tags": [],
       "hasChildren": true
+    },
+    {
+      "path": "agents.list.*.tools.fs.roots",
+      "kind": "core",
+      "type": "array",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": true
+    },
+    {
+      "path": "agents.list.*.tools.fs.roots.*",
+      "kind": "core",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": true
+    },
+    {
+      "path": "agents.list.*.tools.fs.roots.*.access",
+      "kind": "core",
+      "type": "string",
+      "required": true,
+      "enumValues": [
+        "ro",
+        "rw"
+      ],
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": false
+    },
+    {
+      "path": "agents.list.*.tools.fs.roots.*.kind",
+      "kind": "core",
+      "type": "string",
+      "required": true,
+      "enumValues": [
+        "dir",
+        "file"
+      ],
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": false
+    },
+    {
+      "path": "agents.list.*.tools.fs.roots.*.path",
+      "kind": "core",
+      "type": "string",
+      "required": true,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": false
     },
     {
       "path": "agents.list.*.tools.fs.workspaceOnly",
@@ -63533,6 +63595,82 @@
       "sensitive": false,
       "tags": [],
       "hasChildren": true
+    },
+    {
+      "path": "tools.fs.roots",
+      "kind": "core",
+      "type": "array",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "tools"
+      ],
+      "label": "FS roots",
+      "help": "Explicit filesystem roots with per-root access modes. When set, only paths within these roots are accessible to FS tools (read/write/edit/apply_patch). Each root specifies a path, kind (dir or file), and access mode (ro or rw). Takes precedence over workspaceOnly.",
+      "hasChildren": true
+    },
+    {
+      "path": "tools.fs.roots.*",
+      "kind": "core",
+      "type": "object",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [],
+      "hasChildren": true
+    },
+    {
+      "path": "tools.fs.roots.*.access",
+      "kind": "core",
+      "type": "string",
+      "required": true,
+      "enumValues": [
+        "ro",
+        "rw"
+      ],
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "access",
+        "tools"
+      ],
+      "label": "Access mode",
+      "help": "Access mode: 'ro' (read-only, rejects write/edit) or 'rw' (read-write).",
+      "hasChildren": false
+    },
+    {
+      "path": "tools.fs.roots.*.kind",
+      "kind": "core",
+      "type": "string",
+      "required": true,
+      "enumValues": [
+        "dir",
+        "file"
+      ],
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "tools"
+      ],
+      "label": "Root kind",
+      "help": "Root type: 'dir' allows recursive access to everything under the path, 'file' allows access to the exact file only.",
+      "hasChildren": false
+    },
+    {
+      "path": "tools.fs.roots.*.path",
+      "kind": "core",
+      "type": "string",
+      "required": true,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "storage",
+        "tools"
+      ],
+      "label": "Root path",
+      "help": "Absolute filesystem path for this root.",
+      "hasChildren": false
     },
     {
       "path": "tools.fs.workspaceOnly",
