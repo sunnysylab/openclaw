@@ -27,7 +27,7 @@ import {
   resolveJobPayloadTextForMain,
 } from "./jobs.js";
 import { locked } from "./locked.js";
-import type { CronEvent, CronServiceState } from "./state.js";
+import { formatMsToIso, type CronEvent, type CronServiceState } from "./state.js";
 import { ensureLoaded, persist } from "./store.js";
 import { DEFAULT_JOB_TIMEOUT_MS, resolveCronJobTimeoutMs } from "./timeout-policy.js";
 
@@ -478,6 +478,7 @@ export function applyJobResult(
               consecutiveErrors: consecutive,
               backoffMs: backoff,
               nextRunAtMs: job.state.nextRunAtMs,
+              nextRunAt: formatMsToIso(job.state.nextRunAtMs),
             },
             "cron: scheduling one-shot retry after transient error",
           );
@@ -525,6 +526,7 @@ export function applyJobResult(
           consecutiveErrors: job.state.consecutiveErrors,
           backoffMs: backoff,
           nextRunAtMs: job.state.nextRunAtMs,
+          nextRunAt: formatMsToIso(job.state.nextRunAtMs),
         },
         "cron: applying error backoff",
       );
@@ -641,7 +643,12 @@ export function armTimer(state: CronServiceState) {
     });
   }, clampedDelay);
   state.deps.log.debug(
-    { nextAt, delayMs: clampedDelay, clamped: delay > MAX_TIMER_DELAY_MS },
+    {
+      nextAt,
+      nextAtIso: formatMsToIso(nextAt),
+      delayMs: clampedDelay,
+      clamped: delay > MAX_TIMER_DELAY_MS,
+    },
     "cron: timer armed",
   );
 }
@@ -1353,6 +1360,7 @@ function emitJobFinished(
     runAtMs,
     durationMs: job.state.lastDurationMs,
     nextRunAtMs: job.state.nextRunAtMs,
+    nextRunAt: formatMsToIso(job.state.nextRunAtMs),
     model: result.model,
     provider: result.provider,
     usage: result.usage,

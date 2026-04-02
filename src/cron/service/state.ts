@@ -26,6 +26,7 @@ export type CronEvent = {
   sessionId?: string;
   sessionKey?: string;
   nextRunAtMs?: number;
+  nextRunAt?: string;
 } & CronRunTelemetry;
 
 export type Logger = {
@@ -142,6 +143,11 @@ export function createCronServiceState(deps: CronServiceDeps): CronServiceState 
   };
 }
 
+/** Format a millisecond timestamp as an ISO string for human-readable log output. */
+export function formatMsToIso(ms: number | undefined): string | undefined {
+  return typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
 export type CronRunMode = "due" | "force";
 export type CronWakeMode = "now" | "next-heartbeat";
 
@@ -150,6 +156,7 @@ export type CronStatusSummary = {
   storePath: string;
   jobs: number;
   nextWakeAtMs: number | null;
+  nextWakeAt: string | null;
 };
 
 export type CronRunResult =
