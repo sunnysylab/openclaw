@@ -962,6 +962,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         context: hookContext,
         timestamp: new Date(),
         messages: [],
+        postHookActions: [],
       };
       void triggerInternalHook(hookEvent);
     }
