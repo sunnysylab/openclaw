@@ -348,6 +348,26 @@ describe("downloadBlueBubblesAttachment", () => {
     const fetchMediaArgs = fetchRemoteMediaMock.mock.calls[0][0] as Record<string, unknown>;
     expect(fetchMediaArgs.ssrfPolicy).toEqual({ allowedHostnames: ["bluebubbles.example.com"] });
   });
+
+  it("keeps public serverUrl hostname pinning when allowPrivateNetwork is explicitly false", async () => {
+    mockSuccessfulAttachmentDownload();
+
+    const attachment: BlueBubblesAttachment = { guid: "att-public-host-opt-out" };
+    await downloadBlueBubblesAttachment(attachment, {
+      serverUrl: "https://bluebubbles.example.com:1234",
+      password: "test",
+      cfg: {
+        channels: {
+          bluebubbles: {
+            allowPrivateNetwork: false,
+          },
+        },
+      },
+    });
+
+    const fetchMediaArgs = fetchRemoteMediaMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(fetchMediaArgs.ssrfPolicy).toEqual({ allowedHostnames: ["bluebubbles.example.com"] });
+  });
 });
 
 describe("sendBlueBubblesAttachment", () => {
