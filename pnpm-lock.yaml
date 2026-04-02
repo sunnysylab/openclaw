@@ -586,6 +586,8 @@ importers:
         specifier: workspace:*
         version: link:../..
 
+  extensions/searxng: {}
+
   extensions/sglang: {}
 
   extensions/signal: {}
