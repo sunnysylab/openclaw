@@ -1,4 +1,5 @@
 import { html, nothing } from "lit";
+import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
 import { parseAgentSessionKey } from "../../../src/sessions/session-key-utils.js";
 import { t } from "../i18n/index.ts";
@@ -137,7 +138,7 @@ export function renderChatSessionSelect(state: AppViewState) {
     <div class="chat-controls__session-row">
       <label class="field chat-controls__session">
         <select
-          .value=${state.sessionKey}
+          data-chat-session-select="desktop"
           ?disabled=${!state.connected || sessionGroups.length === 0}
           @change=${(e: Event) => {
             const next = (e.target as HTMLSelectElement).value;
@@ -155,8 +156,13 @@ export function renderChatSessionSelect(state: AppViewState) {
                 ${repeat(
                   group.options,
                   (entry) => entry.key,
-                  (entry) =>
-                    html`<option value=${entry.key} title=${entry.title}>${entry.label}</option>`,
+                  (entry) => html`<option
+                    value=${entry.key}
+                    title=${entry.title}
+                    .selected=${live(entry.key === state.sessionKey)}
+                  >
+                    ${entry.label}
+                  </option>`,
                 )}
               </optgroup>`,
           )}
@@ -415,9 +421,9 @@ export function renderChatMobileToggle(state: AppViewState) {
         }}
       >
         <div class="chat-controls">
-          <label class="field chat-controls__session">
+          <label class="field chat-controls__session--mobile">
             <select
-              .value=${state.sessionKey}
+              data-chat-session-select="mobile"
               @change=${(e: Event) => {
                 const next = (e.target as HTMLSelectElement).value;
                 switchChatSession(state, next);
@@ -428,7 +434,13 @@ export function renderChatMobileToggle(state: AppViewState) {
                   <optgroup label=${group.label}>
                     ${group.options.map(
                       (opt) => html`
-                        <option value=${opt.key} title=${opt.title}>${opt.label}</option>
+                        <option
+                          value=${opt.key}
+                          title=${opt.title}
+                          ?selected=${opt.key === state.sessionKey}
+                        >
+                          ${opt.label}
+                        </option>
                       `,
                     )}
                   </optgroup>
