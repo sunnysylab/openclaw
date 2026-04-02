@@ -385,6 +385,22 @@ export const GENERATED_PLUGIN_SDK_FACADES = [
     ],
   },
   {
+    subpath: "deepinfra",
+    source: pluginSource("deepinfra", "api.js"),
+    exports: [
+      "buildDeepInfraProvider",
+      "buildDeepInfraProviderWithDiscovery",
+      "DEEPINFRA_BASE_URL",
+      "DEEPINFRA_DEFAULT_CONTEXT_WINDOW",
+      "DEEPINFRA_DEFAULT_MAX_TOKENS",
+      "DEEPINFRA_DEFAULT_MODEL_ID",
+      "DEEPINFRA_DEFAULT_MODEL_REF",
+      "DEEPINFRA_MODEL_CATALOG",
+      "DEEPINFRA_MODELS_URL",
+      "discoverDeepInfraModels",
+    ],
+  },
+  {
     subpath: "deepseek",
     source: pluginSource("deepseek", "api.js"),
     exports: [
