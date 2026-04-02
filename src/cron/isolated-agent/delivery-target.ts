@@ -50,8 +50,23 @@ export async function resolveDeliveryTarget(
   },
 ): Promise<DeliveryTargetResolution> {
   const requestedChannel = typeof jobPayload.channel === "string" ? jobPayload.channel : "last";
-  const explicitTo = typeof jobPayload.to === "string" ? jobPayload.to : undefined;
   const allowMismatchedLastTo = requestedChannel === "last";
+
+  // Parse :topic:<id> suffix from the raw `to` before passing downstream.
+  // This ensures the topic thread ID is extracted even when the channel plugin
+  // registry is not fully initialized (e.g. in isolated test environments where
+  // parseExplicitTargetWithPlugin inside resolveSessionDeliveryTarget cannot
+  // resolve the plugin).
+  let explicitTo = typeof jobPayload.to === "string" ? jobPayload.to : undefined;
+  let parsedTopicThreadId: number | undefined;
+  if (explicitTo) {
+    const topicMatch = explicitTo.match(/^(.*):topic:(\d+)$/i);
+    if (topicMatch?.[1] && topicMatch[2]) {
+      explicitTo = topicMatch[1].trim();
+      parsedTopicThreadId = Number.parseInt(topicMatch[2], 10);
+    }
+  }
+  const explicitThreadId = jobPayload.threadId ?? parsedTopicThreadId;
 
   const sessionCfg = cfg.session;
   const mainSessionKey = resolveAgentMainSessionKey({ cfg, agentId });
@@ -68,7 +83,7 @@ export async function resolveDeliveryTarget(
     entry: main,
     requestedChannel,
     explicitTo,
-    explicitThreadId: jobPayload.threadId,
+    explicitThreadId,
     allowMismatchedLastTo,
   });
 
@@ -95,7 +110,7 @@ export async function resolveDeliveryTarget(
         entry: main,
         requestedChannel,
         explicitTo,
-        explicitThreadId: jobPayload.threadId,
+        explicitThreadId,
         fallbackChannel,
         allowMismatchedLastTo,
         mode: preliminary.mode,
