@@ -21,18 +21,23 @@ const runGatewayLoop = vi.fn(async ({ start }: { start: () => Promise<unknown> }
 });
 const configState = vi.hoisted(() => ({
   cfg: {} as Record<string, unknown>,
-  snapshot: { exists: false } as Record<string, unknown>,
+  snapshot: { valid: true, exists: false, issues: [], config: {} } as Record<string, unknown>,
 }));
 
 const { runtimeErrors, defaultRuntime, resetRuntimeCapture } = createCliRuntimeCapture();
 
-vi.mock("../../config/config.js", () => ({
-  getConfigPath: () => "/tmp/openclaw-test-missing-config.json",
-  loadConfig: () => configState.cfg,
-  readConfigFileSnapshot: async () => configState.snapshot,
-  resolveStateDir: () => "/tmp",
-  resolveGatewayPort: () => 18789,
-}));
+vi.mock("../../config/config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../config/config.js")>();
+  return {
+    ...actual,
+    CONFIG_PATH: "/tmp/openclaw-test-missing-config.json",
+    isNixMode: false,
+    loadConfig: () => configState.cfg,
+    readConfigFileSnapshot: async () => configState.snapshot,
+    resolveStateDir: () => "/tmp",
+    resolveGatewayPort: () => 18789,
+  };
+});
 
 vi.mock("../../gateway/auth.js", () => ({
   resolveGatewayAuth: (params: {
@@ -130,7 +135,7 @@ describe("gateway run option collisions", () => {
   beforeEach(() => {
     resetRuntimeCapture();
     configState.cfg = {};
-    configState.snapshot = { exists: false };
+    configState.snapshot = { valid: true, exists: false, issues: [], config: {} };
     startGatewayServer.mockClear();
     setGatewayWsLogStyle.mockClear();
     setVerbose.mockClear();
@@ -262,7 +267,12 @@ describe("gateway run option collisions", () => {
         },
       },
     };
-    configState.snapshot = { exists: true, parsed: configState.cfg };
+    configState.snapshot = {
+      exists: true,
+      valid: true,
+      config: configState.cfg,
+      parsed: configState.cfg,
+    };
 
     await runGatewayCli(["gateway", "run", "--allow-unconfigured"]);
 
