@@ -462,6 +462,7 @@ async function probeTarget(params: {
       model: target.model.model,
       authProfileId: target.profileId,
       authProfileIdSource: target.profileId ? "user" : undefined,
+      allowGatewaySubagentBinding: true,
       timeoutMs,
       runId: `probe-${crypto.randomUUID()}`,
       lane: `auth-probe:${target.provider}:${target.profileId ?? target.source}`,
