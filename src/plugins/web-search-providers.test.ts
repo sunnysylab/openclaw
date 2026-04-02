@@ -13,6 +13,7 @@ const EXPECTED_BUNDLED_WEB_SEARCH_PROVIDER_KEYS = [
   "perplexity:perplexity",
   "searxng:searxng",
   "tavily:tavily",
+  "yep:yep",
 ] as const;
 const EXPECTED_BUNDLED_WEB_SEARCH_PROVIDER_PLUGIN_IDS = [
   "brave",
@@ -25,6 +26,7 @@ const EXPECTED_BUNDLED_WEB_SEARCH_PROVIDER_PLUGIN_IDS = [
   "perplexity",
   "searxng",
   "tavily",
+  "yep",
 ] as const;
 const EXPECTED_BUNDLED_WEB_SEARCH_CREDENTIAL_PATHS = [
   "plugins.entries.brave.config.webSearch.apiKey",
@@ -37,6 +39,7 @@ const EXPECTED_BUNDLED_WEB_SEARCH_CREDENTIAL_PATHS = [
   "plugins.entries.perplexity.config.webSearch.apiKey",
   "plugins.entries.searxng.config.webSearch.baseUrl",
   "plugins.entries.tavily.config.webSearch.apiKey",
+  "plugins.entries.yep.config.webSearch.apiKey",
 ] as const;
 
 function toProviderKeys(
