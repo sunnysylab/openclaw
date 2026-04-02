@@ -430,7 +430,7 @@ describe("chat view", () => {
     );
     expect(welcomeImage).toBeNull();
     expect(logoImage).not.toBeNull();
-    expect(logoImage?.getAttribute("src")).toBe("favicon.svg");
+    expect(logoImage?.getAttribute("src")).toBe("/favicon.svg");
   });
 
   it("keeps the welcome logo fallback under the mounted base path", () => {
