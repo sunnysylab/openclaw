@@ -6,7 +6,7 @@ const kimiApiKeyEnv = ["KIMI_API", "KEY"].join("_");
 
 describe("kimi web search provider", () => {
   it("uses configured model and base url overrides with sane defaults", () => {
-    expect(__testing.resolveKimiModel()).toBe("moonshot-v1-128k");
+    expect(__testing.resolveKimiModel()).toBe("kimi-k2.5");
     expect(__testing.resolveKimiModel({ model: "kimi-k2" })).toBe("kimi-k2");
     expect(__testing.resolveKimiBaseUrl()).toBe("https://api.moonshot.ai/v1");
     expect(__testing.resolveKimiBaseUrl({ baseUrl: "https://kimi.example/v1" })).toBe(
@@ -36,6 +36,26 @@ describe("kimi web search provider", () => {
         ],
       }),
     ).toEqual(["https://a.test", "https://b.test", "https://c.test"]);
+  });
+
+  it("returns original tool arguments as tool content", () => {
+    const rawArguments = '  {"query":"MacBook Neo","usage":{"total_tokens":123}}  ';
+
+    expect(
+      __testing.extractKimiToolResultContent({
+        function: {
+          arguments: rawArguments,
+        },
+      }),
+    ).toBe(rawArguments);
+
+    expect(
+      __testing.extractKimiToolResultContent({
+        function: {
+          arguments: "   ",
+        },
+      }),
+    ).toBeUndefined();
   });
 
   it("uses config apiKey when provided", () => {
