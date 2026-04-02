@@ -51,7 +51,7 @@ export type ModelDefinitionConfig = {
   name: string;
   api?: ModelApi;
   reasoning: boolean;
-  input: Array<"text" | "image">;
+  input: Array<"text" | "image" | "video" | "audio">;
   cost: {
     input: number;
     output: number;
