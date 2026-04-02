@@ -387,6 +387,8 @@ importers:
 
   extensions/firecrawl: {}
 
+  extensions/fpt-ai-factory: {}
+
   extensions/github-copilot: {}
 
   extensions/google: {}
