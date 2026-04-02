@@ -1,3 +1,4 @@
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const runCommandWithTimeout = vi.hoisted(() => vi.fn());
@@ -22,6 +23,9 @@ vi.mock("node:os", () => ({
 }));
 
 describe("browser maintenance", () => {
+  const trashDir = path.join("/home/test", ".Trash");
+  const trashedPath = path.join(trashDir, "demo-123");
+
   beforeEach(() => {
     vi.restoreAllMocks();
     runCommandWithTimeout.mockReset();
@@ -59,8 +63,8 @@ describe("browser maintenance", () => {
     });
     access.mockRejectedValue(new Error("missing"));
 
-    await expect(movePathToTrash("/tmp/demo")).resolves.toBe("/home/test/.Trash/demo-123");
-    expect(mkdir).toHaveBeenCalledWith("/home/test/.Trash", { recursive: true });
-    expect(rename).toHaveBeenCalledWith("/tmp/demo", "/home/test/.Trash/demo-123");
+    await expect(movePathToTrash("/tmp/demo")).resolves.toBe(trashedPath);
+    expect(mkdir).toHaveBeenCalledWith(trashDir, { recursive: true });
+    expect(rename).toHaveBeenCalledWith("/tmp/demo", trashedPath);
   });
 });
