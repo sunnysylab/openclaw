@@ -496,9 +496,29 @@ export async function sendMSTeamsMessages(params: {
     startIndex: number,
   ): Promise<string[]> => {
     const baseRef = buildConversationReference(params.conversationRef);
+    // For channel threads the proactive send must target the thread root so
+    // the reply lands inside the correct thread.  `threadRootMessageId` is
+    // populated from the inbound activity's `;messageid=…` suffix.
+    const isChannel =
+      params.conversationRef.conversation?.conversationType?.toLowerCase() === "channel";
+    const threadActivityId =
+      isChannel && params.conversationRef.threadRootMessageId
+        ? params.conversationRef.threadRootMessageId
+        : undefined;
     const proactiveRef: MSTeamsConversationReference = {
       ...baseRef,
-      activityId: undefined,
+      activityId: threadActivityId,
+      // Bot Framework's continueConversation routes by conversation.id —
+      // for channel threads we must append ;messageid=THREAD_ROOT so the
+      // message lands in the thread instead of going top-level.
+      ...(threadActivityId && baseRef.conversation
+        ? {
+            conversation: {
+              ...baseRef.conversation,
+              id: `${baseRef.conversation.id};messageid=${threadActivityId}`,
+            },
+          }
+        : {}),
     };
 
     const messageIds: string[] = [];
@@ -511,7 +531,10 @@ export async function sendMSTeamsMessages(params: {
   if (params.replyStyle === "thread") {
     const ctx = params.context;
     if (!ctx) {
-      throw new Error("Missing context for replyStyle=thread");
+      // No TurnContext available (proactive send path). Go straight to sendProactively
+      // with preserveThread=true so the message lands in the thread.
+      // The conversationRef already has ;messageid=THREAD_ROOT in conversation.id.
+      return await sendProactively(messages, 0);
     }
     const messageIds: string[] = [];
     for (const [idx, message] of messages.entries()) {
