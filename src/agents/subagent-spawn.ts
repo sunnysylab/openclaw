@@ -5,6 +5,7 @@ import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import { loadConfig } from "../config/config.js";
 import { mergeSessionEntry, updateSessionStore } from "../config/sessions.js";
 import { callGateway } from "../gateway/call.js";
+import { ADMIN_SCOPE } from "../gateway/method-scopes.js";
 import {
   pruneLegacyStoreKeys,
   resolveGatewaySessionStoreTarget,
@@ -148,7 +149,18 @@ async function updateSubagentSessionStore(
 async function callSubagentGateway(
   params: Parameters<typeof callGateway>[0],
 ): Promise<Awaited<ReturnType<typeof callGateway>>> {
-  return await subagentSpawnDeps.callGateway(params);
+  // Subagent lifecycle requires methods spanning multiple scope tiers
+  // (sessions.patch / sessions.delete → admin, agent → write).  When each call
+  // independently negotiates least-privilege scopes the first connection pairs
+  // at a lower tier and every subsequent higher-tier call triggers a
+  // scope-upgrade handshake that headless gateway-client connections cannot
+  // complete interactively, causing close(1008) "pairing required" (#59428).
+  // Pin all subagent gateway calls to operator.admin so the device is paired at
+  // the ceiling scope on the very first (silent, local-loopback) handshake.
+  return await subagentSpawnDeps.callGateway({
+    ...params,
+    scopes: params.scopes ?? [ADMIN_SCOPE],
+  });
 }
 
 function readGatewayRunId(response: Awaited<ReturnType<typeof callGateway>>): string | undefined {
