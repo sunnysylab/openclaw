@@ -13,7 +13,8 @@ export function createGatewayCloseHandler(params: {
   canvasHostServer: CanvasHostServer | null;
   releasePluginRouteRegistry?: (() => void) | null;
   stopChannel: (name: ChannelId, accountId?: string) => Promise<void>;
-  pluginServices: PluginServicesHandle | null;
+  pluginServicesReady: Promise<PluginServicesHandle | null>;
+  sidecarAbort?: AbortController;
   cron: { stop: () => void };
   heartbeatRunner: HeartbeatRunner;
   updateCheckStop?: (() => void) | null;
@@ -42,6 +43,9 @@ export function createGatewayCloseHandler(params: {
         typeof opts?.restartExpectedMs === "number" && Number.isFinite(opts.restartExpectedMs)
           ? Math.max(0, Math.floor(opts.restartExpectedMs))
           : null;
+      // Signal background sidecar tasks (channels, plugin services) to stop
+      // before we begin tearing down individual resources.
+      params.sidecarAbort?.abort();
       if (params.bonjourStop) {
         try {
           await params.bonjourStop();
@@ -69,8 +73,9 @@ export function createGatewayCloseHandler(params: {
       for (const plugin of listChannelPlugins()) {
         await params.stopChannel(plugin.id);
       }
-      if (params.pluginServices) {
-        await params.pluginServices.stop().catch(() => {});
+      const pluginServices = await params.pluginServicesReady.catch(() => null);
+      if (pluginServices) {
+        await pluginServices.stop().catch(() => {});
       }
       await stopGmailWatcher();
       params.cron.stop();

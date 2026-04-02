@@ -626,7 +626,7 @@ export async function startGatewayServer(
   ) as unknown as Record<ChannelId, RuntimeEnv>;
   const channelMethods = listChannelPlugins().flatMap((plugin) => plugin.gatewayMethods ?? []);
   const gatewayMethods = Array.from(new Set([...baseGatewayMethods, ...channelMethods]));
-  let pluginServices: PluginServicesHandle | null = null;
+  let pluginServicesReady: Promise<PluginServicesHandle | null> = Promise.resolve(null);
   const runtimeConfig = await resolveGatewayRuntimeConfig({
     cfg: cfgAtStart,
     port,
@@ -793,8 +793,10 @@ export async function startGatewayServer(
   let skillsChangeUnsub = () => {};
   let channelHealthMonitor: ReturnType<typeof startChannelHealthMonitor> | null = null;
   let stopModelPricingRefresh = () => {};
+  const sidecarAbort = new AbortController();
   let configReloader: { stop: () => Promise<void> } = { stop: async () => {} };
   const closeOnStartupFailure = async () => {
+    sidecarAbort.abort();
     if (diagnosticsEnabled) {
       stopDiagnosticHeartbeat();
     }
@@ -815,7 +817,8 @@ export async function startGatewayServer(
       canvasHostServer,
       releasePluginRouteRegistry,
       stopChannel,
-      pluginServices,
+      pluginServicesReady,
+      sidecarAbort,
       cron,
       heartbeatRunner,
       updateCheckStop: stopGatewayUpdateCheck,
@@ -1373,7 +1376,7 @@ export async function startGatewayServer(
           logDiagnostics: false,
         }));
       }
-      ({ pluginServices } = await startGatewaySidecars({
+      ({ pluginServicesReady } = await startGatewaySidecars({
         cfg: gatewayPluginConfigAtStart,
         pluginRegistry,
         defaultWorkspaceDir,
@@ -1382,6 +1385,7 @@ export async function startGatewayServer(
         log,
         logHooks,
         logChannels,
+        signal: sidecarAbort.signal,
       }));
     }
 
@@ -1489,7 +1493,8 @@ export async function startGatewayServer(
     canvasHostServer,
     releasePluginRouteRegistry,
     stopChannel,
-    pluginServices,
+    pluginServicesReady,
+    sidecarAbort,
     cron,
     heartbeatRunner,
     updateCheckStop: stopGatewayUpdateCheck,

@@ -77,6 +77,9 @@ export async function startGatewaySidecars(params: {
     error: (msg: string) => void;
   };
   logChannels: { info: (msg: string) => void; error: (msg: string) => void };
+  /** When provided, channel startup is skipped if the signal fires before
+   *  `startChannels` begins or while the model pre-warm is still running. */
+  signal?: AbortSignal;
 }) {
   try {
     const stateDir = resolveStateDir(process.env);
@@ -152,15 +155,33 @@ export async function startGatewaySidecars(params: {
     isTruthyEnvValue(process.env.OPENCLAW_SKIP_CHANNELS) ||
     isTruthyEnvValue(process.env.OPENCLAW_SKIP_PROVIDERS);
   if (!skipChannels) {
-    try {
-      await prewarmConfiguredPrimaryModel({
-        cfg: params.cfg,
-        log: params.log,
-      });
-      await params.startChannels();
-    } catch (err) {
-      params.logChannels.error(`channel startup failed: ${String(err)}`);
-    }
+    // Fire channel startup without blocking the rest of the sidecar
+    // initialisation.  Channel plugins (especially WhatsApp/baileys) pull in
+    // large dependency trees whose dynamic imports can block the Node.js event
+    // loop for tens of seconds on constrained hosts (e.g. Android/proot).
+    // By not awaiting here the gateway can start serving WebSocket and HTTP
+    // requests (dashboard UI, health checks) while channels connect in the
+    // background.
+    void (async () => {
+      try {
+        if (params.signal?.aborted) {
+          return;
+        }
+        await prewarmConfiguredPrimaryModel({
+          cfg: params.cfg,
+          log: params.log,
+        });
+        if (params.signal?.aborted) {
+          return;
+        }
+        await params.startChannels();
+      } catch (err) {
+        if (params.signal?.aborted) {
+          return;
+        }
+        params.logChannels.error(`channel startup failed: ${String(err)}`);
+      }
+    })();
   } else {
     params.logChannels.info(
       "skipping channel start (OPENCLAW_SKIP_CHANNELS=1 or OPENCLAW_SKIP_PROVIDERS=1)",
@@ -178,16 +199,19 @@ export async function startGatewaySidecars(params: {
     }, 250);
   }
 
-  let pluginServices: PluginServicesHandle | null = null;
-  try {
-    pluginServices = await startPluginServices({
-      registry: params.pluginRegistry,
-      config: params.cfg,
-      workspaceDir: params.defaultWorkspaceDir,
-    });
-  } catch (err) {
+  // Start plugin services (notably the browser-control server backed by
+  // Playwright) without blocking the rest of sidecar initialisation.  On
+  // constrained hosts (e.g. Android/proot) the Chromium dependency tree can
+  // block the event loop for over a minute.  The returned promise lets the
+  // shutdown handler await the handle even if startup is still in progress.
+  const pluginServicesReady: Promise<PluginServicesHandle | null> = startPluginServices({
+    registry: params.pluginRegistry,
+    config: params.cfg,
+    workspaceDir: params.defaultWorkspaceDir,
+  }).catch((err): null => {
     params.log.warn(`plugin services failed to start: ${String(err)}`);
-  }
+    return null;
+  });
 
   if (params.cfg.acp?.enabled) {
     void getAcpSessionManager()
@@ -215,7 +239,7 @@ export async function startGatewaySidecars(params: {
     }, 750);
   }
 
-  return { pluginServices };
+  return { pluginServicesReady };
 }
 
 export const __testing = {
