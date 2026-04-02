@@ -79,29 +79,489 @@ function buildExecForegroundResult(params: {
   });
 }
 
+const PREFLIGHT_ENV_OPTIONS_WITH_VALUES = new Set([
+  "-C",
+  "-S",
+  "-u",
+  "--argv0",
+  "--block-signal",
+  "--chdir",
+  "--default-signal",
+  "--ignore-signal",
+  "--split-string",
+  "--unset",
+]);
+
+function isShellEnvAssignmentToken(token: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*=.*$/u.test(token);
+}
+
+function stripPreflightEnvPrefix(argv: string[]): string[] {
+  if (argv.length === 0) {
+    return argv;
+  }
+  let idx = 0;
+  while (idx < argv.length && isShellEnvAssignmentToken(argv[idx])) {
+    idx += 1;
+  }
+  if ((argv[idx] ?? "").toLowerCase() !== "env") {
+    return argv;
+  }
+  idx += 1;
+  while (idx < argv.length) {
+    const token = argv[idx];
+    if (token === "--") {
+      idx += 1;
+      break;
+    }
+    if (isShellEnvAssignmentToken(token)) {
+      idx += 1;
+      continue;
+    }
+    if (!token.startsWith("-") || token === "-") {
+      break;
+    }
+    idx += 1;
+    const option = token.split("=", 1)[0];
+    if (
+      PREFLIGHT_ENV_OPTIONS_WITH_VALUES.has(option) &&
+      !token.includes("=") &&
+      idx < argv.length
+    ) {
+      idx += 1;
+    }
+  }
+  return argv.slice(idx);
+}
+
 function extractScriptTargetFromCommand(
   command: string,
 ): { kind: "python"; relOrAbsPath: string } | { kind: "node"; relOrAbsPath: string } | null {
   const raw = command.trim();
-  if (!raw) {
+  const splitShellArgsPreservingBackslashes = (value: string): string[] | null => {
+    const tokens: string[] = [];
+    let buf = "";
+    let inSingle = false;
+    let inDouble = false;
+
+    const pushToken = () => {
+      if (buf.length > 0) {
+        tokens.push(buf);
+        buf = "";
+      }
+    };
+
+    for (let i = 0; i < value.length; i += 1) {
+      const ch = value[i];
+      if (inSingle) {
+        if (ch === "'") {
+          inSingle = false;
+        } else {
+          buf += ch;
+        }
+        continue;
+      }
+      if (inDouble) {
+        if (ch === '"') {
+          inDouble = false;
+        } else {
+          buf += ch;
+        }
+        continue;
+      }
+      if (ch === "'") {
+        inSingle = true;
+        continue;
+      }
+      if (ch === '"') {
+        inDouble = true;
+        continue;
+      }
+      if (/\s/.test(ch)) {
+        pushToken();
+        continue;
+      }
+      buf += ch;
+    }
+
+    if (inSingle || inDouble) {
+      return null;
+    }
+    pushToken();
+    return tokens;
+  };
+  const shouldUseWindowsPathTokenizer =
+    process.platform === "win32" &&
+    /(?:^|[\s"'`])(?:[A-Za-z]:\\|\\\\|[^\s"'`|&;()<>]+\\[^\s"'`|&;()<>]+)/.test(raw);
+  const candidateArgv = shouldUseWindowsPathTokenizer
+    ? [splitShellArgsPreservingBackslashes(raw)]
+    : [splitShellArgs(raw)];
+
+  const findFirstPythonScriptArg = (tokens: string[]): string | null => {
+    const optionsWithSeparateValue = new Set(["-W", "-X", "-Q", "--check-hash-based-pycs"]);
+    for (let i = 0; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      if (token === "--") {
+        const next = tokens[i + 1];
+        return next?.toLowerCase().endsWith(".py") ? next : null;
+      }
+      if (token === "-") {
+        return null;
+      }
+      if (token === "-c" || token === "-m") {
+        return null;
+      }
+      if ((token.startsWith("-c") || token.startsWith("-m")) && token.length > 2) {
+        return null;
+      }
+      if (optionsWithSeparateValue.has(token)) {
+        i += 1;
+        continue;
+      }
+      if (token.startsWith("-")) {
+        continue;
+      }
+      return token.toLowerCase().endsWith(".py") ? token : null;
+    }
+    return null;
+  };
+  const findFirstNodeScriptArg = (tokens: string[]): string | null => {
+    const optionsWithSeparateValue = new Set(["-r", "--require", "--import"]);
+    let preloadScript: string | null = null;
+    let hasInlineEvalOrPrint = false;
+    for (let i = 0; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      if (token === "--") {
+        if (hasInlineEvalOrPrint) {
+          return preloadScript;
+        }
+        const next = tokens[i + 1];
+        if (next?.toLowerCase().endsWith(".js")) {
+          return next;
+        }
+        return preloadScript;
+      }
+      if (
+        token === "-e" ||
+        token === "-p" ||
+        token === "--eval" ||
+        token === "--print" ||
+        token.startsWith("--eval=") ||
+        token.startsWith("--print=") ||
+        ((token.startsWith("-e") || token.startsWith("-p")) && token.length > 2)
+      ) {
+        hasInlineEvalOrPrint = true;
+        if (token === "-e" || token === "-p" || token === "--eval" || token === "--print") {
+          i += 1;
+        }
+        continue;
+      }
+      if (optionsWithSeparateValue.has(token)) {
+        const next = tokens[i + 1];
+        if (!preloadScript && next?.toLowerCase().endsWith(".js")) {
+          preloadScript = next;
+        }
+        i += 1;
+        continue;
+      }
+      if (
+        (token.startsWith("-r") && token.length > 2) ||
+        token.startsWith("--require=") ||
+        token.startsWith("--import=")
+      ) {
+        const inlineValue = token.startsWith("-r")
+          ? token.slice(2)
+          : token.slice(token.indexOf("=") + 1);
+        if (!preloadScript && inlineValue.toLowerCase().endsWith(".js")) {
+          preloadScript = inlineValue;
+        }
+        continue;
+      }
+      if (token.startsWith("-")) {
+        continue;
+      }
+      if (hasInlineEvalOrPrint) {
+        return preloadScript;
+      }
+      return token.toLowerCase().endsWith(".js") ? token : preloadScript;
+    }
+    return preloadScript;
+  };
+  const extractTargetFromArgv = (
+    argv: string[] | null,
+  ): { kind: "python"; relOrAbsPath: string } | { kind: "node"; relOrAbsPath: string } | null => {
+    if (!argv || argv.length === 0) {
+      return null;
+    }
+    let commandIdx = 0;
+    while (commandIdx < argv.length && /^[A-Za-z_][A-Za-z0-9_]*=.*$/u.test(argv[commandIdx])) {
+      commandIdx += 1;
+    }
+    const executable = argv[commandIdx]?.toLowerCase();
+    if (!executable) {
+      return null;
+    }
+    const args = argv.slice(commandIdx + 1);
+    if (/^python(?:3(?:\.\d+)?)?$/i.test(executable)) {
+      const script = findFirstPythonScriptArg(args);
+      if (script) {
+        return { kind: "python", relOrAbsPath: script };
+      }
+      return null;
+    }
+    if (executable === "node") {
+      const script = findFirstNodeScriptArg(args);
+      if (script) {
+        return { kind: "node", relOrAbsPath: script };
+      }
+      return null;
+    }
+    return null;
+  };
+
+  for (const argv of candidateArgv) {
+    const attempts = [argv, argv ? stripPreflightEnvPrefix(argv) : null];
+    for (const attempt of attempts) {
+      const target = extractTargetFromArgv(attempt);
+      if (target) {
+        return target;
+      }
+    }
+  }
+  return null;
+}
+
+function extractUnquotedShellText(raw: string): string | null {
+  let out = "";
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (escaped) {
+      if (!inSingle && !inDouble) {
+        // Preserve escapes outside quotes so downstream heuristics can distinguish
+        // escaped literals (e.g. `\|`) from executable shell operators.
+        out += `\\${ch}`;
+      }
+      escaped = false;
+      continue;
+    }
+    if (!inSingle && ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (inSingle) {
+      if (ch === "'") {
+        inSingle = false;
+      }
+      continue;
+    }
+    if (inDouble) {
+      const next = raw[i + 1];
+      if (ch === "\\" && next && /[\\'"$`\n\r]/.test(next)) {
+        i += 1;
+        continue;
+      }
+      if (ch === '"') {
+        inDouble = false;
+      }
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
+    out += ch;
+  }
+
+  if (escaped || inSingle || inDouble) {
     return null;
   }
+  return out;
+}
 
-  // Intentionally simple parsing: we only support common forms like
-  //   python file.py
-  //   python3 -u file.py
-  //   node --experimental-something file.js
-  // If the command is more complex (pipes, heredocs, quoted paths with spaces), skip preflight.
-  const pythonMatch = raw.match(/^\s*(python3?|python)\s+(?:-[^\s]+\s+)*([^\s]+\.py)\b/i);
-  if (pythonMatch?.[2]) {
-    return { kind: "python", relOrAbsPath: pythonMatch[2] };
-  }
-  const nodeMatch = raw.match(/^\s*(node)\s+(?:--[^\s]+\s+)*([^\s]+\.js)\b/i);
-  if (nodeMatch?.[2]) {
-    return { kind: "node", relOrAbsPath: nodeMatch[2] };
-  }
+function analyzeInterpreterHeuristicsFromUnquoted(raw: string): {
+  hasPython: boolean;
+  hasNode: boolean;
+  hasComplexSyntax: boolean;
+  hasProcessSubstitution: boolean;
+  hasScriptHint: boolean;
+} {
+  const hasPython =
+    /(?:^|\s|(?<!\\)[|&;()])(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*python(?:3(?:\.\d+)?)?(?=$|[\s|&;()<>\n\r`$])/i.test(
+      raw,
+    );
+  const hasNode =
+    /(?:^|\s|(?<!\\)[|&;()])(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*node(?=$|[\s|&;()<>\n\r`$])/i.test(
+      raw,
+    );
+  const hasProcessSubstitution = /(?<!\\)<\(|(?<!\\)>\(/u.test(raw);
+  const hasComplexSyntax =
+    /(?<!\\)\|/u.test(raw) ||
+    /(?<!\\)&&/u.test(raw) ||
+    /(?<!\\)\|\|/u.test(raw) ||
+    /(?<!\\);/u.test(raw) ||
+    raw.includes("\n") ||
+    raw.includes("\r") ||
+    /(?<!\\)\$\(/u.test(raw) ||
+    /(?<!\\)`/u.test(raw) ||
+    hasProcessSubstitution;
+  const hasScriptHint = /(?:^|[\s|&;()<>])[^"'`\s|&;()<>]+\.(?:py|js)(?=$|[\s|&;()<>])/i.test(raw);
 
+  return { hasPython, hasNode, hasComplexSyntax, hasProcessSubstitution, hasScriptHint };
+}
+
+function extractShellWrappedCommandPayload(
+  executable: string | undefined,
+  args: string[],
+): string | null {
+  if (!executable) {
+    return null;
+  }
+  const executableBase = executable.split(/[\\/]/u).at(-1)?.toLowerCase() ?? "";
+  const normalizedExecutable = executableBase.endsWith(".exe")
+    ? executableBase.slice(0, -4)
+    : executableBase;
+  if (!/^(?:bash|dash|fish|ksh|sh|zsh)$/i.test(normalizedExecutable)) {
+    return null;
+  }
+  const shortOptionsWithSeparateValue = new Set(["-O", "-o"]);
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--") {
+      return null;
+    }
+    if (arg === "-c") {
+      return args[i + 1] ?? null;
+    }
+    if (/^-[A-Za-z]+$/u.test(arg)) {
+      if (arg.includes("c")) {
+        return args[i + 1] ?? null;
+      }
+      if (shortOptionsWithSeparateValue.has(arg)) {
+        i += 1;
+      }
+      continue;
+    }
+    if (/^--[A-Za-z0-9][A-Za-z0-9-]*(?:=.*)?$/u.test(arg)) {
+      if (!arg.includes("=")) {
+        const next = args[i + 1];
+        if (next && next !== "--" && !next.startsWith("-")) {
+          i += 1;
+        }
+      }
+      continue;
+    }
+    return null;
+  }
   return null;
+}
+
+function shouldFailClosedInterpreterPreflight(command: string): {
+  hasInterpreterInvocation: boolean;
+  hasComplexSyntax: boolean;
+  hasProcessSubstitution: boolean;
+  hasInterpreterSegmentScriptHint: boolean;
+  hasInterpreterPipelineScriptHint: boolean;
+  isDirectInterpreterCommand: boolean;
+} {
+  const raw = command.trim();
+  const rawArgv = splitShellArgs(raw);
+  const argv = rawArgv ? stripPreflightEnvPrefix(rawArgv) : null;
+  let commandIdx = 0;
+  while (
+    argv &&
+    commandIdx < argv.length &&
+    /^[A-Za-z_][A-Za-z0-9_]*=.*$/u.test(argv[commandIdx])
+  ) {
+    commandIdx += 1;
+  }
+  const directExecutable = argv?.[commandIdx]?.toLowerCase();
+  const args = argv ? argv.slice(commandIdx + 1) : [];
+
+  const isDirectPythonExecutable = Boolean(
+    directExecutable && /^python(?:3(?:\.\d+)?)?$/i.test(directExecutable),
+  );
+  const isDirectNodeExecutable = directExecutable === "node";
+  const isDirectInterpreterCommand = isDirectPythonExecutable || isDirectNodeExecutable;
+
+  const unquotedRaw = extractUnquotedShellText(raw) ?? raw;
+  const topLevel = analyzeInterpreterHeuristicsFromUnquoted(unquotedRaw);
+
+  const shellWrappedPayload = extractShellWrappedCommandPayload(directExecutable, args);
+  const nestedUnquoted = shellWrappedPayload
+    ? (extractUnquotedShellText(shellWrappedPayload) ?? shellWrappedPayload)
+    : "";
+  const nested = shellWrappedPayload
+    ? analyzeInterpreterHeuristicsFromUnquoted(nestedUnquoted)
+    : {
+        hasPython: false,
+        hasNode: false,
+        hasComplexSyntax: false,
+        hasProcessSubstitution: false,
+        hasScriptHint: false,
+      };
+  const hasInterpreterAndScriptHintInSameSegment = (rawText: string): boolean => {
+    const segments = rawText.split(/(?<!\\)\|\||(?<!\\)&&|(?<!\\)[|;\n\r]/u);
+    return segments.some((segment) => {
+      const hasInterpreterInvocationInSegment =
+        /(?:^|\b(?:if|then|do|elif|else|while|until|time)\s+)\s*(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*(?:python(?:3(?:\.\d+)?)?|node)(?=$|[\s|&;()<>\n\r`$])/i.test(
+          segment,
+        );
+      if (!hasInterpreterInvocationInSegment) {
+        return false;
+      }
+      return /(?:^|[\s()<>])[^"'`\s|&;()<>]+\.(?:py|js)(?=$|[\s()<>])/i.test(segment);
+    });
+  };
+  const hasInterpreterPipelineScriptHintInSameSegment = (rawText: string): boolean => {
+    const commandSegments = rawText.split(/(?<!\\)\|\||(?<!\\)&&|(?<!\\);|\n|\r/u);
+    return commandSegments.some((segment) => {
+      const hasInterpreterPipelineCarrierInSegment =
+        /(?<!\\)\|\s*(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*(?:python(?:3(?:\.\d+)?)?|node)(?=$|[\s|&;()<>\n\r`$])/i.test(
+          segment,
+        );
+      if (!hasInterpreterPipelineCarrierInSegment) {
+        return false;
+      }
+      return /(?:^|[\s()<>])[^"'`\s|&;()<>]+\.(?:py|js)(?=$|[\s()<>])/i.test(segment);
+    });
+  };
+  const hasInterpreterSegmentScriptHint =
+    hasInterpreterAndScriptHintInSameSegment(unquotedRaw) ||
+    (nestedUnquoted.length > 0 && hasInterpreterAndScriptHintInSameSegment(nestedUnquoted));
+  const hasInterpreterPipelineScriptHint =
+    hasInterpreterPipelineScriptHintInSameSegment(unquotedRaw) ||
+    (nestedUnquoted.length > 0 && hasInterpreterPipelineScriptHintInSameSegment(nestedUnquoted));
+  const hasShellWrappedInterpreterInvocation =
+    (nested.hasPython || nested.hasNode) &&
+    (nested.hasScriptHint || nested.hasComplexSyntax || nested.hasProcessSubstitution);
+  const hasTopLevelInterpreterInvocation =
+    /(?:^|(?<!\\)[|&;()])\s*(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*python(?:3(?:\.\d+)?)?(?=$|[\s|&;()<>\n\r`$])/i.test(
+      unquotedRaw,
+    ) ||
+    /(?:^|(?<!\\)[|&;()])\s*(?:[A-Za-z_][A-Za-z0-9_]*=.*\s+)*node(?=$|[\s|&;()<>\n\r`$])/i.test(
+      unquotedRaw,
+    );
+  const hasInterpreterInvocation =
+    isDirectInterpreterCommand ||
+    hasShellWrappedInterpreterInvocation ||
+    hasTopLevelInterpreterInvocation;
+
+  return {
+    hasInterpreterInvocation,
+    hasComplexSyntax: topLevel.hasComplexSyntax || hasShellWrappedInterpreterInvocation,
+    hasProcessSubstitution: topLevel.hasProcessSubstitution || nested.hasProcessSubstitution,
+    hasInterpreterSegmentScriptHint,
+    hasInterpreterPipelineScriptHint,
+    isDirectInterpreterCommand,
+  };
 }
 
 async function validateScriptFileForShellBleed(params: {
@@ -110,6 +570,28 @@ async function validateScriptFileForShellBleed(params: {
 }): Promise<void> {
   const target = extractScriptTargetFromCommand(params.command);
   if (!target) {
+    const {
+      hasInterpreterInvocation,
+      hasComplexSyntax,
+      hasProcessSubstitution,
+      hasInterpreterSegmentScriptHint,
+      hasInterpreterPipelineScriptHint,
+      isDirectInterpreterCommand,
+    } = shouldFailClosedInterpreterPreflight(params.command);
+    if (
+      hasInterpreterInvocation &&
+      hasComplexSyntax &&
+      (hasInterpreterSegmentScriptHint ||
+        hasInterpreterPipelineScriptHint ||
+        (hasProcessSubstitution && isDirectInterpreterCommand))
+    ) {
+      // Fail closed when interpreter-driven script execution is ambiguous; otherwise
+      // attackers can route script content through forms our fast parser cannot validate.
+      throw new Error(
+        "exec preflight: complex interpreter invocation detected; refusing to run without script preflight validation. " +
+          "Use a direct `python <file>.py` or `node <file>.js` command.",
+      );
+    }
     return;
   }
 
