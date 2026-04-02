@@ -276,7 +276,7 @@ export async function processGatewayAllowlist(
       typeof params.timeoutSec === "number" ? params.timeoutSec : params.defaultTimeoutSec;
     const followupTarget = buildExecApprovalFollowupTarget({
       approvalId,
-      sessionKey: params.notifySessionKey,
+      sessionKey: params.notifySessionKey ?? params.sessionKey,
       turnSourceChannel: params.turnSourceChannel,
       turnSourceTo: params.turnSourceTo,
       turnSourceAccountId: params.turnSourceAccountId,
@@ -375,7 +375,7 @@ export async function processGatewayAllowlist(
           notifyOnExit: false,
           notifyOnExitEmptySuccess: false,
           scopeKey: params.scopeKey,
-          sessionKey: params.notifySessionKey,
+          sessionKey: params.notifySessionKey ?? params.sessionKey,
           timeoutSec: effectiveTimeout,
         });
       } catch {
