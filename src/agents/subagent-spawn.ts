@@ -4,7 +4,7 @@ import { formatThinkingLevels, normalizeThinkLevel } from "../auto-reply/thinkin
 import { DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH } from "../config/agent-limits.js";
 import { loadConfig } from "../config/config.js";
 import { mergeSessionEntry, updateSessionStore } from "../config/sessions.js";
-import { callGateway } from "../gateway/call.js";
+import { callGateway, randomIdempotencyKey } from "../gateway/call.js";
 import {
   pruneLegacyStoreKeys,
   resolveGatewaySessionStoreTarget,
@@ -867,6 +867,44 @@ export async function spawnSubagentDirect(
       );
     } catch {
       // Spawn should still return accepted if spawn lifecycle hooks fail.
+    }
+  }
+
+  // Send Telegram subagent start announcement if enabled in config
+  if (requesterOrigin?.channel === "telegram") {
+    try {
+      const { resolveTelegramSubagentNoticeFlags, buildTelegramSubagentStartNotice } = await import(
+        "./telegram-subagent-notifications.js"
+      );
+      const flags = resolveTelegramSubagentNoticeFlags(cfg, requesterOrigin?.accountId);
+      if (flags.subagentStartAnnouncements) {
+        const noticeText = buildTelegramSubagentStartNotice({
+          label: label || undefined,
+          task,
+          model: resolvedModel || undefined,
+        });
+        if (noticeText) {
+          // Emit as a verbose notice via the gateway so it reaches the user's chat
+          try {
+            await callGateway({
+              method: "send",
+              params: {
+                channel: requesterOrigin.channel,
+                accountId: requesterOrigin.accountId,
+                to: requesterOrigin.to,
+                threadId: requesterOrigin.threadId,
+                message: noticeText,
+                idempotencyKey: randomIdempotencyKey(),
+              },
+              timeoutMs: 10_000,
+            });
+          } catch {
+            // Best-effort; don't fail spawn on notification error.
+          }
+        }
+      }
+    } catch {
+      // Best-effort; notification module may not be available.
     }
   }
 

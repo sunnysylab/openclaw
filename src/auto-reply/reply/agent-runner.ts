@@ -26,6 +26,8 @@ import {
   buildFallbackNotice,
   resolveFallbackTransition,
 } from "../fallback-state.js";
+import { resolveTelegramAccount } from "../../plugin-sdk/telegram-account.js";
+import type { ResolvedTelegramAccount } from "../../plugin-sdk/telegram-account.js";
 import type { OriginatingChannelType, TemplateContext } from "../templating.js";
 import { resolveResponseUsageMode, type VerboseLevel } from "../thinking.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
@@ -478,6 +480,16 @@ export async function runReplyAgent(params: {
     const providerUsed =
       runResult.meta?.agentMeta?.provider ?? fallbackProvider ?? followupRun.run.provider;
     const verboseEnabled = resolvedVerboseLevel !== "off";
+    // Resolve Telegram model status notices config for fallback notifications
+    const telegramModelStatusNoticesEnabled = (() => {
+      if (replyToChannel !== "telegram") return false;
+      const telegramResolved = resolveTelegramAccount({
+        cfg,
+        accountId: sessionCtx?.accountId,
+      });
+      const accountConfig = telegramResolved.config;
+      return accountConfig?.modelStatusNotices ?? cfg.channels?.telegram?.modelStatusNotices ?? false;
+    })();
     const selectedProvider = followupRun.run.provider;
     const selectedModel = followupRun.run.model;
     const fallbackStateEntry =
@@ -690,7 +702,7 @@ export async function runReplyAgent(params: {
           attempts: fallbackAttempts,
         },
       });
-      if (verboseEnabled) {
+      if (verboseEnabled || telegramModelStatusNoticesEnabled) {
         const fallbackNotice = buildFallbackNotice({
           selectedProvider,
           selectedModel,
@@ -717,7 +729,7 @@ export async function runReplyAgent(params: {
           previousActiveModel: fallbackTransition.previousState.activeModel,
         },
       });
-      if (verboseEnabled) {
+      if (verboseEnabled || telegramModelStatusNoticesEnabled) {
         verboseNotices.push({
           text: buildFallbackClearedNotice({
             selectedProvider,

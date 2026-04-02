@@ -224,6 +224,10 @@ export type TelegramAccountConfig = {
   apiRoot?: string;
   /** Auto-rename DM forum topics on first message using LLM. Default: true. */
   autoTopicLabel?: AutoTopicLabelConfig;
+  /** Send user-facing message when a subagent spawns. Default: false. */
+  subagentStartAnnouncements?: boolean;
+  /** Send user-facing messages about selected/fallback model changes. Default: false. */
+  modelStatusNotices?: boolean;
 };
 
 export type TelegramTopicConfig = {
