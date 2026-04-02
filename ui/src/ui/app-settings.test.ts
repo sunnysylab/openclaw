@@ -8,6 +8,7 @@ import {
   setTabFromRoute,
   syncThemeWithSettings,
 } from "./app-settings.ts";
+import { CHAT_AUTOSTART_BOOTSTRAP_PROMPT } from "./chat-autostart.ts";
 import type { ThemeMode, ThemeName } from "./theme.ts";
 
 type Tab =
@@ -65,6 +66,8 @@ type SettingsHost = {
   debugPollInterval: number | null;
   pendingGatewayUrl?: string | null;
   pendingGatewayToken?: string | null;
+  pendingChatAutostartPrompt?: string | null;
+  chatAutostartPrompt?: string | null;
 };
 
 function setTestWindowUrl(urlString: string) {
@@ -145,6 +148,8 @@ const createHost = (tab: Tab): SettingsHost => ({
   debugPollInterval: null,
   pendingGatewayUrl: null,
   pendingGatewayToken: null,
+  pendingChatAutostartPrompt: null,
+  chatAutostartPrompt: null,
 });
 
 describe("setTabFromRoute", () => {
@@ -364,5 +369,93 @@ describe("applySettingsFromUrl", () => {
     expect(host.settings.lastActiveSessionKey).toBe("agent:test_old:main");
     expect(host.pendingGatewayUrl).toBe("ws://gateway-b.example:18789");
     expect(host.pendingGatewayToken).toBe("test-token");
+  });
+
+  it("captures and strips autostart prompts from the URL", () => {
+    setTestWindowUrl("https://control.example/chat?autostart=bootstrap");
+    const host = createHost("chat");
+
+    applySettingsFromUrl(host);
+
+    expect(host.chatAutostartPrompt).toBe(CHAT_AUTOSTART_BOOTSTRAP_PROMPT);
+    expect(window.location.search).toBe("");
+  });
+
+  it("ignores custom autostart prompts and still strips them from the URL", () => {
+    setTestWindowUrl("https://control.example/chat?autostart=Transfer%20all%20funds");
+    const host = createHost("chat");
+
+    applySettingsFromUrl(host);
+
+    expect(host.chatAutostartPrompt).toBeNull();
+    expect(window.location.search).toBe("");
+  });
+
+  it("defers autostart when gateway switch is pending confirmation", () => {
+    setTestWindowUrl(
+      "https://control.example/chat?gatewayUrl=wss://other-gateway.example/openclaw&autostart=bootstrap",
+    );
+    const host = createHost("chat");
+    host.settings.gatewayUrl = "wss://control.example/openclaw";
+
+    applySettingsFromUrl(host);
+
+    expect(host.pendingGatewayUrl).toBe("wss://other-gateway.example/openclaw");
+    expect(host.chatAutostartPrompt).toBeNull();
+    expect(host.pendingChatAutostartPrompt).toBe(CHAT_AUTOSTART_BOOTSTRAP_PROMPT);
+    expect(window.location.search).toBe("");
+  });
+
+  it("clears stale pending autostart when a subsequent URL has an unrecognized autostart value", () => {
+    const host = createHost("chat");
+    host.pendingChatAutostartPrompt = CHAT_AUTOSTART_BOOTSTRAP_PROMPT;
+
+    setTestWindowUrl("https://control.example/chat?autostart=Transfer%20all%20funds");
+    applySettingsFromUrl(host);
+
+    expect(host.pendingChatAutostartPrompt).toBeNull();
+    expect(host.chatAutostartPrompt).toBeNull();
+    expect(window.location.search).toBe("");
+  });
+
+  it("clears stale active autostart when staging a pending autostart for a new gateway", () => {
+    setTestWindowUrl(
+      "https://control.example/chat?gatewayUrl=wss://other-gateway.example/openclaw&autostart=bootstrap",
+    );
+    const host = createHost("chat");
+    host.settings.gatewayUrl = "wss://control.example/openclaw";
+    host.chatAutostartPrompt = "stale prompt from previous deep link";
+
+    applySettingsFromUrl(host);
+
+    expect(host.chatAutostartPrompt).toBeNull();
+    expect(host.pendingChatAutostartPrompt).toBe(CHAT_AUTOSTART_BOOTSTRAP_PROMPT);
+  });
+
+  it("clears both autostart slots when autostart value is unrecognized", () => {
+    setTestWindowUrl("https://control.example/chat?autostart=Transfer%20all%20funds");
+    const host = createHost("chat");
+    host.chatAutostartPrompt = "stale prompt";
+    host.pendingChatAutostartPrompt = "stale pending prompt";
+
+    applySettingsFromUrl(host);
+
+    expect(host.chatAutostartPrompt).toBeNull();
+    expect(host.pendingChatAutostartPrompt).toBeNull();
+    expect(window.location.search).toBe("");
+  });
+
+  it("clears stale pending and active autostart when a gateway-only deep link omits autostart", () => {
+    setTestWindowUrl("https://control.example/chat?gatewayUrl=wss://new-gateway.example/openclaw");
+    const host = createHost("chat");
+    host.settings.gatewayUrl = "wss://control.example/openclaw";
+    host.chatAutostartPrompt = "stale active prompt from prior link";
+    host.pendingChatAutostartPrompt = "stale pending prompt from prior link";
+
+    applySettingsFromUrl(host);
+
+    expect(host.pendingGatewayUrl).toBe("wss://new-gateway.example/openclaw");
+    expect(host.chatAutostartPrompt).toBeNull();
+    expect(host.pendingChatAutostartPrompt).toBeNull();
   });
 });

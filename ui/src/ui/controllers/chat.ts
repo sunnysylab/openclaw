@@ -56,6 +56,12 @@ export type ChatEventPayload = {
   errorMessage?: string;
 };
 
+type SendChatMessageOptions = {
+  attachments?: ChatAttachment[];
+  hideUserMessage?: boolean;
+  localEcho?: boolean;
+};
+
 function maybeResetToolStream(state: ChatState) {
   const toolHost = state as ChatState & Partial<Parameters<typeof resetToolStream>[0]>;
   if (
@@ -68,9 +74,9 @@ function maybeResetToolStream(state: ChatState) {
   }
 }
 
-export async function loadChatHistory(state: ChatState) {
+export async function loadChatHistory(state: ChatState): Promise<boolean> {
   if (!state.client || !state.connected) {
-    return;
+    return false;
   }
   state.chatLoading = true;
   state.lastError = null;
@@ -90,6 +96,7 @@ export async function loadChatHistory(state: ChatState) {
     maybeResetToolStream(state);
     state.chatStream = null;
     state.chatStreamStartedAt = null;
+    return true;
   } catch (err) {
     if (isMissingOperatorReadScopeError(err)) {
       state.chatMessages = [];
@@ -98,6 +105,7 @@ export async function loadChatHistory(state: ChatState) {
     } else {
       state.lastError = String(err);
     }
+    return false;
   } finally {
     state.chatLoading = false;
   }
@@ -163,12 +171,13 @@ function normalizeFinalAssistantMessage(message: unknown): Record<string, unknow
 export async function sendChatMessage(
   state: ChatState,
   message: string,
-  attachments?: ChatAttachment[],
+  options?: SendChatMessageOptions,
 ): Promise<string | null> {
   if (!state.client || !state.connected) {
     return null;
   }
   const msg = message.trim();
+  const attachments = options?.attachments;
   const hasAttachments = attachments && attachments.length > 0;
   if (!msg && !hasAttachments) {
     return null;
@@ -191,14 +200,17 @@ export async function sendChatMessage(
     }
   }
 
-  state.chatMessages = [
-    ...state.chatMessages,
-    {
-      role: "user",
-      content: contentBlocks,
-      timestamp: now,
-    },
-  ];
+  const shouldLocalEcho = options?.localEcho ?? true;
+  if (shouldLocalEcho) {
+    state.chatMessages = [
+      ...state.chatMessages,
+      {
+        role: "user",
+        content: contentBlocks,
+        timestamp: now,
+      },
+    ];
+  }
 
   state.chatSending = true;
   state.lastError = null;
@@ -229,6 +241,7 @@ export async function sendChatMessage(
       sessionKey: state.sessionKey,
       message: msg,
       deliver: false,
+      ...(options?.hideUserMessage === true ? { hideUserMessage: true } : {}),
       idempotencyKey: runId,
       attachments: apiAttachments,
     });
@@ -239,14 +252,16 @@ export async function sendChatMessage(
     state.chatStream = null;
     state.chatStreamStartedAt = null;
     state.lastError = error;
-    state.chatMessages = [
-      ...state.chatMessages,
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "Error: " + error }],
-        timestamp: Date.now(),
-      },
-    ];
+    if (options?.hideUserMessage !== true) {
+      state.chatMessages = [
+        ...state.chatMessages,
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Error: " + error }],
+          timestamp: Date.now(),
+        },
+      ];
+    }
     return null;
   } finally {
     state.chatSending = false;

@@ -8,6 +8,7 @@ import {
 } from "./app-polling.ts";
 import { scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
 import type { OpenClawApp } from "./app.ts";
+import { resolveChatAutostartPrompt } from "./chat-autostart.ts";
 import { loadAgentFiles } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
@@ -59,6 +60,8 @@ type SettingsHost = {
   pendingGatewayUrl?: string | null;
   systemThemeCleanup?: (() => void) | null;
   pendingGatewayToken?: string | null;
+  pendingChatAutostartPrompt?: string | null;
+  chatAutostartPrompt?: string | null;
 };
 
 export function applySettings(host: SettingsHost, next: UiSettings) {
@@ -105,6 +108,7 @@ export function applySettingsFromUrl(host: SettingsHost) {
   const tokenRaw = hashParams.get("token") ?? params.get("token");
   const passwordRaw = params.get("password") ?? hashParams.get("password");
   const sessionRaw = params.get("session") ?? hashParams.get("session");
+  const autostartRaw = params.get("autostart") ?? hashParams.get("autostart");
   const shouldResetSessionForToken = Boolean(
     tokenRaw?.trim() && !sessionRaw?.trim() && !gatewayUrlChanged,
   );
@@ -160,12 +164,36 @@ export function applySettingsFromUrl(host: SettingsHost) {
       if (!tokenRaw?.trim()) {
         host.pendingGatewayToken = null;
       }
+      if (autostartRaw == null) {
+        host.chatAutostartPrompt = null;
+        host.pendingChatAutostartPrompt = null;
+      }
     } else {
       host.pendingGatewayUrl = null;
       host.pendingGatewayToken = null;
+      host.pendingChatAutostartPrompt = null;
     }
     params.delete("gatewayUrl");
     hashParams.delete("gatewayUrl");
+    shouldCleanUrl = true;
+  }
+
+  if (autostartRaw != null) {
+    const prompt = resolveChatAutostartPrompt(autostartRaw);
+    if (prompt) {
+      if (gatewayUrlChanged) {
+        host.chatAutostartPrompt = null;
+        host.pendingChatAutostartPrompt = prompt;
+      } else {
+        host.chatAutostartPrompt = prompt;
+        host.pendingChatAutostartPrompt = null;
+      }
+    } else {
+      host.chatAutostartPrompt = null;
+      host.pendingChatAutostartPrompt = null;
+    }
+    params.delete("autostart");
+    hashParams.delete("autostart");
     shouldCleanUrl = true;
   }
 
