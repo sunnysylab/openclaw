@@ -9,6 +9,7 @@ import {
   wrapProviderStreamFn as wrapProviderStreamFnRuntime,
 } from "../../plugins/provider-runtime.js";
 import type { ProviderRuntimeModel } from "../../plugins/types.js";
+import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "../system-prompt.js";
 import { resolveCacheRetention } from "./anthropic-cache-retention.js";
 import { createAnthropicToolPayloadCompatibilityWrapper } from "./anthropic-family-tool-payload-compat.js";
 import { createBedrockNoCacheWrapper, isAnthropicBedrockModel } from "./bedrock-stream-wrappers.js";
@@ -36,6 +37,7 @@ import {
   resolveOpenAITextVerbosity,
 } from "./openai-stream-wrappers.js";
 import { streamWithPayloadPatch } from "./stream-payload-utils.js";
+import { createSystemPromptCacheBoundaryWrapper } from "./system-prompt-cache-boundary.js";
 
 const defaultProviderRuntimeDeps = {
   prepareProviderExtraParams: prepareProviderExtraParamsRuntime,
@@ -322,6 +324,16 @@ function applyPrePluginStreamWrappers(ctx: ApplyExtraParamsContext): void {
     log.debug(`applying extraParams to agent streamFn for ${ctx.provider}/${ctx.modelId}`);
     ctx.agent.streamFn = wrappedStreamFn;
   }
+
+  const shouldSplitSystemPromptBoundary =
+    resolveCacheRetention(ctx.effectiveExtraParams, ctx.provider) !== "none" &&
+    (ctx.provider === "anthropic" ||
+      (ctx.provider === "amazon-bedrock" && isAnthropicBedrockModel(ctx.modelId)));
+  ctx.agent.streamFn = createSystemPromptCacheBoundaryWrapper(
+    ctx.agent.streamFn,
+    SYSTEM_PROMPT_CACHE_BOUNDARY,
+    shouldSplitSystemPromptBoundary,
+  );
 
   if (
     shouldApplySiliconFlowThinkingOffCompat({

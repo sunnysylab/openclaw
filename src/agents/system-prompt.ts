@@ -9,6 +9,8 @@ import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
 import type { EmbeddedSandboxInfo } from "./pi-embedded-runner/types.js";
 import { sanitizeForPromptLiteral } from "./sanitize-for-prompt.js";
 
+export const SYSTEM_PROMPT_CACHE_BOUNDARY = "\n<!-- OPENCLAW_CACHE_BOUNDARY -->\n";
+
 /**
  * Controls which hardcoded sections are included in the system prompt.
  * - "full": All sections (default, for main agent)
@@ -581,6 +583,13 @@ export function buildAgentSystemPrompt(params: {
     }),
     ...buildVoiceSection({ isMinimal, ttsHint: params.ttsHint }),
   ];
+
+  // --- Cache boundary: everything above is stable per-session (tooling, skills,
+  // memory, safety, workspace/messaging sections). Everything below changes
+  // per-turn (group context, runtime info) or was already ordered after
+  // extraSystemPrompt (project context, silent replies, heartbeats).
+  // The delimiter is stripped or split into content blocks at the transport layer.
+  lines.push(SYSTEM_PROMPT_CACHE_BOUNDARY);
 
   if (extraSystemPrompt) {
     // Use "Subagent Context" header for minimal mode (subagents), otherwise "Group Chat Context"
