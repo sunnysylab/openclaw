@@ -23,6 +23,7 @@ import {
   toPluginMessageReceivedEvent,
 } from "../../hooks/message-hook-mappers.js";
 import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import { getSessionBindingService } from "../../infra/outbound/session-binding-service.js";
 import {
   logMessageProcessed,
   logMessageQueued,
@@ -43,6 +44,7 @@ import { normalizeTtsAutoMode, resolveConfiguredTtsMode } from "../../tts/tts-co
 import { normalizeMessageChannel } from "../../utils/message-channel.js";
 import type { FinalizedMsgContext } from "../templating.js";
 import type { BlockReplyContext, GetReplyOptions, ReplyPayload } from "../types.js";
+import { resolveConversationBindingContextFromMessage } from "./conversation-binding-input.js";
 import { shouldSkipDuplicateInbound } from "./inbound-dedupe.js";
 import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
 import { resolveReplyRoutingDecision } from "./routing-policy.js";
@@ -113,6 +115,35 @@ const isInboundAudioContext = (ctx: FinalizedMsgContext): boolean => {
     return true;
   }
   return AUDIO_HEADER_RE.test(trimmed);
+};
+
+const resolveAcpDispatchSessionKey = (
+  ctx: FinalizedMsgContext,
+  cfg: OpenClawConfig,
+): string | undefined => {
+  const targetSessionKey =
+    ctx.CommandSource === "native" ? ctx.CommandTargetSessionKey?.trim() : undefined;
+  if (targetSessionKey) {
+    return targetSessionKey;
+  }
+  const binding = resolveConversationBindingContextFromMessage({ cfg, ctx });
+  if (!binding) {
+    return ctx.SessionKey?.trim();
+  }
+  const boundSessionKey = getSessionBindingService()
+    .resolveByConversation({
+      channel: binding.channel,
+      accountId: binding.accountId,
+      conversationId: binding.conversationId,
+      ...(binding.parentConversationId
+        ? { parentConversationId: binding.parentConversationId }
+        : {}),
+    })
+    ?.targetSessionKey?.trim();
+  if (boundSessionKey) {
+    return boundSessionKey;
+  }
+  return ctx.SessionKey?.trim();
 };
 
 const resolveSessionStoreLookup = (
@@ -217,7 +248,7 @@ export async function dispatchReplyFromConfig(params: {
   }
 
   const sessionStoreEntry = resolveSessionStoreLookup(ctx, cfg);
-  const acpDispatchSessionKey = sessionStoreEntry.sessionKey ?? sessionKey;
+  const acpDispatchSessionKey = resolveAcpDispatchSessionKey(ctx, cfg) ?? sessionKey;
   // Restore route thread context only from the active turn or the thread-scoped session key.
   // Do not read thread ids from the normalised session store here: `origin.threadId` can be
   // folded back into lastThreadId/deliveryContext during store normalisation and resurrect a
