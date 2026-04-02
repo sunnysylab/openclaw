@@ -476,6 +476,12 @@ export async function authorizeGatewayConnect(
       }
       return { ok: true, method: "trusted-proxy", user: result.user };
     }
+    // Local direct connections (e.g. ACPX child processes) bypass trusted-proxy
+    // auth — they connect from localhost without proxy headers, which is expected
+    // since they are spawned by the gateway itself.
+    if (localDirect) {
+      return { ok: true, method: "none", user: "local" };
+    }
     return { ok: false, reason: result.reason };
   }
 
