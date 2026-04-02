@@ -479,6 +479,14 @@ describe("gatherDaemonStatus", () => {
         password: "env-password", // pragma: allowlist secret
       }),
     );
+    expect(inspectGatewayRestart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        probeAuth: {
+          token: "env-token",
+          password: "env-password", // pragma: allowlist secret
+        },
+      }),
+    );
   });
 
   it("skips TLS runtime loading when probe is disabled", async () => {
