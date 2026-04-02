@@ -58,6 +58,29 @@ capable model for better summaries:
 }
 ```
 
+## User notifications
+
+By default, compaction runs silently. To show a notice in the chat when
+compaction starts, enable `notifyUser`:
+
+```json5
+{
+  agents: {
+    defaults: {
+      compaction: {
+        notifyUser: true, // sends "🧹 Compacting context..." to the chat
+      },
+    },
+  },
+}
+```
+
+When enabled, the agent sends a brief status message before the compaction
+summary is generated. This is useful for transparency in long-running sessions
+where the user might otherwise wonder why there is a brief pause.
+
+Default: `false` (silent).
+
 ## Compaction vs pruning
 
 |                  | Compaction                    | Pruning                          |
