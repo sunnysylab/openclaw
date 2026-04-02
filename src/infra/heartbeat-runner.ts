@@ -59,6 +59,8 @@ import {
 import { emitHeartbeatEvent, resolveIndicatorType } from "./heartbeat-events.js";
 import { resolveHeartbeatReasonKind } from "./heartbeat-reason.js";
 import {
+  hasDefaultsHeartbeat,
+  hasExplicitHeartbeatAgents,
   isHeartbeatEnabledForAgent,
   resolveHeartbeatIntervalMs,
   resolveHeartbeatSummaryForAgent,
@@ -120,11 +122,6 @@ export type HeartbeatRunner = {
   updateConfig: (cfg: OpenClawConfig) => void;
 };
 
-function hasExplicitHeartbeatAgents(cfg: OpenClawConfig) {
-  const list = cfg.agents?.list ?? [];
-  return list.some((entry) => Boolean(entry?.heartbeat));
-}
-
 function resolveHeartbeatConfig(
   cfg: OpenClawConfig,
   agentId?: string,
@@ -142,6 +139,22 @@ function resolveHeartbeatConfig(
 
 function resolveHeartbeatAgents(cfg: OpenClawConfig): HeartbeatAgent[] {
   const list = cfg.agents?.list ?? [];
+
+  // When agents.defaults.heartbeat is configured, every agent in the list
+  // inherits heartbeat enablement (merged with any per-agent overrides).
+  if (hasDefaultsHeartbeat(cfg)) {
+    if (list.length > 0) {
+      return list
+        .map((entry) => {
+          const id = normalizeAgentId(entry.id);
+          return { agentId: id, heartbeat: resolveHeartbeatConfig(cfg, id) };
+        })
+        .filter((entry) => entry.agentId);
+    }
+    const fallbackId = resolveDefaultAgentId(cfg);
+    return [{ agentId: fallbackId, heartbeat: resolveHeartbeatConfig(cfg, fallbackId) }];
+  }
+
   if (hasExplicitHeartbeatAgents(cfg)) {
     return list
       .filter((entry) => entry?.heartbeat)
