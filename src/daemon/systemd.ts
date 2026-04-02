@@ -38,25 +38,84 @@ import {
   parseSystemdExecStart,
 } from "./systemd-unit.js";
 
-function resolveSystemdUnitPathForName(env: GatewayServiceEnv, name: string): string {
-  const home = toPosixPath(resolveHomeDir(env));
-  return path.posix.join(home, ".config", "systemd", "user", `${name}.service`);
+async function resolveSystemdEffectiveHome(env: GatewayServiceEnv): Promise<string> {
+  const sudoUser = env.SUDO_USER?.trim();
+  if (sudoUser && sudoUser !== "root" && process.getuid?.() === 0) {
+    try {
+      const result = await execFileUtf8("getent", ["passwd", sudoUser]);
+      if (result.code === 0) {
+        const fields = result.stdout.trim().split(":");
+        const homeField = fields[5]?.trim();
+        if (homeField) {
+          return homeField;
+        }
+      }
+    } catch {}
+    return `/home/${sudoUser}`;
+  }
+  return resolveHomeDir(env);
 }
+
+function resolveSystemdUnitPathForName(home: string, name: string): string {
+  return path.posix.join(toPosixPath(home), ".config", "systemd", "user", `${name}.service`);
+}
+
+async function assertSystemdUnitTargetIsSafe(params: {
+  targetPath: string;
+  expectedBaseDir: string;
+  label: string;
+  allowMissing?: boolean;
+}): Promise<void> {
+  let targetLstat: Awaited<ReturnType<typeof fs.lstat>>;
+  try {
+    targetLstat = await fs.lstat(params.targetPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (params.allowMissing && code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  if (targetLstat.isSymbolicLink()) {
+    throw new Error(`Refusing ${params.label}: ${params.targetPath} must not be a symbolic link`);
+  }
+
+  const targetRealPath = await fs.realpath(params.targetPath);
+  const expectedRealBaseDir = await fs.realpath(params.expectedBaseDir);
+  if (
+    targetRealPath !== expectedRealBaseDir &&
+    !targetRealPath.startsWith(`${expectedRealBaseDir}${path.posix.sep}`)
+  ) {
+    throw new Error(
+      `Refusing ${params.label}: ${targetRealPath} is outside expected path ${expectedRealBaseDir}`,
+    );
+  }
+}
+
+const VALID_UNIT_NAME = /^[a-zA-Z0-9_.\-@]+$/;
 
 function resolveSystemdServiceName(env: GatewayServiceEnv): string {
   const override = env.OPENCLAW_SYSTEMD_UNIT?.trim();
   if (override) {
-    return override.endsWith(".service") ? override.slice(0, -".service".length) : override;
+    const name = override.endsWith(".service") ? override.slice(0, -".service".length) : override;
+    if (!VALID_UNIT_NAME.test(name)) {
+      throw new Error(
+        `Invalid OPENCLAW_SYSTEMD_UNIT: "${override}" contains disallowed characters (/, .., or special chars)`,
+      );
+    }
+    return name;
   }
   return resolveGatewaySystemdServiceName(env.OPENCLAW_PROFILE);
 }
 
-function resolveSystemdUnitPath(env: GatewayServiceEnv): string {
-  return resolveSystemdUnitPathForName(env, resolveSystemdServiceName(env));
+async function resolveSystemdUnitPath(env: GatewayServiceEnv): Promise<string> {
+  const home = await resolveSystemdEffectiveHome(env);
+  return resolveSystemdUnitPathForName(home, resolveSystemdServiceName(env));
 }
 
-export function resolveSystemdUserUnitPath(env: GatewayServiceEnv): string {
-  return resolveSystemdUnitPath(env);
+export async function resolveSystemdUserUnitPath(env: GatewayServiceEnv): Promise<string> {
+  return await resolveSystemdUnitPath(env);
 }
 
 export { enableSystemdUserLinger, readSystemdUserLingerStatus };
@@ -67,7 +126,8 @@ export type { SystemdUserLingerStatus };
 export async function readSystemdServiceExecStart(
   env: GatewayServiceEnv,
 ): Promise<GatewayServiceCommandConfig | null> {
-  const unitPath = resolveSystemdUnitPath(env);
+  const home = await resolveSystemdEffectiveHome(env);
+  const unitPath = resolveSystemdUnitPathForName(home, resolveSystemdServiceName(env));
   try {
     const content = await fs.readFile(unitPath, "utf8");
     let execStart = "";
@@ -101,7 +161,7 @@ export async function readSystemdServiceExecStart(
     }
     const environmentFromFiles = await resolveSystemdEnvironmentFiles({
       environmentFileSpecs,
-      env,
+      home,
       unitPath,
     });
     const mergedEnvironment = {
@@ -134,9 +194,9 @@ function buildEnvironmentValueSources(
   return Object.fromEntries(Object.keys(environment).map((key) => [key, source]));
 }
 
-function expandSystemdSpecifier(input: string, env: GatewayServiceEnv): string {
+function expandSystemdSpecifier(input: string, home: string): string {
   // Support the common unit-specifier used in user services.
-  return input.replaceAll("%h", toPosixPath(resolveHomeDir(env)));
+  return input.replaceAll("%h", toPosixPath(home));
 }
 
 function parseEnvironmentFileSpecs(raw: string): string[] {
@@ -184,7 +244,7 @@ async function readSystemdEnvironmentFile(pathname: string): Promise<Record<stri
 
 async function resolveSystemdEnvironmentFiles(params: {
   environmentFileSpecs: string[];
-  env: GatewayServiceEnv;
+  home: string;
   unitPath: string;
 }): Promise<{ environment: Record<string, string> }> {
   const resolved: Record<string, string> = {};
@@ -199,7 +259,7 @@ async function resolveSystemdEnvironmentFiles(params: {
       if (!pathnameRaw) {
         continue;
       }
-      const expanded = expandSystemdSpecifier(pathnameRaw, params.env);
+      const expanded = expandSystemdSpecifier(pathnameRaw, params.home);
       const pathname = path.posix.isAbsolute(expanded)
         ? expanded
         : path.posix.resolve(unitDir, expanded);
@@ -425,14 +485,33 @@ async function writeSystemdUnit({
 }: Omit<GatewayServiceInstallArgs, "stdout">): Promise<{ unitPath: string; backedUp: boolean }> {
   await assertSystemdAvailable(env);
 
-  const unitPath = resolveSystemdUnitPath(env);
-  await fs.mkdir(path.dirname(unitPath), { recursive: true });
+  const home = await resolveSystemdEffectiveHome(env);
+  const unitPath = resolveSystemdUnitPathForName(home, resolveSystemdServiceName(env));
+  const unitDir = path.dirname(unitPath);
+  await fs.mkdir(unitDir, { recursive: true });
+  await assertSystemdUnitTargetIsSafe({
+    targetPath: unitDir,
+    expectedBaseDir: unitDir,
+    label: "unit directory",
+  });
+  await assertSystemdUnitTargetIsSafe({
+    targetPath: unitPath,
+    expectedBaseDir: unitDir,
+    label: "unit file",
+    allowMissing: true,
+  });
 
   // Preserve user customizations: back up existing unit file before overwriting.
   let backedUp = false;
+  const backupPath = `${unitPath}.bak`;
+  await assertSystemdUnitTargetIsSafe({
+    targetPath: backupPath,
+    expectedBaseDir: unitDir,
+    label: "unit backup",
+    allowMissing: true,
+  });
   try {
     await fs.access(unitPath);
-    const backupPath = `${unitPath}.bak`;
     await fs.copyFile(unitPath, backupPath);
     backedUp = true;
   } catch {
@@ -447,6 +526,59 @@ async function writeSystemdUnit({
     environment,
   });
   await fs.writeFile(unitPath, unit, "utf8");
+  await assertSystemdUnitTargetIsSafe({
+    targetPath: unitPath,
+    expectedBaseDir: unitDir,
+    label: "unit file",
+  });
+  if (backedUp) {
+    await assertSystemdUnitTargetIsSafe({
+      targetPath: backupPath,
+      expectedBaseDir: unitDir,
+      label: "unit backup",
+    });
+  }
+
+  const sudoUser = env.SUDO_USER?.trim();
+  if (sudoUser && sudoUser !== "root" && process.getuid?.() === 0) {
+    const expectedBase = path.posix.resolve(toPosixPath(home), ".config/systemd/user");
+    const resolvedDir = path.posix.resolve(toPosixPath(unitDir));
+    if (resolvedDir !== expectedBase && !resolvedDir.startsWith(`${expectedBase}/`)) {
+      throw new Error(
+        `Refusing chown: unit directory ${resolvedDir} is outside expected path ${expectedBase}`,
+      );
+    }
+
+    await assertSystemdUnitTargetIsSafe({
+      targetPath: unitDir,
+      expectedBaseDir: unitDir,
+      label: "unit directory",
+    });
+    await assertSystemdUnitTargetIsSafe({
+      targetPath: unitPath,
+      expectedBaseDir: unitDir,
+      label: "unit file",
+    });
+    if (backedUp) {
+      await assertSystemdUnitTargetIsSafe({
+        targetPath: backupPath,
+        expectedBaseDir: unitDir,
+        label: "unit backup",
+      });
+    }
+
+    const chownTargets = [unitDir, unitPath];
+    if (backedUp) {
+      chownTargets.push(backupPath);
+    }
+    const chownResult = await execFileUtf8("chown", [sudoUser, ...chownTargets]);
+    if (chownResult.code !== 0) {
+      throw new Error(
+        `Failed to restore ownership for ${sudoUser}: ${chownResult.stderr || chownResult.stdout}`.trim(),
+      );
+    }
+  }
+
   return { unitPath, backedUp };
 }
 
@@ -530,7 +662,7 @@ export async function uninstallSystemdService({
   const unitName = `${serviceName}.service`;
   await execSystemctlUser(env, ["disable", "--now", unitName]);
 
-  const unitPath = resolveSystemdUnitPath(env);
+  const unitPath = await resolveSystemdUnitPath(env);
   try {
     await fs.unlink(unitPath);
     stdout.write(`${formatLine("Removed systemd service", unitPath)}\n`);
@@ -584,7 +716,7 @@ export async function restartSystemdService({
 export async function isSystemdServiceEnabled(args: GatewayServiceEnvArgs): Promise<boolean> {
   const env = args.env ?? process.env;
   try {
-    await fs.access(resolveSystemdUnitPath(env));
+    await fs.access(await resolveSystemdUnitPath(env));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return false;
@@ -664,8 +796,9 @@ async function isSystemctlAvailable(env: GatewayServiceEnv): Promise<boolean> {
 export async function findLegacySystemdUnits(env: GatewayServiceEnv): Promise<LegacySystemdUnit[]> {
   const results: LegacySystemdUnit[] = [];
   const systemctlAvailable = await isSystemctlAvailable(env);
+  const home = await resolveSystemdEffectiveHome(env);
   for (const name of LEGACY_GATEWAY_SYSTEMD_SERVICE_NAMES) {
-    const unitPath = resolveSystemdUnitPathForName(env, name);
+    const unitPath = resolveSystemdUnitPathForName(home, name);
     let exists = false;
     try {
       await fs.access(unitPath);
