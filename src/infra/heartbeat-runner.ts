@@ -10,7 +10,7 @@ import {
   resolveDefaultAgentId,
 } from "../agents/agent-scope.js";
 import { appendCronStyleCurrentTimeLine } from "../agents/current-time.js";
-import { resolveEffectiveMessagesConfig } from "../agents/identity.js";
+import { resolveEffectiveMessagesConfig, resolveIdentityName } from "../agents/identity.js";
 import { DEFAULT_HEARTBEAT_FILENAME } from "../agents/workspace.js";
 import { resolveHeartbeatReplyPayload } from "../auto-reply/heartbeat-reply-payload.js";
 import {
@@ -649,10 +649,12 @@ export async function runHeartbeatOnce(opts: {
     canRelayToUser,
     workspaceDir,
   });
+  const identityName = resolveIdentityName(cfg, agentId);
   const ctx = {
     Body: appendCronStyleCurrentTimeLine(prompt, cfg, startedAt),
     From: sender,
     To: sender,
+    ConversationLabel: identityName ?? agentId,
     OriginatingChannel: delivery.channel !== "none" ? delivery.channel : undefined,
     OriginatingTo: delivery.to,
     AccountId: delivery.accountId,
