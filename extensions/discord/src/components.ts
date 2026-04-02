@@ -24,14 +24,9 @@ import {
 } from "@buape/carbon";
 import { ButtonStyle, MessageFlags, TextInputStyle } from "discord-api-types/v10";
 import {
-  DISCORD_COMPONENT_CUSTOM_ID_KEY,
-  DISCORD_MODAL_CUSTOM_ID_KEY,
   buildDiscordComponentCustomId as buildDiscordComponentCustomIdImpl,
   buildDiscordModalCustomId as buildDiscordModalCustomIdImpl,
-  parseDiscordComponentCustomId,
-  parseDiscordComponentCustomIdForCarbon,
-  parseDiscordModalCustomId,
-  parseDiscordModalCustomIdForCarbon,
+  parseDiscordModalCustomIdForCarbon as parseDiscordModalCustomIdForCarbonImpl,
 } from "./component-custom-id.js";
 
 // Some test-only module graphs partially mock `@buape/carbon` and can drop `Modal`.
@@ -1085,7 +1080,7 @@ export class DiscordFormModal extends ModalBase {
   title: string;
   customId: string;
   components: Array<Label | TextDisplay>;
-  customIdParser = parseDiscordModalCustomIdForCarbon;
+  customIdParser = parseDiscordModalCustomIdForCarbonImpl;
 
   constructor(params: { modalId: string; title: string; fields: DiscordModalFieldDefinition[] }) {
     super();
