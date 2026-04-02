@@ -28,6 +28,7 @@ import {
   createOpenAIDefaultTransportWrapper,
   createOpenAIFastModeWrapper,
   createOpenAIReasoningCompatibilityWrapper,
+  createGeminiToolCallThoughtSignatureWrapper,
   createOpenAIResponsesContextManagementWrapper,
   createOpenAIServiceTierWrapper,
   createOpenAITextVerbosityWrapper,
@@ -442,6 +443,7 @@ function applyPostPluginStreamWrappers(
     ctx.agent.streamFn = createOpenAIReasoningCompatibilityWrapper(ctx.agent.streamFn);
   }
 
+  ctx.agent.streamFn = createGeminiToolCallThoughtSignatureWrapper(ctx.agent.streamFn);
   const rawParallelToolCalls = resolveAliasedParamValue(
     [ctx.resolvedExtraParams, ctx.override],
     "parallel_tool_calls",
