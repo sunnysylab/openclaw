@@ -1,7 +1,7 @@
 import { createDraftStreamLoop } from "openclaw/plugin-sdk/channel-lifecycle";
 import { deleteSlackMessage, editSlackMessage } from "./actions.js";
 import { SLACK_TEXT_LIMIT } from "./limits.js";
-import { sendMessageSlack } from "./send.js";
+import { type SlackSendIdentity, sendMessageSlack } from "./send.js";
 
 const DEFAULT_THROTTLE_MS = 1000;
 
@@ -23,6 +23,7 @@ export function createSlackDraftStream(params: {
   throttleMs?: number;
   resolveThreadTs?: () => string | undefined;
   onMessageSent?: () => void;
+  identity?: SlackSendIdentity;
   log?: (message: string) => void;
   warn?: (message: string) => void;
   send?: typeof sendMessageSlack;
@@ -62,6 +63,7 @@ export function createSlackDraftStream(params: {
         await edit(streamChannelId, streamMessageId, trimmed, {
           token: params.token,
           accountId: params.accountId,
+          identity: params.identity,
         });
         return;
       }
@@ -69,6 +71,7 @@ export function createSlackDraftStream(params: {
         token: params.token,
         accountId: params.accountId,
         threadTs: params.resolveThreadTs?.(),
+        identity: params.identity,
       });
       streamChannelId = sent.channelId || streamChannelId;
       streamMessageId = sent.messageId || streamMessageId;
