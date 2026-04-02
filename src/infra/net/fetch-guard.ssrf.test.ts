@@ -85,6 +85,7 @@ describe("fetchWithSsrFGuard hardening", () => {
       } else {
         expect(requestInit.dispatcher).toBeDefined();
         expect(getDispatcherClassName(requestInit.dispatcher)).not.toBe("EnvHttpProxyAgent");
+        expect(getDispatcherClassName(requestInit.dispatcher)).not.toBe("ProxyAgent");
       }
       return okResponse();
     });
