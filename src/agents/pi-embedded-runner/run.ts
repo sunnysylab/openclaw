@@ -654,6 +654,30 @@ export async function runEmbeddedPiAgent(
               let timeoutCompactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
               await runOwnsCompactionBeforeHook("timeout recovery");
               try {
+                // Resolve compaction model: prefer config override, then fall back to session model
+                const compactionModelOverride =
+                  params.config?.agents?.defaults?.compaction?.model?.trim();
+                let compactionProvider: string;
+                let compactionModelId: string;
+                if (compactionModelOverride) {
+                  const slashIdx = compactionModelOverride.indexOf("/");
+                  if (slashIdx > 0) {
+                    compactionProvider = compactionModelOverride.slice(0, slashIdx).trim();
+                    compactionModelId =
+                      compactionModelOverride.slice(slashIdx + 1).trim() || DEFAULT_MODEL;
+                  } else {
+                    compactionProvider = provider;
+                    compactionModelId = compactionModelOverride;
+                  }
+                } else {
+                  compactionProvider = provider;
+                  compactionModelId = modelId;
+                }
+                // Provider changed — drop primary auth profile so getApiKeyForModel
+                // falls back to provider-based key resolution for the override model.
+                const compactionAuthProfileId =
+                  compactionProvider !== provider ? undefined : lastProfileId;
+
                 const timeoutCompactionRuntimeContext = {
                   ...buildEmbeddedCompactionRuntimeContext({
                     sessionKey: params.sessionKey,
@@ -663,15 +687,15 @@ export async function runEmbeddedPiAgent(
                     currentChannelId: params.currentChannelId,
                     currentThreadTs: params.currentThreadTs,
                     currentMessageId: params.currentMessageId,
-                    authProfileId: lastProfileId,
+                    authProfileId: compactionAuthProfileId,
                     workspaceDir: resolvedWorkspace,
                     agentDir,
                     config: params.config,
                     skillsSnapshot: params.skillsSnapshot,
                     senderIsOwner: params.senderIsOwner,
                     senderId: params.senderId,
-                    provider,
-                    modelId,
+                    provider: compactionProvider,
+                    modelId: compactionModelId,
                     thinkLevel,
                     reasoningLevel: params.reasoningLevel,
                     bashElevated: params.bashElevated,
@@ -795,6 +819,30 @@ export async function runEmbeddedPiAgent(
               let compactResult: Awaited<ReturnType<typeof contextEngine.compact>>;
               await runOwnsCompactionBeforeHook("overflow recovery");
               try {
+                // Resolve compaction model: prefer config override, then fall back to session model
+                const compactionModelOverride =
+                  params.config?.agents?.defaults?.compaction?.model?.trim();
+                let compactionProvider: string;
+                let compactionModelId: string;
+                if (compactionModelOverride) {
+                  const slashIdx = compactionModelOverride.indexOf("/");
+                  if (slashIdx > 0) {
+                    compactionProvider = compactionModelOverride.slice(0, slashIdx).trim();
+                    compactionModelId =
+                      compactionModelOverride.slice(slashIdx + 1).trim() || DEFAULT_MODEL;
+                  } else {
+                    compactionProvider = provider;
+                    compactionModelId = compactionModelOverride;
+                  }
+                } else {
+                  compactionProvider = provider;
+                  compactionModelId = modelId;
+                }
+                // Provider changed — drop primary auth profile so getApiKeyForModel
+                // falls back to provider-based key resolution for the override model.
+                const compactionAuthProfileId =
+                  compactionProvider !== provider ? undefined : lastProfileId;
+
                 const overflowCompactionRuntimeContext = {
                   ...buildEmbeddedCompactionRuntimeContext({
                     sessionKey: params.sessionKey,
@@ -804,15 +852,15 @@ export async function runEmbeddedPiAgent(
                     currentChannelId: params.currentChannelId,
                     currentThreadTs: params.currentThreadTs,
                     currentMessageId: params.currentMessageId,
-                    authProfileId: lastProfileId,
+                    authProfileId: compactionAuthProfileId,
                     workspaceDir: resolvedWorkspace,
                     agentDir,
                     config: params.config,
                     skillsSnapshot: params.skillsSnapshot,
                     senderIsOwner: params.senderIsOwner,
                     senderId: params.senderId,
-                    provider,
-                    modelId,
+                    provider: compactionProvider,
+                    modelId: compactionModelId,
                     thinkLevel,
                     reasoningLevel: params.reasoningLevel,
                     bashElevated: params.bashElevated,
