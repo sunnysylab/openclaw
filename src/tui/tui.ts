@@ -854,12 +854,15 @@ export async function runTui(opts: TuiOptions) {
   client.onEvent = (evt) => {
     if (evt.event === "chat") {
       handleChatEvent(evt.payload);
+      tui.requestRender();
     }
     if (evt.event === "chat.side_result") {
       handleBtwEvent(evt.payload);
+      tui.requestRender();
     }
     if (evt.event === "agent") {
       handleAgentEvent(evt.payload);
+      tui.requestRender();
     }
   };
 
