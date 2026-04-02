@@ -400,6 +400,7 @@ function analyzeWindowsShellCommand(params: {
   command: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  resolutionMode?: "host" | "virtual";
 }): ExecCommandAnalysis {
   const unsupported = findWindowsUnsupportedToken(params.command);
   if (unsupported) {
@@ -419,7 +420,10 @@ function analyzeWindowsShellCommand(params: {
       {
         raw: params.command,
         argv,
-        resolution: resolveCommandResolutionFromArgv(argv, params.cwd, params.env),
+        resolution: resolveCommandResolutionFromArgv(argv, params.cwd, params.env, {
+          platform: "win32",
+          resolutionMode: params.resolutionMode,
+        }),
       },
     ],
   };
@@ -436,6 +440,7 @@ function parseSegmentsFromParts(
   parts: string[],
   cwd?: string,
   env?: NodeJS.ProcessEnv,
+  options?: { platform?: string | null; resolutionMode?: "host" | "virtual" },
 ): ExecCommandSegment[] | null {
   const segments: ExecCommandSegment[] = [];
   for (const raw of parts) {
@@ -446,7 +451,10 @@ function parseSegmentsFromParts(
     segments.push({
       raw,
       argv,
-      resolution: resolveCommandResolutionFromArgv(argv, cwd, env),
+      resolution: resolveCommandResolutionFromArgv(argv, cwd, env, {
+        platform: options?.platform,
+        resolutionMode: options?.resolutionMode,
+      }),
     });
   }
   return segments;
@@ -637,7 +645,8 @@ export function buildSafeShellCommand(params: { command: string; platform?: stri
       if (!argv || argv.length === 0) {
         return { ok: false, reason: "unable to parse shell segment" };
       }
-      return { ok: true, rendered: argv.map((token) => shellEscapeSingleArg(token)).join(" ") };
+      const rendered = renderCanonicalSegmentFromArgvTokens(argv);
+      return rendered.ok ? rendered : { ok: false, reason: "unable to parse shell segment" };
     },
   });
   return finalizeRebuiltShellCommand(rebuilt);
@@ -645,6 +654,64 @@ export function buildSafeShellCommand(params: { command: string; platform?: stri
 
 function renderQuotedArgv(argv: string[]): string {
   return argv.map((token) => shellEscapeSingleArg(token)).join(" ");
+}
+
+function parseShellEnvAssignmentToken(token: string): { key: string; value: string } | null {
+  const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/su.exec(token);
+  if (!match?.[1]) {
+    return null;
+  }
+  return { key: match[1], value: match[2] ?? "" };
+}
+
+function renderShellEnvAssignmentToken(token: string): string | null {
+  const parsed = parseShellEnvAssignmentToken(token);
+  if (!parsed) {
+    return null;
+  }
+  return `${parsed.key}=${shellEscapeSingleArg(parsed.value)}`;
+}
+
+function renderCanonicalSegmentFromArgvTokens(
+  tokens: string[],
+): { ok: true; rendered: string } | { ok: false } {
+  let leadingAssignments = 0;
+  while (
+    leadingAssignments < tokens.length &&
+    parseShellEnvAssignmentToken(tokens[leadingAssignments] ?? "") !== null
+  ) {
+    leadingAssignments += 1;
+  }
+  if (leadingAssignments > tokens.length) {
+    return { ok: false };
+  }
+
+  const renderedAssignments: string[] = [];
+  for (let i = 0; i < leadingAssignments; i += 1) {
+    const assignmentToken = tokens[i] ?? "";
+    const renderedAssignment = renderShellEnvAssignmentToken(assignmentToken);
+    if (!renderedAssignment) {
+      return { ok: false };
+    }
+    renderedAssignments.push(renderedAssignment);
+  }
+
+  const renderedArgv = renderQuotedArgv(tokens.slice(leadingAssignments));
+  const rendered = [renderedAssignments.join(" "), renderedArgv]
+    .filter((part) => part.length > 0)
+    .join(" ");
+  return { ok: true, rendered };
+}
+
+export function isCanonicalEnforcedShellCommand(segments: ExecCommandSegment[]): boolean {
+  return segments.every((segment) => {
+    const argv = splitShellArgs(segment.raw);
+    if (!argv || argv.length === 0) {
+      return false;
+    }
+    const rendered = renderCanonicalSegmentFromArgvTokens(argv);
+    return rendered.ok && rendered.rendered === segment.raw.trim();
+  });
 }
 
 function finalizeRebuiltShellCommand(
@@ -743,7 +810,11 @@ export function buildEnforcedShellCommand(params: {
       if (!argv) {
         return { ok: false, reason: "segment execution plan unavailable" };
       }
-      return { ok: true, rendered: renderQuotedArgv(argv) };
+      const rendered = renderCanonicalSegmentFromArgvTokens(argv);
+      if (!rendered.ok) {
+        return { ok: false, reason: "segment execution plan unavailable" };
+      }
+      return rendered;
     },
   });
   return finalizeRebuiltShellCommand(rebuilt, params.segments.length);
@@ -766,6 +837,7 @@ export function analyzeShellCommand(params: {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   platform?: string | null;
+  resolutionMode?: "host" | "virtual";
 }): ExecCommandAnalysis {
   if (isWindowsPlatform(params.platform)) {
     return analyzeWindowsShellCommand(params);
@@ -781,7 +853,10 @@ export function analyzeShellCommand(params: {
       if (!pipelineSplit.ok) {
         return { ok: false, reason: pipelineSplit.reason, segments: [] };
       }
-      const segments = parseSegmentsFromParts(pipelineSplit.segments, params.cwd, params.env);
+      const segments = parseSegmentsFromParts(pipelineSplit.segments, params.cwd, params.env, {
+        platform: params.platform,
+        resolutionMode: params.resolutionMode,
+      });
       if (!segments) {
         return { ok: false, reason: "unable to parse shell segment", segments: [] };
       }
@@ -797,7 +872,10 @@ export function analyzeShellCommand(params: {
   if (!split.ok) {
     return { ok: false, reason: split.reason, segments: [] };
   }
-  const segments = parseSegmentsFromParts(split.segments, params.cwd, params.env);
+  const segments = parseSegmentsFromParts(split.segments, params.cwd, params.env, {
+    platform: params.platform,
+    resolutionMode: params.resolutionMode,
+  });
   if (!segments) {
     return { ok: false, reason: "unable to parse shell segment", segments: [] };
   }
@@ -808,6 +886,8 @@ export function analyzeArgvCommand(params: {
   argv: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  platform?: string | null;
+  resolutionMode?: "host" | "virtual";
 }): ExecCommandAnalysis {
   const argv = params.argv.filter((entry) => entry.trim().length > 0);
   if (argv.length === 0) {
@@ -819,7 +899,10 @@ export function analyzeArgvCommand(params: {
       {
         raw: argv.join(" "),
         argv,
-        resolution: resolveCommandResolutionFromArgv(argv, params.cwd, params.env),
+        resolution: resolveCommandResolutionFromArgv(argv, params.cwd, params.env, {
+          platform: params.platform,
+          resolutionMode: params.resolutionMode,
+        }),
       },
     ],
   };

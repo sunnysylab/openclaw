@@ -156,6 +156,33 @@ describe("exec-command-resolution", () => {
     });
   });
 
+  it("supports virtual Linux resolution without host filesystem probing", () => {
+    const virtualAbsolutePath = "/__openclaw_virtual__/bin/python3";
+    const virtualResolution = resolveCommandResolutionFromArgv(
+      [virtualAbsolutePath, "--version"],
+      undefined,
+      {},
+      { platform: "linux", resolutionMode: "virtual" },
+    );
+    expect(virtualResolution?.execution.resolvedPath).toBe(virtualAbsolutePath);
+
+    const hostResolution = resolveCommandResolutionFromArgv(
+      [virtualAbsolutePath, "--version"],
+      undefined,
+      {},
+      { platform: "linux" },
+    );
+    expect(hostResolution?.execution.resolvedPath).toBeUndefined();
+
+    const virtualBareResolution = resolveCommandResolutionFromArgv(
+      ["python3", "--version"],
+      undefined,
+      { PATH: "/usr/local/bin:/usr/bin:/bin" },
+      { platform: "linux", resolutionMode: "virtual" },
+    );
+    expect(virtualBareResolution?.execution.resolvedPath).toBe("/usr/local/bin/python3");
+  });
+
   it("unwraps transparent env and nice wrappers to the effective executable", () => {
     const fixture = createPathExecutableFixture();
 
@@ -280,16 +307,58 @@ describe("exec-command-resolution", () => {
     expect(deep.allowlistEval.allowlistSatisfied).toBe(false);
   });
 
-  it("resolves allowlist candidate paths from unresolved raw executables", () => {
-    expect(
-      resolveExecutionTargetCandidatePath(
+  it("uses host platform path semantics for wrapper script matching when platform is omitted", () => {
+    const cwd = process.platform === "win32" ? "C:\\temp" : "/tmp";
+    const scriptPath = process.platform === "win32" ? "C:\\scripts\\run.ps1" : "/tmp/run.sh";
+    const argv = ["bash", scriptPath];
+    const analysis = {
+      ok: true as const,
+      segments: [
         {
-          rawExecutable: "~/bin/tool",
-          executableName: "tool",
+          raw: argv.join(" "),
+          argv,
+          resolution: resolveCommandResolutionFromArgv(
+            argv,
+            cwd,
+            {},
+            {
+              platform: process.platform,
+              resolutionMode: "virtual",
+            },
+          ),
         },
-        "/tmp",
-      ),
-    ).toContain("/bin/tool");
+      ],
+    };
+
+    const allowlist = [{ pattern: scriptPath }];
+    const withExplicitPlatform = evaluateExecAllowlist({
+      analysis,
+      allowlist,
+      safeBins: normalizeSafeBins([]),
+      cwd,
+      platform: process.platform,
+    });
+    const withDefaultPlatform = evaluateExecAllowlist({
+      analysis,
+      allowlist,
+      safeBins: normalizeSafeBins([]),
+      cwd,
+    });
+
+    expect(withExplicitPlatform.allowlistSatisfied).toBe(true);
+    expect(withDefaultPlatform.allowlistSatisfied).toBe(withExplicitPlatform.allowlistSatisfied);
+  });
+
+  it("resolves allowlist candidate paths from unresolved raw executables", () => {
+    const homeCandidatePath = resolveExecutionTargetCandidatePath(
+      {
+        rawExecutable: "~/bin/tool",
+        executableName: "tool",
+      },
+      "/tmp",
+    );
+    expect(homeCandidatePath).toBeDefined();
+    expect(homeCandidatePath?.replaceAll("\\", "/")).toContain("/bin/tool");
 
     expect(
       resolveExecutionTargetCandidatePath(

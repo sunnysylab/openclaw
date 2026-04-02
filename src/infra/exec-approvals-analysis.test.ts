@@ -6,6 +6,7 @@ import {
   analyzeArgvCommand,
   analyzeShellCommand,
   buildEnforcedShellCommand,
+  buildSafeShellCommand,
   buildSafeBinsShellCommand,
   resolvePlannedSegmentArgv,
 } from "./exec-approvals-analysis.js";
@@ -66,6 +67,34 @@ describe("exec approvals shell analysis", () => {
       expect(res.ok).toBe(true);
       expect(res.command).toMatch(/'(?:[^']*\/)?rg' '-n' 'needle'/);
       expect(res.command).not.toContain("'env'");
+    });
+
+    it("preserves leading inline env assignments while enforcing command argv", () => {
+      if (process.platform === "win32") {
+        return;
+      }
+      const analysis = expectAnalyzedShellCommand("FOO=bar echo hi");
+      const res = buildEnforcedShellCommand({
+        command: "FOO=bar echo hi",
+        segments: analysis.segments,
+        platform: process.platform,
+      });
+      expect(res.ok).toBe(true);
+      expect(res.command).toContain("FOO='bar'");
+      expect(res.command).toMatch(/'[^']*echo'/);
+      expect(res.command).toContain("'hi'");
+    });
+
+    it("preserves leading inline env assignments in safe shell command mode", () => {
+      if (process.platform === "win32") {
+        return;
+      }
+      const res = buildSafeShellCommand({
+        command: "FOO=bar echo hi",
+        platform: process.platform,
+      });
+      expect(res.ok).toBe(true);
+      expect(res.command).toBe("FOO='bar' 'echo' 'hi'");
     });
 
     it("keeps shell multiplexer rebuilds as coherent execution argv", () => {
@@ -291,6 +320,56 @@ describe("exec approvals shell analysis", () => {
       });
       expect(result.analysisOk).toBe(testCase.expectedAnalysisOk);
       expect(result.allowlistSatisfied).toBe(testCase.expectedAllowlistSatisfied);
+    });
+
+    it("supports virtual Linux allowlist resolution without host filesystem probes", () => {
+      const runtimePath = "/__openclaw_virtual__/bin/python3";
+      const virtualResult = evaluateShellAllowlist({
+        command: `${runtimePath} --version`,
+        allowlist: [{ pattern: runtimePath }],
+        safeBins: new Set(),
+        cwd: "/tmp",
+        platform: "linux",
+        resolutionMode: "virtual",
+      });
+      expect(virtualResult.analysisOk).toBe(true);
+      expect(virtualResult.allowlistSatisfied).toBe(true);
+
+      const hostResult = evaluateShellAllowlist({
+        command: `${runtimePath} --version`,
+        allowlist: [{ pattern: runtimePath }],
+        safeBins: new Set(),
+        cwd: "/tmp",
+        platform: "linux",
+      });
+      expect(hostResult.analysisOk).toBe(true);
+      expect(hostResult.allowlistSatisfied).toBe(true);
+    });
+
+    it("uses target-platform semantics when matching shell-wrapper script paths", () => {
+      const windowsScriptPath = "C:\\scripts\\run.ps1";
+
+      const linuxResult = evaluateShellAllowlist({
+        command: `bash ${windowsScriptPath}`,
+        allowlist: [{ pattern: windowsScriptPath }],
+        safeBins: new Set(),
+        cwd: "/tmp",
+        platform: "linux",
+        resolutionMode: "virtual",
+      });
+      expect(linuxResult.analysisOk).toBe(true);
+      expect(linuxResult.allowlistSatisfied).toBe(false);
+
+      const winResult = evaluateShellAllowlist({
+        command: `bash ${windowsScriptPath}`,
+        allowlist: [{ pattern: windowsScriptPath }],
+        safeBins: new Set(),
+        cwd: "C:\\temp",
+        platform: "win32",
+        resolutionMode: "virtual",
+      });
+      expect(winResult.analysisOk).toBe(true);
+      expect(winResult.allowlistSatisfied).toBe(true);
     });
 
     it("allows the skill display prelude when a later skill wrapper is allowlisted", () => {

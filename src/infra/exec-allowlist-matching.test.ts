@@ -34,6 +34,43 @@ describe("exec allowlist matching", () => {
     }
   });
 
+  it("matches unresolved absolute raw executable paths", () => {
+    const pattern = "/usr/bin/python3";
+    const unresolvedAbsolute = {
+      rawExecutable: pattern,
+      resolvedPath: undefined,
+      executableName: "python3",
+    };
+    expect(matchAllowlist([{ pattern }], unresolvedAbsolute)?.pattern).toBe(pattern);
+
+    const unresolvedBare = {
+      rawExecutable: "python3",
+      resolvedPath: undefined,
+      executableName: "python3",
+    };
+    expect(matchAllowlist([{ pattern }], unresolvedBare)).toBeNull();
+  });
+
+  it("uses target-platform absolute-path semantics for unresolved raw executables", () => {
+    const windowsAbsolute = "C:\\Windows\\System32\\cmd.exe";
+    const unresolvedWindowsAbsolute = {
+      rawExecutable: windowsAbsolute,
+      resolvedPath: undefined,
+      executableName: "cmd.exe",
+    };
+
+    expect(
+      matchAllowlist([{ pattern: windowsAbsolute }], unresolvedWindowsAbsolute, {
+        platform: "linux",
+      }),
+    ).toBeNull();
+    expect(
+      matchAllowlist([{ pattern: windowsAbsolute }], unresolvedWindowsAbsolute, {
+        platform: "win32",
+      })?.pattern,
+    ).toBe(windowsAbsolute);
+  });
+
   it("matches absolute paths containing regex metacharacters literally", () => {
     const plusPathCases = ["/usr/bin/g++", "/usr/bin/clang++"] as const;
     for (const candidatePath of plusPathCases) {
