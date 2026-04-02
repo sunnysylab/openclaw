@@ -131,6 +131,7 @@ type ChannelHandlerParams = {
   forceDocument?: boolean;
   silent?: boolean;
   mediaAccess?: OutboundMediaAccess;
+  sessionKey?: string;
   gatewayClientScopes?: readonly string[];
 };
 
@@ -254,6 +255,7 @@ function createChannelOutboundContextBase(
     mediaAccess: params.mediaAccess,
     mediaLocalRoots: params.mediaAccess?.localRoots,
     mediaReadFile: params.mediaAccess?.readFile,
+    sessionKey: params.sessionKey,
     gatewayClientScopes: params.gatewayClientScopes,
   };
 }
@@ -388,6 +390,7 @@ function createMessageSentEmitter(params: {
       messageId: event.messageId,
       isGroup: params.mirrorIsGroup,
       groupId: params.mirrorGroupId,
+      sessionKey: params.sessionKeyForInternalHooks,
     });
     if (hasMessageSentHooks) {
       fireAndForgetHook(
@@ -430,6 +433,7 @@ async function applyMessageSendingHook(params: {
   to: string;
   channel: Exclude<OutboundChannel, "none">;
   accountId?: string;
+  sessionKey?: string;
 }): Promise<{
   cancelled: boolean;
   payload: ReplyPayload;
@@ -456,6 +460,7 @@ async function applyMessageSendingHook(params: {
       {
         channelId: params.channel,
         accountId: params.accountId ?? undefined,
+        sessionKey: params.sessionKey,
       },
     );
     if (sendingResult?.cancel) {
@@ -583,6 +588,7 @@ async function deliverOutboundPayloadsCore(
     forceDocument: params.forceDocument,
     silent: params.silent,
     mediaAccess,
+    sessionKey: params.mirror?.sessionKey ?? params.session?.key,
     gatewayClientScopes: params.gatewayClientScopes,
   });
   const configuredTextLimit = handler.chunker
@@ -675,6 +681,7 @@ async function deliverOutboundPayloadsCore(
         to,
         channel,
         accountId,
+        sessionKey: sessionKeyForInternalHooks,
       });
       if (hookResult.cancelled) {
         continue;

@@ -147,6 +147,10 @@ export type CompactEmbeddedPiSessionParams = {
   spawnedBy?: string | null;
   /** Whether the sender is an owner (required for owner-only tools). */
   senderIsOwner?: boolean;
+  /** Sender's display name. */
+  senderName?: string | null;
+  /** Original message platform for security classification. */
+  sourceProvider?: string;
   sessionFile: string;
   /** Optional caller-observed live prompt tokens used for compaction diagnostics. */
   currentTokenCount?: number;
@@ -809,6 +813,12 @@ export async function compactEmbeddedPiSessionDirect(
           sessionAgentId,
           workspaceDir: effectiveWorkspace,
           messageProvider: resolvedMessageProvider,
+          sourceProvider: params.sourceProvider,
+          senderId: params.senderId ?? null,
+          senderName: params.senderName ?? null,
+          senderIsOwner: params.senderIsOwner,
+          groupId: params.groupId ?? null,
+          spawnedBy: params.spawnedBy ?? null,
           metrics: beforeHookMetrics,
         });
         const { messageCountOriginal } = beforeHookMetrics;
@@ -903,6 +913,12 @@ export async function compactEmbeddedPiSessionDirect(
           missingSessionKey,
           workspaceDir: effectiveWorkspace,
           messageProvider: resolvedMessageProvider,
+          sourceProvider: params.sourceProvider,
+          senderId: params.senderId ?? null,
+          senderName: params.senderName ?? null,
+          senderIsOwner: params.senderIsOwner,
+          groupId: params.groupId ?? null,
+          spawnedBy: params.spawnedBy ?? null,
           messageCountAfter,
           tokensAfter,
           compactedCount,
