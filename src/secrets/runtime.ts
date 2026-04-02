@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { resolveOpenClawAgentDir } from "../agents/agent-paths.js";
 import {
   listAgentIds,
@@ -11,6 +12,7 @@ import {
   loadAuthProfileStoreForSecretsRuntime,
   replaceRuntimeAuthProfileStoreSnapshots,
 } from "../agents/auth-profiles.js";
+import { resolveAuthStorePath } from "../agents/auth-profiles/paths.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshotRefreshHandler,
@@ -41,6 +43,7 @@ export type PreparedSecretsRuntimeSnapshot = {
   sourceConfig: OpenClawConfig;
   config: OpenClawConfig;
   authStores: Array<{ agentDir: string; store: AuthProfileStore }>;
+  authStoreMtimes?: Record<string, number>;
   warnings: SecretResolverWarning[];
   webTools: RuntimeWebToolsMetadata;
 };
@@ -80,6 +83,7 @@ function cloneSnapshot(snapshot: PreparedSecretsRuntimeSnapshot): PreparedSecret
       agentDir: entry.agentDir,
       store: structuredClone(entry.store),
     })),
+    authStoreMtimes: snapshot.authStoreMtimes ? { ...snapshot.authStoreMtimes } : undefined,
     warnings: snapshot.warnings.map((warning) => ({ ...warning })),
     webTools: structuredClone(snapshot.webTools),
   };
@@ -188,12 +192,19 @@ export async function prepareSecretsRuntimeSnapshot(params: {
 
   const includeAuthStoreRefs = params.includeAuthStoreRefs ?? true;
   const authStores: Array<{ agentDir: string; store: AuthProfileStore }> = [];
+  const authStoreMtimes: Record<string, number> = {};
   const loadAuthStore = params.loadAuthStore ?? loadAuthProfileStoreForSecretsRuntime;
   const candidateDirs = params.agentDirs?.length
     ? [...new Set(params.agentDirs.map((entry) => resolveUserPath(entry, runtimeEnv)))]
     : collectCandidateAgentDirs(resolvedConfig, runtimeEnv);
   if (includeAuthStoreRefs) {
     for (const agentDir of candidateDirs) {
+      const authPath = resolveAuthStorePath(agentDir);
+      try {
+        authStoreMtimes[agentDir] = fs.statSync(authPath).mtimeMs;
+      } catch {
+        authStoreMtimes[agentDir] = Date.now();
+      }
       const store = structuredClone(loadAuthStore(agentDir));
       collectAuthStoreAssignments({
         store,
@@ -221,6 +232,7 @@ export async function prepareSecretsRuntimeSnapshot(params: {
     sourceConfig,
     config: resolvedConfig,
     authStores,
+    authStoreMtimes,
     warnings: context.warnings,
     webTools: await resolveRuntimeWebTools({
       sourceConfig,
@@ -252,7 +264,7 @@ export function activateSecretsRuntimeSnapshot(snapshot: PreparedSecretsRuntimeS
       }),
     } satisfies SecretsRuntimeRefreshContext);
   setRuntimeConfigSnapshot(next.config, next.sourceConfig);
-  replaceRuntimeAuthProfileStoreSnapshots(next.authStores);
+  replaceRuntimeAuthProfileStoreSnapshots(next.authStores, next.authStoreMtimes);
   activeSnapshot = next;
   activeRefreshContext = cloneRefreshContext(refreshContext);
   setRuntimeConfigSnapshotRefreshHandler({
