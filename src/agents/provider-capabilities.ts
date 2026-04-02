@@ -174,7 +174,16 @@ export function sanitizesGeminiThoughtSignatures(
 
 function modelIncludesAnyHint(modelId: string | null | undefined, hints: string[]): boolean {
   const normalized = (modelId ?? "").toLowerCase();
-  return Boolean(normalized) && hints.some((hint) => normalized.includes(hint));
+  if (!normalized) {
+    return false;
+  }
+
+  // Use token-based matching to avoid false positives from naive substring matching.
+  // Split on common delimiters (/ - _ .) and match complete tokens.
+  // This prevents matching "notmistral" when looking for "mistral".
+  const tokens = normalized.split(/[/\-_.]+/).filter(Boolean);
+  const hintSet = new Set(hints.map((h) => h.toLowerCase()));
+  return tokens.some((t) => hintSet.has(t));
 }
 
 export function isOpenAiProviderFamily(
@@ -230,6 +239,20 @@ export function resolveTranscriptToolCallIdMode(
   }
   if (modelIncludesAnyHint(modelId, capabilities.transcriptToolCallIdModelHints)) {
     return "strict9";
+  }
+  // When the resolved provider does not have explicit strict9 configuration,
+  // check all static provider capabilities for model hints. This handles proxy
+  // providers (e.g., openrouter, together) that route to models like mistral/mixtral/codestral.
+  // Note: This only covers PLUGIN_CAPABILITIES_FALLBACKS; plugin-registered strict9 capabilities
+  // with model hints are not included in this fallback scan.
+  for (const [, providerCaps] of Object.entries(PLUGIN_CAPABILITIES_FALLBACKS)) {
+    if (
+      providerCaps.transcriptToolCallIdMode === "strict9" &&
+      providerCaps.transcriptToolCallIdModelHints &&
+      modelIncludesAnyHint(modelId, providerCaps.transcriptToolCallIdModelHints)
+    ) {
+      return "strict9";
+    }
   }
   return undefined;
 }

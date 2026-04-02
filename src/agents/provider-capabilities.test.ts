@@ -203,6 +203,14 @@ describe("resolveProviderCapabilities", () => {
     expect(resolveTranscriptToolCallIdMode("mistral", "mistral-large-latest")).toBe("strict9");
   });
 
+  it("avoids false positives from naive substring matching (security)", () => {
+    // Test that token-based matching prevents false positives
+    // "notmistral-fake" should NOT match "mistral" hint (token split: ["notmistral", "fake"])
+    // This is a security improvement over naive String.includes() matching
+    expect(resolveTranscriptToolCallIdMode("openrouter", "notmistral-fake")).toBe(undefined);
+    expect(resolveTranscriptToolCallIdMode("openrouter", "anti-mistral-blocker")).toBe(undefined);
+  });
+
   it("treats kimi aliases as native anthropic tool payload providers", () => {
     expect(requiresOpenAiCompatibleAnthropicToolPayload("kimi")).toBe(false);
     expect(requiresOpenAiCompatibleAnthropicToolPayload("kimi-code")).toBe(false);
