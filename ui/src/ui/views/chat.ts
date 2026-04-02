@@ -8,6 +8,7 @@ import type {
 import {
   CHAT_ATTACHMENT_ACCEPT,
   isSupportedChatAttachmentMimeType,
+  isAllowedFileExtension,
 } from "../chat/attachment-support.ts";
 import { DeletedMessages } from "../chat/deleted-messages.ts";
 import { exportChatMarkdown } from "../chat/export.ts";
@@ -404,7 +405,9 @@ function handleFileSelect(e: Event, props: ChatProps) {
   const additions: ChatAttachment[] = [];
   let pending = 0;
   for (const file of input.files) {
-    if (!isSupportedChatAttachmentMimeType(file.type)) {
+    // Check both MIME type and file extension (issue #54199 fix - allow non-image files)
+    const hasValidType = isSupportedChatAttachmentMimeType(file.type) || isAllowedFileExtension(file.name);
+    if (!hasValidType) {
       continue;
     }
     pending++;
@@ -435,7 +438,9 @@ function handleDrop(e: DragEvent, props: ChatProps) {
   const additions: ChatAttachment[] = [];
   let pending = 0;
   for (const file of files) {
-    if (!isSupportedChatAttachmentMimeType(file.type)) {
+    // Check both MIME type and file extension (issue #54199 fix - allow non-image files)
+    const hasValidType = isSupportedChatAttachmentMimeType(file.type) || isAllowedFileExtension(file.name);
+    if (!hasValidType) {
       continue;
     }
     pending++;
