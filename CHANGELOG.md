@@ -8,6 +8,7 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- Gateway/config: `config.patch` no-op detection now compares materialized snapshot config to the patched candidate (same `materializeRuntimeConfig(..., "snapshot")` shape as `readConfigFileSnapshot`), so control-plane clients that round-trip `config.get` JSON without real edits get `{ noop: true }` instead of an unnecessary restart. `config.apply` change-path logging uses the same materialized comparison for consistent diffs.
 - Matrix/multi-account: keep room-level `account` scoping, inherited room overrides, and implicit account selection consistent across top-level default auth, named accounts, and cached-credential env setups. (#58449) thanks @Daanvdplas and @gumadeiras.
 
 ## 2026.4.1
