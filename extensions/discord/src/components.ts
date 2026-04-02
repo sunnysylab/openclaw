@@ -26,14 +26,13 @@ import { ButtonStyle, MessageFlags, TextInputStyle } from "discord-api-types/v10
 import {
   DISCORD_COMPONENT_CUSTOM_ID_KEY,
   DISCORD_MODAL_CUSTOM_ID_KEY,
-  buildDiscordComponentCustomId,
-  buildDiscordModalCustomId,
+  buildDiscordComponentCustomId as buildDiscordComponentCustomIdImpl,
+  buildDiscordModalCustomId as buildDiscordModalCustomIdImpl,
   parseDiscordComponentCustomId,
   parseDiscordComponentCustomIdForCarbon,
   parseDiscordModalCustomId,
   parseDiscordModalCustomIdForCarbon,
 } from "./component-custom-id.js";
-export { buildDiscordComponentCustomId, buildDiscordModalCustomId };
 
 // Some test-only module graphs partially mock `@buape/carbon` and can drop `Modal`.
 // Keep dynamic form definitions loadable instead of crashing unrelated suites.
@@ -666,7 +665,7 @@ function createButtonComponent(params: {
       : undefined;
   const customId =
     internalCustomId ??
-    buildDiscordComponentCustomId({
+    buildDiscordComponentCustomIdImpl({
       componentId,
       modalId: params.modalId,
     });
@@ -709,7 +708,7 @@ function createSelectComponent(params: {
 } {
   const type = (params.spec.type ?? "string").toLowerCase() as DiscordComponentSelectType;
   const componentId = params.componentId ?? createShortId("sel_");
-  const customId = buildDiscordComponentCustomId({ componentId });
+  const customId = buildDiscordComponentCustomIdImpl({ componentId });
   if (type === "string") {
     const options = params.spec.options ?? [];
     if (options.length === 0) {
@@ -1091,7 +1090,7 @@ export class DiscordFormModal extends ModalBase {
   constructor(params: { modalId: string; title: string; fields: DiscordModalFieldDefinition[] }) {
     super();
     this.title = params.title;
-    this.customId = buildDiscordModalCustomId(params.modalId);
+    this.customId = buildDiscordModalCustomIdImpl(params.modalId);
     this.components = params.fields.map((field) => {
       const component = createModalFieldComponent(field);
       class DynamicLabel extends Label {
