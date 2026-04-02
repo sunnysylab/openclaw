@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { AnyAgentTool } from "../agents/tools/common.js";
 import type { ChannelPlugin } from "../channels/plugins/types.js";
 import { registerContextEngineForOwner } from "../context-engine/registry.js";
@@ -238,6 +239,8 @@ export type PluginRegistry = {
   commands: PluginCommandRegistration[];
   conversationBindingResolvedHandlers: PluginConversationBindingResolvedHandlerRegistration[];
   diagnostics: PluginDiagnostic[];
+  /** Plugin-registered streamFn wrappers applied after provider wrappers. */
+  streamFnWrappers: Array<(streamFn: StreamFn) => StreamFn>;
 };
 
 export type PluginRegistryParams = {
@@ -1033,6 +1036,9 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
                     message: `context engine already registered: ${id} (${result.existingOwner})`,
                   });
                 }
+              },
+              registerStreamFnWrapper: (wrapper: PluginRegistry["streamFnWrappers"][number]) => {
+                registry.streamFnWrappers.push(wrapper);
               },
               registerMemoryPromptSection: (builder) => {
                 if (!hasKind(record.kind, "memory")) {
