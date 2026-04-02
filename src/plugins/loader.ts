@@ -37,7 +37,11 @@ import {
 import { isPathInside, safeStatSync } from "./path-safety.js";
 import { createPluginRegistry, type PluginRecord, type PluginRegistry } from "./registry.js";
 import { resolvePluginCacheInputs } from "./roots.js";
-import { setActivePluginRegistry } from "./runtime.js";
+import {
+  getActivePluginRegistry,
+  getActivePluginRegistryKey,
+  setActivePluginRegistry,
+} from "./runtime.js";
 import type { CreatePluginRuntimeOptions } from "./runtime/index.js";
 import type { PluginRuntime } from "./runtime/types.js";
 import { validateJsonSchemaValue } from "./schema-validator.js";
@@ -234,6 +238,88 @@ function normalizeScopedPluginIds(ids?: string[]): string[] | undefined {
   }
   const normalized = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean))).toSorted();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function resolveRuntimeSubagentMode(
+  runtimeOptions?: CreatePluginRuntimeOptions,
+): "default" | "explicit" | "gateway-bindable" {
+  if (runtimeOptions?.allowGatewaySubagentBinding === true) {
+    return "gateway-bindable";
+  }
+  if (runtimeOptions?.subagent) {
+    return "explicit";
+  }
+  return "default";
+}
+
+function hasExplicitCompatibilityInputs(options: PluginLoadOptions): boolean {
+  return Boolean(
+    options.config !== undefined ||
+    options.workspaceDir !== undefined ||
+    options.env !== undefined ||
+    options.onlyPluginIds?.length ||
+    options.runtimeOptions !== undefined ||
+    options.coreGatewayHandlers !== undefined ||
+    options.includeSetupOnlyChannelPlugins === true ||
+    options.preferSetupRuntimeForChannelPlugins === true,
+  );
+}
+
+function resolvePluginLoadCacheContext(options: PluginLoadOptions = {}) {
+  const env = options.env ?? process.env;
+  const cfg = applyTestPluginDefaults(options.config ?? {}, env);
+  const normalized = normalizePluginsConfig(cfg.plugins);
+  const onlyPluginIds = normalizeScopedPluginIds(options.onlyPluginIds);
+  const includeSetupOnlyChannelPlugins = options.includeSetupOnlyChannelPlugins === true;
+  const preferSetupRuntimeForChannelPlugins = options.preferSetupRuntimeForChannelPlugins === true;
+  const cacheKey = buildCacheKey({
+    workspaceDir: options.workspaceDir,
+    plugins: normalized,
+    installs: cfg.plugins?.installs,
+    env,
+    onlyPluginIds,
+    includeSetupOnlyChannelPlugins,
+    preferSetupRuntimeForChannelPlugins,
+    runtimeSubagentMode: resolveRuntimeSubagentMode(options.runtimeOptions),
+  });
+  return {
+    env,
+    cfg,
+    normalized,
+    onlyPluginIds,
+    includeSetupOnlyChannelPlugins,
+    preferSetupRuntimeForChannelPlugins,
+    shouldActivate: options.activate !== false,
+    cacheKey,
+  };
+}
+
+function getCompatibleActivePluginRegistry(
+  options: PluginLoadOptions = {},
+): PluginRegistry | undefined {
+  const activeRegistry = getActivePluginRegistry() ?? undefined;
+  if (!activeRegistry) {
+    return undefined;
+  }
+  if (!hasExplicitCompatibilityInputs(options)) {
+    return activeRegistry;
+  }
+  const activeCacheKey = getActivePluginRegistryKey();
+  if (!activeCacheKey) {
+    return undefined;
+  }
+  return resolvePluginLoadCacheContext(options).cacheKey === activeCacheKey
+    ? activeRegistry
+    : undefined;
+}
+
+export function resolveRuntimePluginRegistry(
+  options?: PluginLoadOptions,
+): PluginRegistry | undefined {
+  if (!options || !hasExplicitCompatibilityInputs(options)) {
+    return getCompatibleActivePluginRegistry();
+  }
+  return getCompatibleActivePluginRegistry(options) ?? loadOpenClawPlugins(options);
 }
 
 function validatePluginConfig(params: {

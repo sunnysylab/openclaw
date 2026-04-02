@@ -1,13 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createEmptyPluginRegistry } from "../plugins/registry.js";
-import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 
-const loadOpenClawPluginsMock = vi.fn((_params?: unknown) => ({
-  mediaUnderstandingProviders: [],
-}));
+const resolvePluginCapabilityProvidersMock = vi.fn((_params?: unknown) => []);
 
-vi.mock("../plugins/loader.js", () => ({
-  loadOpenClawPlugins: (params: unknown) => loadOpenClawPluginsMock(params),
+vi.mock("../plugins/capability-provider-runtime.js", () => ({
+  resolvePluginCapabilityProviders: (params: unknown) =>
+    resolvePluginCapabilityProvidersMock(params),
 }));
 
 let buildMediaUnderstandingRegistry: typeof import("./provider-registry.js").buildMediaUnderstandingRegistry;
@@ -15,16 +12,16 @@ let buildMediaUnderstandingRegistry: typeof import("./provider-registry.js").bui
 describe("media-understanding provider loader", () => {
   beforeEach(async () => {
     vi.resetModules();
-    loadOpenClawPluginsMock.mockClear();
-    resetPluginRuntimeStateForTest();
+    resolvePluginCapabilityProvidersMock.mockClear();
     ({ buildMediaUnderstandingRegistry } = await import("./provider-registry.js"));
   });
 
   it("reuses the active plugin registry when one is already loaded", () => {
-    setActivePluginRegistry(createEmptyPluginRegistry(), "active-registry");
-
     buildMediaUnderstandingRegistry(undefined, { plugins: { enabled: true } } as never);
 
-    expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
+    expect(resolvePluginCapabilityProvidersMock).toHaveBeenCalledWith({
+      key: "mediaUnderstandingProviders",
+      cfg: { plugins: { enabled: true } },
+    });
   });
 });
