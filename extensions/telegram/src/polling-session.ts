@@ -630,6 +630,9 @@ export class TelegramPollingSession {
     timeout.unref?.();
     const onSessionAbort = () => controller.abort();
     const onStopAbort = () => controller.abort();
+    if (this.opts.abortSignal?.aborted || params?.stopSignal?.aborted) {
+      controller.abort();
+    }
     this.opts.abortSignal?.addEventListener("abort", onSessionAbort, { once: true });
     params?.stopSignal?.addEventListener("abort", onStopAbort, { once: true });
     try {
