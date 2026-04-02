@@ -11,6 +11,7 @@ import {
   resolveOutboundSendDep,
   type OutboundSendDeps,
 } from "openclaw/plugin-sdk/outbound-runtime";
+import { chunkMarkdownText } from "openclaw/plugin-sdk/reply-runtime";
 import {
   buildOutboundBaseSessionKey,
   normalizeMessageChannel,
@@ -831,7 +832,7 @@ export const telegramPlugin = createChatChannelPlugin({
   outbound: {
     base: {
       deliveryMode: "direct",
-      chunker: (text, limit) => getTelegramRuntime().channel.text.chunkMarkdownText(text, limit),
+      chunker: chunkMarkdownText,
       chunkerMode: "markdown",
       textChunkLimit: 4000,
       pollMaxOptions: 10,
