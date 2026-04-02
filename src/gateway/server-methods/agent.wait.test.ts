@@ -81,6 +81,37 @@ describe("agent.wait structured metadata gating", () => {
     );
   });
 
+  it("returns non-structured tool-call lifecycle snapshots without waiting for dedupe metadata", async () => {
+    waitState.requestedStructuredOutput = false;
+    waitState.waitForAgentJob.mockResolvedValue({
+      status: "ok",
+      startedAt: 1,
+      endedAt: 2,
+      stopReason: "tool_calls",
+    });
+    waitState.waitForTerminalGatewayDedupe.mockImplementation(() => new Promise<null>(() => {}));
+
+    const respond = vi.fn();
+    await agentHandlers["agent.wait"]({
+      params: { runId: "run-auto-tool-calls", timeoutMs: 1_000 },
+      respond: respond as never,
+      context: makeContext(),
+      req: { type: "req", id: "req-auto-tool-calls", method: "agent.wait" },
+      client: null,
+      isWebchatConnect: () => false,
+    });
+
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        runId: "run-auto-tool-calls",
+        status: "ok",
+        stopReason: "tool_calls",
+        pendingToolCalls: undefined,
+      }),
+    );
+  });
+
   it("re-reads structured output intent before applying lifecycle grace wait", async () => {
     let resolveLifecycle:
       | ((value: { status: "ok"; startedAt: number; endedAt: number }) => void)

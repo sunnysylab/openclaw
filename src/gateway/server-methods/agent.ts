@@ -100,10 +100,13 @@ function isMissingAgentWaitStructuredMetadata(
   snapshot: AgentWaitTerminalSnapshot,
   requestedStructuredOutput: boolean,
 ): boolean {
+  if (!requestedStructuredOutput) {
+    return false;
+  }
   if (snapshot.stopReason === "tool_calls") {
     return snapshot.pendingToolCalls === undefined;
   }
-  return requestedStructuredOutput && snapshot.stopReason === undefined && snapshot.status === "ok";
+  return snapshot.stopReason === undefined && snapshot.status === "ok";
 }
 
 function resolveSenderIsOwnerFromClient(client: GatewayRequestHandlerOptions["client"]): boolean {
