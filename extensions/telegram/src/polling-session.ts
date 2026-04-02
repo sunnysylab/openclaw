@@ -72,6 +72,8 @@ export class TelegramPollingSession {
   #activeRunner: ReturnType<typeof run> | undefined;
   #activeFetchAbort: AbortController | undefined;
   #transportState: TelegramPollingTransportState;
+  #stallDetectedAt: number | null = null;
+  #stallRecoveryLogged = false;
 
   constructor(private readonly opts: TelegramPollingSessionOpts) {
     this.#transportState = new TelegramPollingTransportState({
@@ -384,6 +386,13 @@ export class TelegramPollingSession {
         lastGetUpdatesFinishedAt = finishedAt;
         lastGetUpdatesDurationMs = finishedAt - startedAt;
         lastGetUpdatesOutcome = Array.isArray(result) ? `ok:${result.length}` : "ok";
+        if (this.#stallDetectedAt != null && !this.#stallRecoveryLogged) {
+          this.#stallRecoveryLogged = true;
+          const outageMs = finishedAt - this.#stallDetectedAt;
+          this.opts.log(
+            `[telegram] Polling recovered after stall; first getUpdates succeeded after ${formatDurationPrecise(outageMs)}. [diag outcome=${lastGetUpdatesOutcome} durationMs=${lastGetUpdatesDurationMs ?? "n/a"} offset=${lastGetUpdatesOffset ?? "n/a"}]`,
+          );
+        }
         return result;
       } catch (err) {
         const finishedAt = Date.now();
@@ -500,6 +509,8 @@ export class TelegramPollingSession {
           return;
         }
         stallDiagLoggedAt = now;
+        this.#stallDetectedAt ??= now;
+        this.#stallRecoveryLogged = false;
         this.#transportState.markDirty();
         stalledRestart = true;
         const elapsedLabel =
