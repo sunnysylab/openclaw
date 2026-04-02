@@ -30,7 +30,9 @@ const originalPath = process.env.PATH;
 const originalPathExt = process.env.PATHEXT;
 
 beforeEach(async () => {
-  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-qmd-win-spawn-"));
+  // Resolve through realpath so macOS /tmp → /private/tmp doesn't cause path
+  // mismatches when the production code calls fs.realpathSync internally.
+  tempDir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-qmd-win-spawn-")));
   platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
 });
 
@@ -56,6 +58,47 @@ describe("resolveCliSpawnInvocation", () => {
     await fs.writeFile(
       path.join(packageDir, "package.json"),
       JSON.stringify({ name: "qmd", version: "0.0.0", bin: { qmd: "dist/cli.js" } }),
+      "utf8",
+    );
+    await fs.writeFile(scriptPath, "module.exports = {};\n", "utf8");
+
+    process.env.PATH = `${binDir};${originalPath ?? ""}`;
+    process.env.PATHEXT = ".CMD;.EXE";
+
+    const invocation = resolveCliSpawnInvocation({
+      command: "qmd",
+      args: ["query", "hello"],
+      env: process.env,
+      packageName: "qmd",
+    });
+
+    expect(invocation.command).toBe(process.execPath);
+    expect(invocation.argv).toEqual([scriptPath, "query", "hello"]);
+    expect(invocation.shell).not.toBe(true);
+    expect(invocation.windowsHide).toBe(true);
+  });
+
+  it("resolves pnpm-style cmd shims through package resolution", async () => {
+    const binDir = path.join(tempDir, "node_modules", ".bin");
+    const packageDir = path.join(
+      tempDir,
+      "node_modules",
+      ".pnpm",
+      "qmd@1.0.0",
+      "node_modules",
+      "qmd",
+    );
+    const scriptPath = path.join(packageDir, "dist", "cli.js");
+    await fs.mkdir(path.dirname(scriptPath), { recursive: true });
+    await fs.mkdir(binDir, { recursive: true });
+    await fs.writeFile(
+      path.join(binDir, "qmd.cmd"),
+      "@echo off\r\nREM wrapper missing direct %dp0 target\r\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({ name: "qmd", version: "1.0.0", bin: { qmd: "dist/cli.js" } }),
       "utf8",
     );
     await fs.writeFile(scriptPath, "module.exports = {};\n", "utf8");

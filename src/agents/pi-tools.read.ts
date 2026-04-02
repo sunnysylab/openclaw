@@ -1,15 +1,25 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { createEditTool, createReadTool, createWriteTool } from "@mariozechner/pi-coding-agent";
 import {
-  appendFileWithinRoot,
   SafeOpenError,
   openFileWithinRoot,
   readFileWithinRoot,
   writeFileWithinRoot,
 } from "../infra/fs-safe.js";
 import { trySafeFileURLToPath } from "../infra/local-file-access.js";
+// Lazy-load workspace lock manager to avoid startup memory overhead.
+let _withWorkspaceLock:
+  | typeof import("../infra/workspace-lock-manager.js").withWorkspaceLock
+  | undefined;
+async function getWithWorkspaceLock() {
+  if (!_withWorkspaceLock) {
+    _withWorkspaceLock = (await import("../infra/workspace-lock-manager.js")).withWorkspaceLock;
+  }
+  return _withWorkspaceLock;
+}
 import { detectMime } from "../media/mime.js";
 import { sniffMimeFromBase64 } from "../media/sniff-mime-from-base64.js";
 import type { ImageSanitizationLimits } from "./image-sanitization.js";
@@ -25,6 +35,7 @@ import {
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import { assertSandboxPath } from "./sandbox-paths.js";
 import type { SandboxFsBridge } from "./sandbox/fs-bridge.js";
+import { parseSandboxBindMount } from "./sandbox/fs-paths.js";
 import { sanitizeToolResultImages } from "./tool-images.js";
 
 export {
@@ -351,6 +362,338 @@ async function normalizeReadImageResult(
   return { ...result, content: nextContent };
 }
 
+const workspaceMutationLocks = new Map<string, Promise<void>>();
+const WORKSPACE_MUTATION_LOCK_TIMEOUT_MS = 120_000;
+const WORKSPACE_MUTATION_LOCK_TTL_MS = 60_000;
+
+export function wrapToolMutationLock(
+  tool: AnyAgentTool,
+  root: string,
+  options?: { containerWorkdir?: string; bindMounts?: string[] },
+): AnyAgentTool {
+  return {
+    ...tool,
+    execute: async (toolCallId, params, signal, onUpdate) => {
+      const normalized = normalizeToolParams(params);
+      const record =
+        normalized ??
+        (params && typeof params === "object" ? (params as Record<string, unknown>) : undefined);
+      const filePathRaw = record?.path;
+      if (typeof filePathRaw !== "string" || !filePathRaw.trim()) {
+        return tool.execute(toolCallId, params, signal, onUpdate);
+      }
+
+      // Strip leading `@` alias so `@file.txt` and `file.txt` produce the same lock key.
+      const filePathNormalized = filePathRaw.startsWith("@") ? filePathRaw.slice(1) : filePathRaw;
+      const resolvedPath = mapContainerPathToWorkspaceRoot({
+        filePath: filePathNormalized,
+        root,
+        containerWorkdir: options?.containerWorkdir,
+        bindMounts: options?.bindMounts,
+      });
+      const lockKey = await canonicalizeMutationLockKey(path.resolve(root, resolvedPath));
+      // Also wait on any in-flight apply_patch for this workspace root so
+      // per-file writes and apply_patch never overlap.
+      const applyPatchQueueKey = `${APPLY_PATCH_WORKSPACE_LOCK_PREFIX}${path.resolve(root)}`;
+      const applyPatchPrevious = workspaceMutationLocks.get(applyPatchQueueKey);
+      const previous = workspaceMutationLocks.get(lockKey) ?? Promise.resolve();
+      let release: (() => void) | undefined;
+      const current = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      workspaceMutationLocks.set(lockKey, current);
+
+      let ranMutation = false;
+      try {
+        if (applyPatchPrevious) {
+          await waitForQueuedMutation(applyPatchPrevious, signal);
+        }
+        await waitForQueuedMutation(previous, signal);
+        ranMutation = true;
+        const lockFn = await getWithWorkspaceLock();
+        return await lockFn(
+          lockKey,
+          {
+            kind: "file",
+            timeoutMs: WORKSPACE_MUTATION_LOCK_TIMEOUT_MS,
+            ttlMs: WORKSPACE_MUTATION_LOCK_TTL_MS,
+            signal,
+          },
+          async () => {
+            return await tool.execute(toolCallId, params, signal, onUpdate);
+          },
+        );
+      } finally {
+        if (ranMutation) {
+          // Mutation completed (or failed) — release so next waiter can proceed.
+          release?.();
+          if (workspaceMutationLocks.get(lockKey) === current) {
+            workspaceMutationLocks.delete(lockKey);
+          }
+        } else {
+          // Aborted/errored before mutation ran — keep `current` in the map so
+          // new same-path writes still queue behind it, then forward resolution
+          // to when our predecessor completes.
+          void previous.then(
+            () => {
+              release?.();
+              if (workspaceMutationLocks.get(lockKey) === current) {
+                workspaceMutationLocks.delete(lockKey);
+              }
+            },
+            () => {
+              release?.();
+              if (workspaceMutationLocks.get(lockKey) === current) {
+                workspaceMutationLocks.delete(lockKey);
+              }
+            },
+          );
+        }
+      }
+    },
+  };
+}
+/**
+ * Wrap apply_patch with a workspace-root-level mutation lock.
+ * Unlike per-file locks used by write/edit, apply_patch can touch multiple
+ * files atomically, so we serialize it against all other workspace mutations
+ * using the workspace root as the lock key.
+ */
+/**
+ * The workspace-level lock key used by apply_patch. Exported so per-file
+ * mutation locks (wrapToolMutationLock) can also wait on this, ensuring
+ * apply_patch and write/edit never overlap on the same workspace.
+ */
+export const APPLY_PATCH_WORKSPACE_LOCK_PREFIX = "apply_patch_ws:";
+
+function extractApplyPatchTouchedPaths(root: string, params: unknown): string[] {
+  const input =
+    params &&
+    typeof params === "object" &&
+    typeof (params as { input?: unknown }).input === "string"
+      ? (params as { input: string }).input
+      : "";
+  if (!input) {
+    return [];
+  }
+
+  const touched = new Set<string>();
+  let currentFile: string | null = null;
+  for (const line of input.split(/\r?\n/)) {
+    const fileMatch = line.match(/^\*\*\* (?:Update|Add|Delete) File:\s+(.+)$/);
+    if (fileMatch?.[1]) {
+      currentFile = fileMatch[1].trim();
+      touched.add(path.resolve(root, currentFile));
+      continue;
+    }
+
+    const moveMatch = line.match(/^\*\*\* Move to:\s+(.+)$/);
+    if (moveMatch?.[1] && currentFile) {
+      touched.add(path.resolve(root, moveMatch[1].trim()));
+    }
+  }
+  return [...touched].toSorted();
+}
+
+async function normalizeCanonicalLockKeys(paths: string[]): Promise<string[]> {
+  const canonical = await Promise.all(
+    paths.map(async (target) => await canonicalizeMutationLockKey(target)),
+  );
+  return [...new Set(canonical)];
+}
+
+export function wrapApplyPatchMutationLock(tool: AnyAgentTool, root: string): AnyAgentTool {
+  const resolvedRoot = path.resolve(root);
+  const queueKey = `${APPLY_PATCH_WORKSPACE_LOCK_PREFIX}${resolvedRoot}`;
+
+  return {
+    ...tool,
+    execute: async (toolCallId, params, signal, onUpdate) => {
+      const previous = workspaceMutationLocks.get(queueKey) ?? Promise.resolve();
+      let release: (() => void) | undefined;
+      const current = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      workspaceMutationLocks.set(queueKey, current);
+
+      let ranMutation = false;
+      try {
+        await waitForQueuedMutation(previous, signal);
+
+        // Also wait on any in-flight per-file write/edit queues for paths this
+        // patch touches so that apply_patch cannot bypass earlier-queued writes
+        // on the same files (fixes write-ordering race).
+        const touchedPaths = await normalizeCanonicalLockKeys(
+          extractApplyPatchTouchedPaths(resolvedRoot, params),
+        );
+        for (const tp of touchedPaths) {
+          const perFilePrevious = workspaceMutationLocks.get(tp);
+          if (perFilePrevious) {
+            await waitForQueuedMutation(perFilePrevious, signal);
+          }
+        }
+
+        ranMutation = true;
+        const lockFn = await getWithWorkspaceLock();
+        const runTool = async (): Promise<ReturnType<typeof tool.execute>> =>
+          await tool.execute(toolCallId, params, signal, onUpdate);
+
+        if (touchedPaths.length === 0) {
+          return await lockFn(
+            resolvedRoot,
+            {
+              kind: "dir",
+              timeoutMs: WORKSPACE_MUTATION_LOCK_TIMEOUT_MS,
+              ttlMs: WORKSPACE_MUTATION_LOCK_TTL_MS,
+              signal,
+            },
+            runTool,
+          );
+        }
+
+        const runWithFileLocks = async (
+          index: number,
+        ): Promise<ReturnType<typeof tool.execute>> => {
+          const target = touchedPaths[index];
+          if (!target) {
+            return await runTool();
+          }
+          return await lockFn(
+            target,
+            {
+              kind: "file",
+              timeoutMs: WORKSPACE_MUTATION_LOCK_TIMEOUT_MS,
+              ttlMs: WORKSPACE_MUTATION_LOCK_TTL_MS,
+              signal,
+            },
+            async () => await runWithFileLocks(index + 1),
+          );
+        };
+
+        return await runWithFileLocks(0);
+      } finally {
+        if (ranMutation) {
+          release?.();
+          if (workspaceMutationLocks.get(queueKey) === current) {
+            workspaceMutationLocks.delete(queueKey);
+          }
+        } else {
+          void previous.then(
+            () => {
+              release?.();
+              if (workspaceMutationLocks.get(queueKey) === current) {
+                workspaceMutationLocks.delete(queueKey);
+              }
+            },
+            () => {
+              release?.();
+              if (workspaceMutationLocks.get(queueKey) === current) {
+                workspaceMutationLocks.delete(queueKey);
+              }
+            },
+          );
+        }
+      }
+    },
+  };
+}
+
+async function waitForQueuedMutation(previous: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    await previous;
+    return;
+  }
+
+  if (signal.aborted) {
+    throw createAbortError();
+  }
+
+  let onAbort: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    onAbort = () => {
+      reject(createAbortError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+
+  try {
+    await Promise.race([previous, abortPromise]);
+  } finally {
+    if (onAbort) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
+function createAbortError(): Error {
+  const error = new Error("Operation aborted.");
+  error.name = "AbortError";
+  return error;
+}
+
+async function canonicalizeMutationLockKey(targetPath: string): Promise<string> {
+  const resolved = path.resolve(targetPath);
+  const suffix: string[] = [];
+  let cursor = resolved;
+  const normalizeCase = await shouldNormalizeMutationLockCase(resolved);
+
+  while (true) {
+    try {
+      const canonical = await fs.realpath(cursor);
+      if (suffix.length === 0) {
+        return canonical;
+      }
+      return path.join(canonical, ...suffix.toReversed());
+    } catch {
+      const parent = path.dirname(cursor);
+      if (parent === cursor) {
+        return resolved;
+      }
+      const basename = path.basename(cursor);
+      suffix.push(normalizeCase ? basename.toLowerCase() : basename);
+      cursor = parent;
+    }
+  }
+}
+
+async function shouldNormalizeMutationLockCase(targetPath: string): Promise<boolean> {
+  if (process.platform === "win32") {
+    return true;
+  }
+  if (process.platform !== "darwin") {
+    return false;
+  }
+
+  let cursor = path.resolve(targetPath);
+  while (true) {
+    try {
+      return await probeDirectoryCaseInsensitive(cursor);
+    } catch {
+      const parent = path.dirname(cursor);
+      if (parent === cursor) {
+        return false;
+      }
+      cursor = parent;
+    }
+  }
+}
+
+async function probeDirectoryCaseInsensitive(existingPath: string): Promise<boolean> {
+  const parent = path.dirname(existingPath);
+  const probeName = `.openclaw-case-probe-${process.pid}-${randomUUID()}`;
+  const probePath = path.join(parent, probeName);
+  const altPath = path.join(parent, probeName.toUpperCase());
+  await fs.writeFile(probePath, "", { flag: "wx" });
+  try {
+    await fs.stat(altPath);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await fs.rm(probePath, { force: true }).catch(() => undefined);
+  }
+}
+
 export function wrapToolWorkspaceRootGuard(tool: AnyAgentTool, root: string): AnyAgentTool {
   return wrapToolWorkspaceRootGuardWithOptions(tool, root);
 }
@@ -359,6 +702,7 @@ function mapContainerPathToWorkspaceRoot(params: {
   filePath: string;
   root: string;
   containerWorkdir?: string;
+  bindMounts?: string[];
 }): string {
   const containerWorkdir = params.containerWorkdir?.trim();
   if (!containerWorkdir) {
@@ -381,7 +725,44 @@ function mapContainerPathToWorkspaceRoot(params: {
     candidate = localFilePath;
   }
 
-  const normalizedCandidate = candidate.replace(/\\/g, "/");
+  const posixCandidate = path.posix.normalize(candidate.replace(/\\/g, "/"));
+  const normalizedCandidate =
+    posixCandidate === "/" ? "/" : posixCandidate.replace(/\/+$/, "") || ".";
+
+  const bindMatches = (params.bindMounts ?? [])
+    .map((bind) => parseSandboxBindMount(bind))
+    .filter((bind): bind is NonNullable<ReturnType<typeof parseSandboxBindMount>> => !!bind)
+    .toSorted((a, b) => b.containerRoot.length - a.containerRoot.length);
+
+  // If the candidate is already a host path under one of the bind mounts, return it directly.
+  // This avoids double-mapping when someone passes a host-resolved path.
+  // Skip root binds (hostRoot="/") — they match everything and would prevent
+  // container-path remapping from ever running.
+  for (const bind of bindMatches) {
+    const hostNorm = bind.hostRoot.replace(/\/+$/, "") || "/";
+    if (hostNorm === "/") {
+      continue;
+    }
+    if (normalizedCandidate === hostNorm) {
+      return bind.hostRoot;
+    }
+    const hostPrefix = `${hostNorm}/`;
+    if (normalizedCandidate.startsWith(hostPrefix)) {
+      return path.resolve(normalizedCandidate);
+    }
+  }
+
+  for (const bind of bindMatches) {
+    if (normalizedCandidate === bind.containerRoot) {
+      return bind.hostRoot;
+    }
+    const bindPrefix = bind.containerRoot === "/" ? "/" : `${bind.containerRoot}/`;
+    if (normalizedCandidate.startsWith(bindPrefix)) {
+      const relative = normalizedCandidate.slice(bindPrefix.length);
+      return path.resolve(bind.hostRoot, ...relative.split("/").filter(Boolean));
+    }
+  }
+
   if (normalizedCandidate === normalizedWorkdir) {
     return path.resolve(params.root);
   }
@@ -450,56 +831,6 @@ async function readOptionalUtf8File(params: {
   }
 }
 
-async function appendMemoryFlushContent(params: {
-  absolutePath: string;
-  root: string;
-  relativePath: string;
-  content: string;
-  sandbox?: MemoryFlushAppendOnlyWriteOptions["sandbox"];
-  signal?: AbortSignal;
-}) {
-  if (!params.sandbox) {
-    await appendFileWithinRoot({
-      rootDir: params.root,
-      relativePath: params.relativePath,
-      data: params.content,
-      mkdir: true,
-      prependNewlineIfNeeded: true,
-    });
-    return;
-  }
-
-  const existing = await readOptionalUtf8File({
-    absolutePath: params.absolutePath,
-    relativePath: params.relativePath,
-    sandbox: params.sandbox,
-    signal: params.signal,
-  });
-  const separator =
-    existing.length > 0 && !existing.endsWith("\n") && !params.content.startsWith("\n") ? "\n" : "";
-  const next = `${existing}${separator}${params.content}`;
-  if (params.sandbox) {
-    const parent = path.posix.dirname(params.relativePath);
-    if (parent && parent !== ".") {
-      await params.sandbox.bridge.mkdirp({
-        filePath: parent,
-        cwd: params.sandbox.root,
-        signal: params.signal,
-      });
-    }
-    await params.sandbox.bridge.writeFile({
-      filePath: params.relativePath,
-      cwd: params.sandbox.root,
-      data: next,
-      mkdir: true,
-      signal: params.signal,
-    });
-    return;
-  }
-  await fs.mkdir(path.dirname(params.absolutePath), { recursive: true });
-  await fs.writeFile(params.absolutePath, next, "utf-8");
-}
-
 export function wrapToolMemoryFlushAppendOnlyWrite(
   tool: AnyAgentTool,
   options: MemoryFlushAppendOnlyWriteOptions,
@@ -532,21 +863,42 @@ export function wrapToolMemoryFlushAppendOnlyWrite(
         );
       }
 
-      await appendMemoryFlushContent({
-        absolutePath: allowedAbsolutePath,
-        root: options.root,
-        relativePath: options.relativePath,
-        content,
-        sandbox: options.sandbox,
-        signal,
-      });
-      return {
-        content: [{ type: "text", text: `Appended content to ${options.relativePath}.` }],
-        details: {
-          path: options.relativePath,
-          appendOnly: true,
+      // Wrap the read-then-write in a file-level workspace lock so concurrent
+      // memory flushes to the same file cannot read the same old content before
+      // the lock serialises the writes (fixes lost-update race).
+      const lockFn = await getWithWorkspaceLock();
+      return await lockFn(
+        allowedAbsolutePath,
+        {
+          kind: "file",
+          timeoutMs: WORKSPACE_MUTATION_LOCK_TIMEOUT_MS,
+          ttlMs: WORKSPACE_MUTATION_LOCK_TTL_MS,
+          signal,
         },
-      };
+        async () => {
+          const existing = await readOptionalUtf8File({
+            absolutePath: allowedAbsolutePath,
+            relativePath: options.relativePath,
+            sandbox: options.sandbox,
+            signal,
+          });
+          const separator =
+            existing.length > 0 && !existing.endsWith("\n") && !content.startsWith("\n")
+              ? "\n"
+              : "";
+
+          return await tool.execute(
+            toolCallId,
+            {
+              ...record,
+              path: options.relativePath,
+              content: `${existing}${separator}${content}`,
+            },
+            signal,
+            onUpdate,
+          );
+        },
+      );
     },
   };
 }
@@ -584,6 +936,9 @@ type SandboxToolParams = {
   bridge: SandboxFsBridge;
   modelContextWindowTokens?: number;
   imageSanitization?: ImageSanitizationLimits;
+  mutationLockingEnabled?: boolean;
+  containerWorkdir?: string;
+  bindMounts?: string[];
 };
 
 export function createSandboxedReadTool(params: SandboxToolParams) {
@@ -600,7 +955,13 @@ export function createSandboxedWriteTool(params: SandboxToolParams) {
   const base = createWriteTool(params.root, {
     operations: createSandboxWriteOperations(params),
   }) as unknown as AnyAgentTool;
-  return wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.write);
+  const normalized = wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.write);
+  return params.mutationLockingEnabled
+    ? wrapToolMutationLock(normalized, params.root, {
+        containerWorkdir: params.containerWorkdir,
+        bindMounts: params.bindMounts,
+      })
+    : normalized;
 }
 
 export function createSandboxedEditTool(params: SandboxToolParams) {
@@ -612,17 +973,30 @@ export function createSandboxedEditTool(params: SandboxToolParams) {
     readFile: async (absolutePath: string) =>
       (await params.bridge.readFile({ filePath: absolutePath, cwd: params.root })).toString("utf8"),
   });
-  return wrapToolParamNormalization(withRecovery, CLAUDE_PARAM_GROUPS.edit);
+  const normalized = wrapToolParamNormalization(withRecovery, CLAUDE_PARAM_GROUPS.edit);
+  return params.mutationLockingEnabled
+    ? wrapToolMutationLock(normalized, params.root, {
+        containerWorkdir: params.containerWorkdir,
+        bindMounts: params.bindMounts,
+      })
+    : normalized;
 }
 
-export function createHostWorkspaceWriteTool(root: string, options?: { workspaceOnly?: boolean }) {
+export function createHostWorkspaceWriteTool(
+  root: string,
+  options?: { workspaceOnly?: boolean; mutationLockingEnabled?: boolean },
+) {
   const base = createWriteTool(root, {
     operations: createHostWriteOperations(root, options),
   }) as unknown as AnyAgentTool;
-  return wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.write);
+  const normalized = wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.write);
+  return options?.mutationLockingEnabled ? wrapToolMutationLock(normalized, root) : normalized;
 }
 
-export function createHostWorkspaceEditTool(root: string, options?: { workspaceOnly?: boolean }) {
+export function createHostWorkspaceEditTool(
+  root: string,
+  options?: { workspaceOnly?: boolean; mutationLockingEnabled?: boolean },
+) {
   const base = createEditTool(root, {
     operations: createHostEditOperations(root, options),
   }) as unknown as AnyAgentTool;
@@ -630,7 +1004,8 @@ export function createHostWorkspaceEditTool(root: string, options?: { workspaceO
     root,
     readFile: (absolutePath: string) => fs.readFile(absolutePath, "utf-8"),
   });
-  return wrapToolParamNormalization(withRecovery, CLAUDE_PARAM_GROUPS.edit);
+  const normalized = wrapToolParamNormalization(withRecovery, CLAUDE_PARAM_GROUPS.edit);
+  return options?.mutationLockingEnabled ? wrapToolMutationLock(normalized, root) : normalized;
 }
 
 export function createOpenClawReadTool(

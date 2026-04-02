@@ -39,6 +39,7 @@ import {
   normalizeToolParams,
   patchToolSchemaForClaudeCompatibility,
   wrapToolMemoryFlushAppendOnlyWrite,
+  wrapApplyPatchMutationLock,
   wrapToolWorkspaceRootGuard,
   wrapToolWorkspaceRootGuardWithOptions,
   wrapToolParamNormalization,
@@ -394,6 +395,21 @@ export function createOpenClawCodingTools(options?: {
     throw new Error("Sandbox filesystem bridge is unavailable.");
   }
   const imageSanitization = resolveImageSanitizationLimits(options?.config);
+  const mutationLockingEnabled =
+    options?.config?.agents?.defaults?.sharedWorkspaceLocking?.enabled === true;
+
+  // Build the full set of sandbox bind mounts (including the implicit /agent
+  // mount) so mutation locks can map container paths → host paths correctly.
+  const sandboxBindMounts: string[] | undefined = sandbox
+    ? [
+        ...(sandbox.docker.binds ?? []),
+        // Synthetic bind for the agent workspace mount so /agent/foo.txt
+        // resolves to the same host path as <agentWorkspaceDir>/foo.txt.
+        ...(sandbox.agentWorkspaceDir !== sandbox.workspaceDir
+          ? [`${sandbox.agentWorkspaceDir}:/agent:rw`]
+          : []),
+      ]
+    : undefined;
 
   const base = (codingTools as unknown as AnyAgentTool[]).flatMap((tool) => {
     if (tool.name === readTool.name) {
@@ -426,14 +442,20 @@ export function createOpenClawCodingTools(options?: {
       if (sandboxRoot) {
         return [];
       }
-      const wrapped = createHostWorkspaceWriteTool(workspaceRoot, { workspaceOnly });
+      const wrapped = createHostWorkspaceWriteTool(workspaceRoot, {
+        workspaceOnly,
+        mutationLockingEnabled,
+      });
       return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
     }
     if (tool.name === "edit") {
       if (sandboxRoot) {
         return [];
       }
-      const wrapped = createHostWorkspaceEditTool(workspaceRoot, { workspaceOnly });
+      const wrapped = createHostWorkspaceEditTool(workspaceRoot, {
+        workspaceOnly,
+        mutationLockingEnabled,
+      });
       return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
     }
     return [tool];
@@ -482,7 +504,7 @@ export function createOpenClawCodingTools(options?: {
     cleanupMs: cleanupMsOverride ?? execConfig.cleanupMs,
     scopeKey,
   });
-  const applyPatchTool =
+  const applyPatchToolRaw =
     !applyPatchEnabled || (sandboxRoot && !allowWorkspaceWrites)
       ? null
       : createApplyPatchTool({
@@ -493,6 +515,13 @@ export function createOpenClawCodingTools(options?: {
               : undefined,
           workspaceOnly: applyPatchWorkspaceOnly,
         });
+  const applyPatchTool =
+    applyPatchToolRaw && mutationLockingEnabled
+      ? wrapApplyPatchMutationLock(
+          applyPatchToolRaw as unknown as AnyAgentTool,
+          sandboxRoot ?? workspaceRoot,
+        )
+      : applyPatchToolRaw;
   const tools: AnyAgentTool[] = [
     ...base,
     ...(sandboxRoot
@@ -500,22 +529,46 @@ export function createOpenClawCodingTools(options?: {
         ? [
             workspaceOnly
               ? wrapToolWorkspaceRootGuardWithOptions(
-                  createSandboxedEditTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+                  createSandboxedEditTool({
+                    root: sandboxRoot,
+                    bridge: sandboxFsBridge!,
+                    mutationLockingEnabled,
+                    containerWorkdir: sandbox.containerWorkdir,
+                    bindMounts: sandboxBindMounts,
+                  }),
                   sandboxRoot,
                   {
                     containerWorkdir: sandbox.containerWorkdir,
                   },
                 )
-              : createSandboxedEditTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+              : createSandboxedEditTool({
+                  root: sandboxRoot,
+                  bridge: sandboxFsBridge!,
+                  mutationLockingEnabled,
+                  containerWorkdir: sandbox.containerWorkdir,
+                  bindMounts: sandboxBindMounts,
+                }),
             workspaceOnly
               ? wrapToolWorkspaceRootGuardWithOptions(
-                  createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+                  createSandboxedWriteTool({
+                    root: sandboxRoot,
+                    bridge: sandboxFsBridge!,
+                    mutationLockingEnabled,
+                    containerWorkdir: sandbox.containerWorkdir,
+                    bindMounts: sandboxBindMounts,
+                  }),
                   sandboxRoot,
                   {
                     containerWorkdir: sandbox.containerWorkdir,
                   },
                 )
-              : createSandboxedWriteTool({ root: sandboxRoot, bridge: sandboxFsBridge! }),
+              : createSandboxedWriteTool({
+                  root: sandboxRoot,
+                  bridge: sandboxFsBridge!,
+                  mutationLockingEnabled,
+                  containerWorkdir: sandbox.containerWorkdir,
+                  bindMounts: sandboxBindMounts,
+                }),
           ]
         : []
       : []),
@@ -579,17 +632,16 @@ export function createOpenClawCodingTools(options?: {
             return [];
           }
           if (tool.name === "write") {
-            return [
-              wrapToolMemoryFlushAppendOnlyWrite(tool, {
-                root: sandboxRoot ?? workspaceRoot,
-                relativePath: memoryFlushWritePath,
-                containerWorkdir: sandbox?.containerWorkdir,
-                sandbox:
-                  sandboxRoot && sandboxFsBridge
-                    ? { root: sandboxRoot, bridge: sandboxFsBridge }
-                    : undefined,
-              }),
-            ];
+            const memoryFlushWriteTool = wrapToolMemoryFlushAppendOnlyWrite(tool, {
+              root: sandboxRoot ?? workspaceRoot,
+              relativePath: memoryFlushWritePath,
+              containerWorkdir: sandbox?.containerWorkdir,
+              sandbox:
+                sandboxRoot && sandboxFsBridge
+                  ? { root: sandboxRoot, bridge: sandboxFsBridge }
+                  : undefined,
+            });
+            return [memoryFlushWriteTool];
           }
           return [tool];
         })
