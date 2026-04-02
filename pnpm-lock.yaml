@@ -717,6 +717,8 @@ importers:
         specifier: workspace:*
         version: link:../..
 
+  extensions/zenmux: {}
+
   packages/clawdbot:
     dependencies:
       openclaw:
