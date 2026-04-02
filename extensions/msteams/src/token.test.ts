@@ -21,15 +21,29 @@ const ENV_KEYS = [
   "MSTEAMS_MANAGED_IDENTITY_CLIENT_ID",
 ] as const;
 
-function clearEnv() {
+let savedEnv: Record<string, string | undefined> = {};
+
+function saveAndClearEnv() {
+  savedEnv = {};
   for (const key of ENV_KEYS) {
+    savedEnv[key] = process.env[key];
     delete process.env[key];
   }
 }
 
+function restoreEnv() {
+  for (const key of ENV_KEYS) {
+    if (savedEnv[key] !== undefined) {
+      process.env[key] = savedEnv[key];
+    } else {
+      delete process.env[key];
+    }
+  }
+}
+
 describe("token – secret credentials", () => {
-  beforeEach(clearEnv);
-  afterEach(clearEnv);
+  beforeEach(saveAndClearEnv);
+  afterEach(restoreEnv);
 
   it("returns true when appId + appPassword + tenantId are provided in config", () => {
     const cfg = { appId: "app-id", appPassword: "app-pw", tenantId: "tenant-id" } as any;
@@ -76,8 +90,8 @@ describe("token – secret credentials", () => {
 });
 
 describe("token – federated credentials (certificate)", () => {
-  beforeEach(clearEnv);
-  afterEach(clearEnv);
+  beforeEach(saveAndClearEnv);
+  afterEach(restoreEnv);
 
   it("hasConfigured returns true when certificate path is provided", () => {
     const cfg = {
@@ -134,8 +148,8 @@ describe("token – federated credentials (certificate)", () => {
 });
 
 describe("token – federated credentials (managed identity)", () => {
-  beforeEach(clearEnv);
-  afterEach(clearEnv);
+  beforeEach(saveAndClearEnv);
+  afterEach(restoreEnv);
 
   it("resolves managed identity from config", () => {
     const cfg = {
@@ -202,8 +216,8 @@ describe("token – federated credentials (managed identity)", () => {
 });
 
 describe("token – backward compatibility", () => {
-  beforeEach(clearEnv);
-  afterEach(clearEnv);
+  beforeEach(saveAndClearEnv);
+  afterEach(restoreEnv);
 
   it("defaults to secret when authType is absent", () => {
     const cfg = { appId: "app-id", appPassword: "pw", tenantId: "tenant-id" } as any;
