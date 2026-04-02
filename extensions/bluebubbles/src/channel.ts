@@ -15,6 +15,7 @@ import {
 import {
   listBlueBubblesAccountIds,
   type ResolvedBlueBubblesAccount,
+  resolveBlueBubblesEffectiveAllowPrivateNetwork,
   resolveBlueBubblesAccount,
   resolveDefaultBlueBubblesAccountId,
 } from "./accounts.js";
@@ -226,7 +227,10 @@ export const bluebubblesPlugin: ChannelPlugin<ResolvedBlueBubblesAccount, BlueBu
             baseUrl: account.baseUrl,
             password: account.config.password ?? null,
             timeoutMs,
-            allowPrivateNetwork: account.config.allowPrivateNetwork === true,
+            allowPrivateNetwork: resolveBlueBubblesEffectiveAllowPrivateNetwork({
+              baseUrl: account.baseUrl,
+              allowPrivateNetwork: account.config.allowPrivateNetwork,
+            }),
           }),
         resolveAccountSnapshot: ({ account, runtime, probe }) => {
           const running = runtime?.running ?? false;
