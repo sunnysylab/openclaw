@@ -30,6 +30,24 @@ function canUseNodeFs(): boolean {
   }
 }
 
+let logFdCleanupRegistered = false;
+
+// Close the log fd synchronously when the process exits. Do not register SIGINT/SIGTERM
+// listeners here: Node disables default termination for those signals when listeners exist,
+// and we must not swallow Ctrl+C / SIGTERM without exiting.
+function setupLogFdCleanup(): void {
+  if (logFdCleanupRegistered) {
+    return;
+  }
+  logFdCleanupRegistered = true;
+
+  const cleanup = () => {
+    releaseCurrentLogFileFd();
+  };
+
+  process.once("exit", cleanup);
+}
+
 function resolveDefaultLogDir(): string {
   return canUseNodeFs() ? resolvePreferredOpenClawTmpDir() : POSIX_OPENCLAW_TMP_DIR;
 }
@@ -155,6 +173,8 @@ export function isFileLogLevelEnabled(level: LogLevel): boolean {
 }
 
 function buildLogger(settings: ResolvedSettings): TsLogger<LogObj> {
+  releaseCurrentLogFileFd();
+
   const logger = new TsLogger<LogObj>({
     name: "openclaw",
     minLevel: levelToMinLevel(settings.level),
@@ -174,8 +194,20 @@ function buildLogger(settings: ResolvedSettings): TsLogger<LogObj> {
   if (isRollingPath(settings.file)) {
     pruneOldRollingLogs(path.dirname(settings.file));
   }
+
+  // Open file descriptor for efficient writes and proper rotation handling
   let currentFileBytes = getCurrentLogFileBytes(settings.file);
+  try {
+    currentLogFileFd = fs.openSync(settings.file, "a");
+    currentLogFilePath = settings.file;
+  } catch {
+    currentLogFileFd = null;
+    currentLogFilePath = null; // Will fall back to appendFileSync
+  }
+
   let warnedAboutSizeCap = false;
+  // Rotation threshold at 95% of maxFileBytes to avoid hitting the cap exactly
+  const rotationThreshold = settings.maxFileBytes * 0.95;
 
   logger.attachTransport((logObj: LogObj) => {
     try {
@@ -183,7 +215,29 @@ function buildLogger(settings: ResolvedSettings): TsLogger<LogObj> {
       const line = JSON.stringify({ ...logObj, time });
       const payload = `${line}\n`;
       const payloadBytes = Buffer.byteLength(payload, "utf8");
-      const nextBytes = currentFileBytes + payloadBytes;
+      let pendingBytes = currentFileBytes;
+
+      // Rotate before hitting the hard cap (rolling logs only): keeps writes flowing when the
+      // current file cannot fit this line. Skip rotation when a single entry alone exceeds
+      // maxFileBytes — otherwise every suppressed write would rename to .N and pile up segments.
+      if (
+        isRollingPath(settings.file) &&
+        pendingBytes + payloadBytes > settings.maxFileBytes &&
+        payloadBytes <= settings.maxFileBytes
+      ) {
+        rotateLogFile(settings.file);
+        pendingBytes = 0;
+        warnedAboutSizeCap = false;
+      }
+
+      // Proactive rotation once the file is near capacity so the next lines land in a fresh file.
+      if (isRollingPath(settings.file) && pendingBytes > rotationThreshold) {
+        rotateLogFile(settings.file);
+        pendingBytes = 0;
+        warnedAboutSizeCap = false;
+      }
+
+      const nextBytes = pendingBytes + payloadBytes;
       if (nextBytes > settings.maxFileBytes) {
         if (!warnedAboutSizeCap) {
           warnedAboutSizeCap = true;
@@ -200,6 +254,7 @@ function buildLogger(settings: ResolvedSettings): TsLogger<LogObj> {
         }
         return;
       }
+
       if (appendLogLine(settings.file, payload)) {
         currentFileBytes = nextBytes;
       }
@@ -210,6 +265,9 @@ function buildLogger(settings: ResolvedSettings): TsLogger<LogObj> {
   for (const transport of externalTransports) {
     attachExternalTransport(logger, transport);
   }
+
+  // Set up cleanup handler for file descriptor on process exit
+  setupLogFdCleanup();
 
   return logger;
 }
@@ -229,8 +287,72 @@ function getCurrentLogFileBytes(file: string): number {
   }
 }
 
+// File descriptor for the log file opened by the most recently built file logger only.
+// Long-lived logger instances may outlive a rebuild; their transports must not write through
+// this FD unless the path matches (see appendLogLine / rotateLogFile).
+let currentLogFileFd: number | null = null;
+let currentLogFilePath: string | null = null;
+
+function releaseCurrentLogFileFd(): void {
+  if (currentLogFileFd !== null) {
+    try {
+      fs.closeSync(currentLogFileFd);
+    } catch {
+      // Ignore errors during release
+    }
+    currentLogFileFd = null;
+  }
+  currentLogFilePath = null;
+}
+
+/**
+ * Rotate the current log file by renaming it with a numeric suffix and creating a new file.
+ * Returns the path to the rotated file.
+ * Time complexity: O(1) - rename is metadata-only, independent of file size.
+ */
+function rotateLogFile(basePath: string): string {
+  const ownsGlobalFd =
+    currentLogFileFd !== null && currentLogFilePath !== null && basePath === currentLogFilePath;
+
+  if (ownsGlobalFd) {
+    releaseCurrentLogFileFd();
+  }
+
+  // Find the next rotation number
+  let num = 1;
+  while (fs.existsSync(`${basePath}.${num}`)) {
+    num++;
+  }
+
+  const rotatedPath = `${basePath}.${num}`;
+
+  // Rename current file to .N (O(1) - metadata only)
+  try {
+    fs.renameSync(basePath, rotatedPath);
+  } catch {
+    // If rename fails, return original path and let logging continue
+    // This handles edge cases like cross-filesystem renames
+    return basePath;
+  }
+
+  if (ownsGlobalFd) {
+    try {
+      currentLogFileFd = fs.openSync(basePath, "a");
+      currentLogFilePath = basePath;
+    } catch {
+      currentLogFileFd = null;
+      currentLogFilePath = null;
+    }
+  }
+  return rotatedPath;
+}
+
 function appendLogLine(file: string, line: string): boolean {
   try {
+    if (currentLogFileFd !== null && file === currentLogFilePath) {
+      fs.writeSync(currentLogFileFd, line);
+      return true;
+    }
     fs.appendFileSync(file, line, { encoding: "utf8" });
     return true;
   } catch {
@@ -306,6 +428,7 @@ export function setLoggerOverride(settings: LoggerSettings | null) {
   loggingState.cachedLogger = null;
   loggingState.cachedSettings = null;
   loggingState.cachedConsoleSettings = null;
+  releaseCurrentLogFileFd();
 }
 
 export function resetLogger() {
@@ -313,6 +436,7 @@ export function resetLogger() {
   loggingState.cachedSettings = null;
   loggingState.cachedConsoleSettings = null;
   loggingState.overrideSettings = null;
+  releaseCurrentLogFileFd();
 }
 
 export function registerLogTransport(transport: LogTransport): () => void {
@@ -351,6 +475,16 @@ function isRollingPath(file: string): boolean {
   );
 }
 
+/** Matches `openclaw-YYYY-MM-DD.log` and size-rotated siblings `openclaw-YYYY-MM-DD.log.N`. */
+const PRUNABLE_ROLLING_LOG_NAME = /^\d{4}-\d{2}-\d{2}\.log(\.\d+)?$/;
+
+function isPrunableRollingLogFileName(name: string): boolean {
+  if (!name.startsWith(`${LOG_PREFIX}-`)) {
+    return false;
+  }
+  return PRUNABLE_ROLLING_LOG_NAME.test(name.slice(LOG_PREFIX.length + 1));
+}
+
 function pruneOldRollingLogs(dir: string): void {
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -359,7 +493,7 @@ function pruneOldRollingLogs(dir: string): void {
       if (!entry.isFile()) {
         continue;
       }
-      if (!entry.name.startsWith(`${LOG_PREFIX}-`) || !entry.name.endsWith(LOG_SUFFIX)) {
+      if (!isPrunableRollingLogFileName(entry.name)) {
         continue;
       }
       const fullPath = path.join(dir, entry.name);
