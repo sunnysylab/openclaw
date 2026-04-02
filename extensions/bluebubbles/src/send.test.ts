@@ -494,6 +494,32 @@ describe("send", () => {
       }
     });
 
+    it("respects an explicit private-network opt-out for loopback serverUrl", async () => {
+      const policies: unknown[] = [];
+      installSsrFPolicyCapture(policies);
+      mockResolvedHandleTarget();
+      mockSendResponse({ data: { guid: "msg-loopback-opt-out" } });
+
+      try {
+        const result = await sendMessageBlueBubbles("+15551234567", "Hello world!", {
+          serverUrl: "http://localhost:1234",
+          password: "test",
+          cfg: {
+            channels: {
+              bluebubbles: {
+                allowPrivateNetwork: false,
+              },
+            },
+          },
+        });
+
+        expect(result.messageId).toBe("msg-loopback-opt-out");
+        expect(policies).toEqual([{}, {}]);
+      } finally {
+        _setFetchGuardForTesting(null);
+      }
+    });
+
     it("strips markdown formatting from outbound messages", async () => {
       mockResolvedHandleTarget();
       mockSendResponse({ data: { guid: "msg-uuid-stripped" } });

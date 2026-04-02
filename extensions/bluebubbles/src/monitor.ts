@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { resolveBlueBubblesEffectiveAllowPrivateNetwork } from "./accounts.js";
 import { createBlueBubblesDebounceRegistry } from "./monitor-debounce.js";
 import { normalizeWebhookMessage, normalizeWebhookReaction } from "./monitor-normalize.js";
 import { logVerbose, processMessage, processReaction } from "./monitor-processing.js";
@@ -325,6 +326,10 @@ export async function monitorBlueBubblesProvider(
   const { account, config, runtime, abortSignal, statusSink } = options;
   const core = getBlueBubblesRuntime();
   const path = options.webhookPath?.trim() || DEFAULT_WEBHOOK_PATH;
+  const allowPrivateNetwork = resolveBlueBubblesEffectiveAllowPrivateNetwork({
+    baseUrl: account.baseUrl,
+    allowPrivateNetwork: account.config.allowPrivateNetwork,
+  });
 
   // Fetch and cache server info (for macOS version detection in action gating)
   const serverInfo = await fetchBlueBubblesServerInfo({
@@ -332,7 +337,7 @@ export async function monitorBlueBubblesProvider(
     password: account.config.password,
     accountId: account.accountId,
     timeoutMs: 5000,
-    allowPrivateNetwork: account.config.allowPrivateNetwork === true,
+    allowPrivateNetwork,
   }).catch(() => null);
   if (serverInfo?.os_version) {
     runtime.log?.(`[${account.accountId}] BlueBubbles server macOS ${serverInfo.os_version}`);

@@ -1,5 +1,6 @@
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, vi } from "vitest";
+import { isBlockedHostnameOrIp } from "openclaw/plugin-sdk/ssrf-runtime";
 import { _setFetchGuardForTesting } from "./types.js";
 
 export const BLUE_BUBBLES_PRIVATE_API_STATUS = {
@@ -40,9 +41,33 @@ export function resolveBlueBubblesAccountFromConfig(params: {
   };
 }
 
+function resolveBlueBubblesEffectiveAllowPrivateNetworkFromConfig(params: {
+  baseUrl?: string;
+  allowPrivateNetwork?: boolean;
+}) {
+  if (params.allowPrivateNetwork === true) {
+    return true;
+  }
+  if (params.allowPrivateNetwork === false) {
+    return false;
+  }
+  if (!params.baseUrl) {
+    return false;
+  }
+  try {
+    const hostname = new URL(params.baseUrl).hostname.trim();
+    return Boolean(hostname) && isBlockedHostnameOrIp(hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function createBlueBubblesAccountsMockModule() {
   return {
     resolveBlueBubblesAccount: vi.fn(resolveBlueBubblesAccountFromConfig),
+    resolveBlueBubblesEffectiveAllowPrivateNetwork: vi.fn(
+      resolveBlueBubblesEffectiveAllowPrivateNetworkFromConfig,
+    ),
   };
 }
 

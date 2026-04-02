@@ -4,6 +4,7 @@ import {
   resolveMergedAccountConfig,
 } from "openclaw/plugin-sdk/account-resolution";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { isBlockedHostnameOrIp } from "openclaw/plugin-sdk/ssrf-runtime";
 import { hasConfiguredSecretInput, normalizeSecretInputString } from "./secret-input.js";
 import { normalizeBlueBubblesServerUrl, type BlueBubblesAccountConfig } from "./types.js";
 
@@ -57,6 +58,27 @@ export function resolveBlueBubblesAccount(params: {
     configured,
     baseUrl,
   };
+}
+
+export function resolveBlueBubblesEffectiveAllowPrivateNetwork(params: {
+  baseUrl?: string;
+  allowPrivateNetwork?: boolean;
+}): boolean {
+  if (params.allowPrivateNetwork === true) {
+    return true;
+  }
+  if (params.allowPrivateNetwork === false) {
+    return false;
+  }
+  if (!params.baseUrl) {
+    return false;
+  }
+  try {
+    const hostname = new URL(normalizeBlueBubblesServerUrl(params.baseUrl)).hostname.trim();
+    return Boolean(hostname) && isBlockedHostnameOrIp(hostname);
+  } catch {
+    return false;
+  }
 }
 
 export function listEnabledBlueBubblesAccounts(cfg: OpenClawConfig): ResolvedBlueBubblesAccount[] {

@@ -96,7 +96,7 @@ export async function downloadBlueBubblesAttachment(
   if (!guid) {
     throw new Error("BlueBubbles attachment guid is required");
   }
-  const { baseUrl, password, allowPrivateNetwork } = resolveAccount(opts);
+  const { baseUrl, password, allowPrivateNetwork, allowPrivateNetworkConfig } = resolveAccount(opts);
   const url = buildBlueBubblesApiUrl({
     baseUrl,
     path: `/api/v1/attachment/${encodeURIComponent(guid)}/download`,
@@ -111,7 +111,7 @@ export async function downloadBlueBubblesAttachment(
       maxBytes,
       ssrfPolicy: allowPrivateNetwork
         ? { allowPrivateNetwork: true }
-        : trustedHostname
+        : allowPrivateNetworkConfig !== false && trustedHostname
           ? { allowedHostnames: [trustedHostname] }
           : undefined,
       fetchImpl: async (input, init) =>
