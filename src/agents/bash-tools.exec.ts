@@ -622,8 +622,9 @@ export function createExecTool(
           ].join("\n"),
         );
       }
+      const hasExplicitWorkdir = !!(params.workdir?.trim() || defaults?.cwd);
       const rawWorkdir = params.workdir?.trim() || defaults?.cwd || process.cwd();
-      let workdir = rawWorkdir;
+      let workdir: string | undefined = rawWorkdir;
       let containerWorkdir = sandbox?.containerWorkdir;
       if (sandbox) {
         const resolved = await resolveSandboxWorkdir({
@@ -633,10 +634,17 @@ export function createExecTool(
         });
         workdir = resolved.hostWorkdir;
         containerWorkdir = resolved.containerWorkdir;
-      } else if (host !== "node") {
-        // Skip local workdir resolution for remote node execution: the remote node's
-        // filesystem is not visible to the gateway, so resolveWorkdir() would incorrectly
-        // fall back to the gateway's cwd. The node is responsible for validating its own cwd.
+      } else if (host === "node") {
+        // For remote node execution, only forward an explicit cwd provided by the
+        // user or agent config.  When no explicit cwd was given, the gateway's own
+        // process.cwd() is meaningless on the remote node (especially cross-platform,
+        // e.g. Linux gateway + Windows node) and would cause
+        // "SYSTEM_RUN_DENIED: approval requires an existing canonical cwd".
+        // Passing undefined lets the node use its own default working directory.
+        if (!hasExplicitWorkdir) {
+          workdir = undefined;
+        }
+      } else {
         workdir = resolveWorkdir(rawWorkdir, warnings);
       }
       rejectExecApprovalShellCommand(params.command);
@@ -740,10 +748,15 @@ export function createExecTool(
         });
       }
 
+      // After the node early-return above, workdir is guaranteed to be a string
+      // (it was initialised from rawWorkdir and only set to undefined inside the
+      // node branch which already returned).
+      const resolvedWorkdir: string = workdir ?? rawWorkdir;
+
       if (host === "gateway" && !bypassApprovals) {
         const gatewayResult = await processGatewayAllowlist({
           command: params.command,
-          workdir,
+          workdir: resolvedWorkdir,
           env,
           requestedEnv: params.env,
           pty: params.pty === true && !sandbox,
@@ -789,12 +802,12 @@ export function createExecTool(
 
       // Preflight: catch a common model failure mode (shell syntax leaking into Python/JS sources)
       // before we execute and burn tokens in cron loops.
-      await validateScriptFileForShellBleed({ command: params.command, workdir });
+      await validateScriptFileForShellBleed({ command: params.command, workdir: resolvedWorkdir });
 
       const run = await runExecProcess({
         command: params.command,
         execCommand: execCommandOverride,
-        workdir,
+        workdir: resolvedWorkdir,
         env,
         sandbox,
         containerWorkdir,
@@ -906,3 +919,4 @@ export function createExecTool(
 }
 
 export const execTool = createExecTool();
+
