@@ -11,7 +11,7 @@ title: "Moonshot AI"
 
 Moonshot provides the Kimi API with OpenAI-compatible endpoints. Configure the
 provider and set the default model to `moonshot/kimi-k2.5`, or use
-Kimi Coding with `kimi-coding/k2p5`.
+Kimi Coding with `kimi/kimi-code`.
 
 Current Kimi K2 model IDs:
 
@@ -125,9 +125,9 @@ Note: Moonshot and Kimi Coding are separate providers. Keys are not interchangea
   env: { KIMI_API_KEY: "sk-..." },
   agents: {
     defaults: {
-      model: { primary: "kimi-coding/k2p5" },
+      model: { primary: "kimi/kimi-code" },
       models: {
-        "kimi-coding/k2p5": { alias: "Kimi K2.5" },
+        "kimi/kimi-code": { alias: "Kimi" },
       },
     },
   },
@@ -136,7 +136,7 @@ Note: Moonshot and Kimi Coding are separate providers. Keys are not interchangea
 
 ## Notes
 
-- Moonshot model refs use `moonshot/<modelId>`. Kimi Coding model refs use `kimi-coding/<modelId>`.
+- Moonshot model refs use `moonshot/<modelId>`. Kimi Coding model refs use `kimi/<modelId>`.
 - Override pricing and context metadata in `models.providers` if needed.
 - If Moonshot publishes different context limits for a model, adjust
   `contextWindow` accordingly.
