@@ -1155,6 +1155,7 @@
                       "tools/gemini-search",
                       "tools/grok-search",
                       "tools/kimi-search",
+                      "tools/ollama-search",
                       "tools/perplexity-search",
                       "tools/searxng-search",
                       "tools/tavily"
