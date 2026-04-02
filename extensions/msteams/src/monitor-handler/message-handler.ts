@@ -32,6 +32,7 @@ import {
   normalizeMSTeamsConversationId,
   parseMSTeamsActivityTimestamp,
   stripMSTeamsMentionTags,
+  translateMSTeamsDmConversationIdForGraph,
   wasMSTeamsBotMentioned,
 } from "../inbound.js";
 import type { MSTeamsMessageHandlerDeps } from "../monitor-handler.js";
@@ -426,6 +427,13 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
         return;
       }
     }
+    const graphConversationId = translateMSTeamsDmConversationIdForGraph({
+      isDirectMessage,
+      conversationId,
+      aadObjectId: from.aadObjectId,
+      appId,
+    });
+
     const mediaList = await resolveMSTeamsInboundMedia({
       attachments,
       htmlSummary: htmlSummary ?? undefined,
@@ -434,7 +442,7 @@ export function createMSTeamsMessageHandler(deps: MSTeamsMessageHandlerDeps) {
       allowHosts: msteamsCfg?.mediaAllowHosts,
       authAllowHosts: msteamsCfg?.mediaAuthAllowHosts,
       conversationType,
-      conversationId,
+      conversationId: graphConversationId,
       conversationMessageId: conversationMessageId ?? undefined,
       activity: {
         id: activity.id,
