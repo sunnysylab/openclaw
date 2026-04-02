@@ -453,8 +453,6 @@ function extractShellWrappedCommandPayload(
 }
 
 function shouldFailClosedInterpreterPreflight(command: string): {
-  hasPython: boolean;
-  hasNode: boolean;
   hasInterpreterInvocation: boolean;
   hasComplexSyntax: boolean;
   hasProcessSubstitution: boolean;
@@ -513,8 +511,6 @@ function shouldFailClosedInterpreterPreflight(command: string): {
     hasTopLevelInterpreterInvocation;
 
   return {
-    hasPython: topLevel.hasPython || nested.hasPython || isDirectPythonExecutable,
-    hasNode: topLevel.hasNode || nested.hasNode || isDirectNodeExecutable,
     hasInterpreterInvocation,
     hasComplexSyntax: topLevel.hasComplexSyntax || hasShellWrappedInterpreterInvocation,
     hasProcessSubstitution: topLevel.hasProcessSubstitution || nested.hasProcessSubstitution,
