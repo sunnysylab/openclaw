@@ -35,17 +35,26 @@ export async function updateHintCommand(opts: UpdateHintOptions): Promise<void> 
     state = JSON.parse(raw) as UpdateCheckState;
   } catch {
     // No state file or invalid JSON — nothing to report.
+    if (opts.json) {
+      defaultRuntime.writeJson({ updateAvailable: false });
+    }
     return;
   }
 
   const latestVersion = state.lastAvailableVersion?.trim();
   if (!latestVersion) {
+    if (opts.json) {
+      defaultRuntime.writeJson({ updateAvailable: false });
+    }
     return;
   }
 
   const cmp = compareSemverStrings(VERSION, latestVersion);
   if (cmp == null || cmp >= 0) {
     // Already up to date or ahead.
+    if (opts.json) {
+      defaultRuntime.writeJson({ updateAvailable: false });
+    }
     return;
   }
 

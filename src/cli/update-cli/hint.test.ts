@@ -112,4 +112,23 @@ describe("updateHintCommand", () => {
     await updateHintCommand({});
     expect(logSpy).not.toHaveBeenCalled();
   });
+
+  it("outputs { updateAvailable: false } in JSON mode when no state file", async () => {
+    await updateHintCommand({ json: true });
+    expect(writeJsonSpy).toHaveBeenCalledOnce();
+    expect(writeJsonSpy.mock.calls[0]?.[0]).toEqual({ updateAvailable: false });
+  });
+
+  it("outputs { updateAvailable: false } in JSON mode when already up to date", async () => {
+    await fs.writeFile(
+      path.join(tmpDir, "update-check.json"),
+      JSON.stringify({
+        lastAvailableVersion: "2026.3.28",
+        lastAvailableTag: "latest",
+      }),
+    );
+    await updateHintCommand({ json: true });
+    expect(writeJsonSpy).toHaveBeenCalledOnce();
+    expect(writeJsonSpy.mock.calls[0]?.[0]).toEqual({ updateAvailable: false });
+  });
 });
