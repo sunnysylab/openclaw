@@ -154,7 +154,8 @@ const OBFUSCATION_PATTERNS: ObfuscationPattern[] = [
   {
     id: "python-exec-encoded",
     description: "Python/Perl/Ruby with base64 or encoded execution",
-    regex: /(?:python[23]?|perl|ruby)\s+-[ec]\s+.*(?:base64|b64decode|decode|exec|system|eval)/i,
+    regex:
+      /(?:python[23]?|perl|ruby)\s+-[ec]\s+(?=.*(?:\bbase64\b|\b(?:b64decode|decode_base64)\b))(?=.*(?:\b(?:exec|eval|system)\b|\bsubprocess\.(?:run|Popen|call|check_call|check_output)\b)).*/i,
   },
   {
     id: "curl-pipe-shell",
@@ -164,7 +165,8 @@ const OBFUSCATION_PATTERNS: ObfuscationPattern[] = [
   {
     id: "var-expansion-obfuscation",
     description: "Variable assignment chain with expansion (potential obfuscation)",
-    regex: /(?:[a-zA-Z_]\w{0,2}=[^;\s]+\s*;\s*){2,}[^$]*\$(?:[a-zA-Z_]|\{[a-zA-Z_])/,
+    regex:
+      /(?:^|[;\n\r])\s*(?:[a-zA-Z_]\w{0,2}=[^;\s]+\s*;\s*){2,}[^$]*\$(?:[a-zA-Z_]\w{0,2}\b|\{[a-zA-Z_]\w{0,2}\})/,
   },
 ];
 
