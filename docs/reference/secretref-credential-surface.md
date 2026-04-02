@@ -38,6 +38,7 @@ Scope intent:
 - `plugins.entries.perplexity.config.webSearch.apiKey`
 - `plugins.entries.firecrawl.config.webSearch.apiKey`
 - `plugins.entries.tavily.config.webSearch.apiKey`
+- `plugins.entries.baidu.config.webSearch.apiKey`
 - `tools.web.search.apiKey`
 - `tools.web.x_search.apiKey`
 - `gateway.auth.password`

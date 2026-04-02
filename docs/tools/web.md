@@ -57,6 +57,9 @@ local while `web_search` and `x_search` can use xAI Responses under the hood.
 ## Choosing a provider
 
 <CardGroup cols={2}>
+  <Card title="Baidu" icon="globe" href="/tools/baidu-search">
+    Structured results with snippets.
+  </Card>
   <Card title="Brave Search" icon="shield" href="/tools/brave-search">
     Structured results with snippets. Supports `llm-context` mode, country/language filters. Free tier available.
   </Card>
@@ -93,6 +96,7 @@ local while `web_search` and `x_search` can use xAI Responses under the hood.
 
 | Provider                               | Result style               | Filters                                          | API key                                     |
 | -------------------------------------- | -------------------------- | ------------------------------------------------ | ------------------------------------------- |
+| [Baidu](/tools/baidu-search)           | Structured snippets        | date                                             | `BAIDU_SEARCH_API_KEY`                      |
 | [Brave](/tools/brave-search)           | Structured snippets        | Country, language, time, `llm-context` mode      | `BRAVE_API_KEY`                             |
 | [DuckDuckGo](/tools/duckduckgo-search) | Structured snippets        | --                                               | None (key-free)                             |
 | [Exa](/tools/exa-search)               | Structured + extracted     | Neural/keyword mode, date, content extraction    | `EXA_API_KEY`                               |
@@ -156,6 +160,7 @@ the first one found:
 5. **Perplexity** -- `PERPLEXITY_API_KEY` / `OPENROUTER_API_KEY` or `plugins.entries.perplexity.config.webSearch.apiKey`
 6. **Firecrawl** -- `FIRECRAWL_API_KEY` or `plugins.entries.firecrawl.config.webSearch.apiKey`
 7. **Tavily** -- `TAVILY_API_KEY` or `plugins.entries.tavily.config.webSearch.apiKey`
+8. **Baidu** -- `BAIDU_SEARCH_API_KEY` or `plugins.entries.baidu.config.webSearch.apiKey`
 
 Key-free providers are checked after API-backed providers:
 
