@@ -193,6 +193,7 @@ For actions/directory reads, user token can be preferred when configured. For wr
     Per-channel controls (`channels.slack.channels.<id>`; names only via startup resolution or `dangerouslyAllowNameMatching`):
 
     - `requireMention`
+    - `requireMentionInThreads` — override mention gating for thread replies (`true` = always require explicit @mention; `false` = threads never require a mention; unset = inherit `requireMention`)
     - `users` (allowlist)
     - `allowBots`
     - `skills`
