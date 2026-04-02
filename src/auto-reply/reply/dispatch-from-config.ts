@@ -23,6 +23,7 @@ import {
   toPluginMessageReceivedEvent,
 } from "../../hooks/message-hook-mappers.js";
 import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import { getSessionBindingService } from "../../infra/outbound/session-binding-service.js";
 import {
   logMessageProcessed,
   logMessageQueued,
@@ -43,6 +44,7 @@ import { normalizeTtsAutoMode, resolveConfiguredTtsMode } from "../../tts/tts-co
 import { normalizeMessageChannel } from "../../utils/message-channel.js";
 import type { FinalizedMsgContext } from "../templating.js";
 import type { BlockReplyContext, GetReplyOptions, ReplyPayload } from "../types.js";
+import { resolveConversationBindingContextFromMessage } from "./conversation-binding-input.js";
 import { shouldSkipDuplicateInbound } from "./inbound-dedupe.js";
 import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
 import { resolveReplyRoutingDecision } from "./routing-policy.js";
@@ -115,6 +117,35 @@ const isInboundAudioContext = (ctx: FinalizedMsgContext): boolean => {
   return AUDIO_HEADER_RE.test(trimmed);
 };
 
+const getCurrentSessionKey = (
+  ctx: FinalizedMsgContext,
+  cfg: OpenClawConfig,
+): string | undefined => {
+  const targetSessionKey =
+    ctx.CommandSource === "native" ? ctx.CommandTargetSessionKey?.trim() : undefined;
+  if (targetSessionKey) {
+    return targetSessionKey;
+  }
+  const binding = resolveConversationBindingContextFromMessage({ cfg, ctx });
+  if (!binding) {
+    return ctx.SessionKey?.trim();
+  }
+  const boundSessionKey = getSessionBindingService()
+    .resolveByConversation({
+      channel: binding.channel,
+      accountId: binding.accountId,
+      conversationId: binding.conversationId,
+      ...(binding.parentConversationId
+        ? { parentConversationId: binding.parentConversationId }
+        : {}),
+    })
+    ?.targetSessionKey?.trim();
+  if (boundSessionKey) {
+    return boundSessionKey;
+  }
+  return ctx.SessionKey?.trim();
+};
+
 const resolveSessionStoreLookup = (
   ctx: FinalizedMsgContext,
   cfg: OpenClawConfig,
@@ -122,9 +153,7 @@ const resolveSessionStoreLookup = (
   sessionKey?: string;
   entry?: SessionEntry;
 } => {
-  const targetSessionKey =
-    ctx.CommandSource === "native" ? ctx.CommandTargetSessionKey?.trim() : undefined;
-  const sessionKey = (targetSessionKey ?? ctx.SessionKey)?.trim();
+  const sessionKey = getCurrentSessionKey(ctx, cfg);
   if (!sessionKey) {
     return {};
   }
