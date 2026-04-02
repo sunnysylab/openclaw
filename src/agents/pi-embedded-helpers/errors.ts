@@ -8,6 +8,7 @@ import {
   parseApiErrorInfo,
   parseApiErrorPayload,
 } from "../../shared/assistant-error-format.js";
+import { stripAssistantInternalScaffolding } from "../../shared/text/assistant-visible-text.js";
 export {
   extractLeadingHttpStatus,
   formatRawAssistantErrorForUi,
@@ -955,7 +956,9 @@ export function sanitizeUserFacingText(text: unknown, opts?: { errorContext?: bo
     return raw;
   }
   const errorContext = opts?.errorContext ?? false;
-  const stripped = stripFinalTagsFromText(raw);
+  const stripped = stripAssistantInternalScaffolding(stripFinalTagsFromText(raw), {
+    trimStart: false,
+  });
   const trimmed = stripped.trim();
   if (!trimmed) {
     return "";

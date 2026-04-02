@@ -83,6 +83,24 @@ describe("stripAssistantInternalScaffolding", () => {
       expected: "Before\n\nsecret\n\nAfter",
     },
     {
+      name: "strips leaked tool_call scaffolding",
+      input: [
+        "Here is my response",
+        '<tool_call>{"name":"exec","arguments":{"command":"echo test"}}</tool_call>',
+      ].join(" "),
+      expected: "Here is my response ",
+    },
+    {
+      name: "hides unfinished tool_call blocks",
+      input: ["Before", "<tool_call>", "incomplete..."].join(" "),
+      expected: "Before ",
+    },
+    {
+      name: "strips self-closing tool_call tags without truncating trailing text",
+      input: ["Before", '<tool_call name="exec" />', "After"].join(" "),
+      expected: "Before  After",
+    },
+    {
       name: "keeps relevant-memories tags inside fenced code",
       input: createLiteralRelevantMemoriesCodeBlock(),
       expected: undefined,
@@ -90,6 +108,17 @@ describe("stripAssistantInternalScaffolding", () => {
     {
       name: "keeps literal relevant-memories prose",
       input: "Use `<relevant-memories>example</relevant-memories>` literally.",
+      expected: undefined,
+    },
+    {
+      name: "keeps tool_call tags inside fenced code",
+      input: [
+        "```xml",
+        '<tool_call>{"name":"exec","arguments":{"command":"echo test"}}</tool_call>',
+        "```",
+        "",
+        "Visible text",
+      ].join("\n"),
       expected: undefined,
     },
   ] as const)("$name", ({ input, expected }) => {
