@@ -82,6 +82,7 @@ export function createGatewayHooksRequestHandler(params: {
           job,
           message: value.message,
           sessionKey,
+          sessionMode: value.sessionMode,
           lane: "cron",
           deliveryContract: "shared",
         });
