@@ -3878,17 +3878,20 @@ public struct UpdateRunParams: Codable, Sendable {
     public let note: String?
     public let restartdelayms: Int?
     public let timeoutms: Int?
+    public let force: Bool?
 
     public init(
         sessionkey: String?,
         note: String?,
         restartdelayms: Int?,
-        timeoutms: Int?)
+        timeoutms: Int?,
+        force: Bool?)
     {
         self.sessionkey = sessionkey
         self.note = note
         self.restartdelayms = restartdelayms
         self.timeoutms = timeoutms
+        self.force = force
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3896,6 +3899,7 @@ public struct UpdateRunParams: Codable, Sendable {
         case note
         case restartdelayms = "restartDelayMs"
         case timeoutms = "timeoutMs"
+        case force
     }
 }
 
