@@ -52,7 +52,8 @@ export function resolveReasoningOutputMode(params: {
   if (
     normalized === "google" ||
     normalized === "google-gemini-cli" ||
-    normalized === "google-generative-ai"
+    normalized === "google-generative-ai" ||
+    normalized === "xai"
   ) {
     return "tagged";
   }
