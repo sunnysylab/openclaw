@@ -10644,6 +10644,9 @@ export const GENERATED_BUNDLED_CHANNEL_CONFIG_METADATA = [
               requireMention: {
                 type: "boolean",
               },
+              ignoreOtherMentions: {
+                type: "boolean",
+              },
               tools: {
                 type: "object",
                 properties: {
@@ -11488,6 +11491,9 @@ export const GENERATED_BUNDLED_CHANNEL_CONFIG_METADATA = [
                       type: "boolean",
                     },
                     requireMention: {
+                      type: "boolean",
+                    },
+                    ignoreOtherMentions: {
                       type: "boolean",
                     },
                     tools: {

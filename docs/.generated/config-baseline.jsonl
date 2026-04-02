@@ -2650,6 +2650,7 @@
 {"recordType":"path","path":"channels.slack.accounts.*.channels.*.allow","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"channels.slack.accounts.*.channels.*.allowBots","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"channels.slack.accounts.*.channels.*.enabled","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
+{"recordType":"path","path":"channels.slack.accounts.*.channels.*.ignoreOtherMentions","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"channels.slack.accounts.*.channels.*.requireMention","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"channels.slack.accounts.*.channels.*.skills","kind":"channel","type":"array","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":true}
 {"recordType":"path","path":"channels.slack.accounts.*.channels.*.skills.*","kind":"channel","type":"string","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
@@ -2783,6 +2784,7 @@
 {"recordType":"path","path":"channels.slack.channels.*.allow","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"channels.slack.channels.*.allowBots","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"channels.slack.channels.*.enabled","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
+{"recordType":"path","path":"channels.slack.channels.*.ignoreOtherMentions","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"channels.slack.channels.*.requireMention","kind":"channel","type":"boolean","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}
 {"recordType":"path","path":"channels.slack.channels.*.skills","kind":"channel","type":"array","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":true}
 {"recordType":"path","path":"channels.slack.channels.*.skills.*","kind":"channel","type":"string","required":false,"deprecated":false,"sensitive":false,"tags":[],"hasChildren":false}

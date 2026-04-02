@@ -469,12 +469,44 @@ export async function prepareSlackMessage(params: {
     return null;
   }
 
+  // Drop messages that mention another user but not the bot.
+  // Unlike Discord, Slack implicit mentions (thread participation) are very broad — they fire
+  // for every message in a bot-participated thread. We intentionally ignore implicitMention here
+  // so that tagging a coworker in a bot thread does not trigger a reply.
+  // Guard on canDetectMention: when botUserId is unknown and no custom mention regexes are
+  // configured, wasMentioned is unreliable — skip the gate to avoid false drops.
+  // Note: when inbound debouncing merges multiple messages, hasAnyMention and wasMentioned
+  // reflect the combined batch. This is intentional — debounced messages are a single logical
+  // unit, and a batch where someone tagged a coworker (but not the bot) is correctly dropped.
+  const canDetectMention = Boolean(ctx.botUserId) || mentionRegexes.length > 0;
+  const ignoreOtherMentions = channelConfig?.ignoreOtherMentions ?? false;
+  if (isRoom && ignoreOtherMentions && canDetectMention && hasAnyMention && !wasMentioned) {
+    logInboundDrop({
+      log: logVerbose,
+      channel: "slack",
+      reason: "other-mention",
+      target: senderId,
+    });
+    recordPendingHistoryEntryIfEnabled({
+      historyMap: ctx.channelHistories,
+      historyKey,
+      limit: ctx.historyLimit,
+      entry: (message.text ?? "").trim()
+        ? {
+            sender: await resolveSenderName(),
+            body: (message.text ?? "").trim(),
+            timestamp: message.ts ? Math.round(Number(message.ts) * 1000) : undefined,
+          }
+        : null,
+    });
+    return null;
+  }
+
   const shouldRequireMention = isRoom
     ? (channelConfig?.requireMention ?? ctx.defaultRequireMention)
     : false;
 
   // Allow "control commands" to bypass mention gating if sender is authorized.
-  const canDetectMention = Boolean(ctx.botUserId) || mentionRegexes.length > 0;
   const mentionGate = resolveMentionGatingWithBypass({
     isGroup: isRoom,
     requireMention: Boolean(shouldRequireMention),
