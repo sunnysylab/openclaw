@@ -30,6 +30,11 @@ const DEFAULT_RETRY_CONFIG = {
   jitter: 0,
 };
 
+const RATE_LIMIT_RETRY_AFTER_RE =
+  /retry[- ]after(?:[- _]?(ms|milliseconds?|msecs?|s|seconds?|secs?))?[^\d]*(\d+(?:\.\d+)?)\s*(milliseconds?|msecs?|ms|seconds?|secs?|s)?/i;
+const RATE_LIMIT_MESSAGE_RE =
+  /\b(?:429|too many requests|rate[_ -]?limit(?:ed)?|throttl(?:ed|ing)|resource exhausted)\b/i;
+
 const asFiniteNumber = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
@@ -67,6 +72,111 @@ function applyJitter(delayMs: number, jitter: number): number {
   const offset = (generateSecureFraction() * 2 - 1) * jitter;
   return Math.max(0, Math.round(delayMs * (1 + offset)));
 }
+
+const parseRetryAfterHeaderValue = (value: string): number | undefined => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, Math.round(seconds * 1000));
+  }
+  const atMs = Date.parse(trimmed);
+  if (Number.isNaN(atMs)) {
+    return undefined;
+  }
+  return Math.max(0, atMs - Date.now());
+};
+
+const extractRetryAfterMsFromError = (err: unknown): number | undefined => {
+  const retryAfterMsCandidate = (err as { retryAfterMs?: unknown } | null | undefined)
+    ?.retryAfterMs;
+  const directRetryAfterMs = asFiniteNumber(retryAfterMsCandidate);
+  if (directRetryAfterMs !== undefined) {
+    return Math.max(0, Math.round(directRetryAfterMs));
+  }
+
+  const retryAfterCandidate = (err as { retryAfter?: unknown } | null | undefined)?.retryAfter;
+  const directRetryAfterSeconds = asFiniteNumber(retryAfterCandidate);
+  if (directRetryAfterSeconds !== undefined) {
+    return Math.max(0, Math.round(directRetryAfterSeconds * 1000));
+  }
+  if (typeof retryAfterCandidate === "string") {
+    const parsed = parseRetryAfterHeaderValue(retryAfterCandidate);
+    if (parsed !== undefined) {
+      return parsed;
+    }
+  }
+
+  const candidates = [
+    (err as { response?: { headers?: Headers | Record<string, unknown> } } | null | undefined)
+      ?.response?.headers,
+    (err as { headers?: Headers | Record<string, unknown> } | null | undefined)?.headers,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      const parsed = parseRetryAfterHeaderValue(candidate);
+      if (parsed !== undefined) {
+        return parsed;
+      }
+      continue;
+    }
+    if (candidate instanceof Headers) {
+      const parsed = parseRetryAfterHeaderValue(candidate.get("retry-after") ?? "");
+      if (parsed !== undefined) {
+        return parsed;
+      }
+      continue;
+    }
+    const headerValue =
+      typeof candidate === "object" && candidate !== null
+        ? (candidate["retry-after"] ?? candidate["Retry-After"])
+        : undefined;
+    if (typeof headerValue === "string") {
+      const parsed = parseRetryAfterHeaderValue(headerValue);
+      if (parsed !== undefined) {
+        return parsed;
+      }
+    }
+  }
+
+  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  const retryAfterDateMatch = message.match(/retry[- ]after[^A-Za-z0-9]*([A-Z][a-z]{2},\s*\d{2}\s+[A-Z][a-z]{2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}\s+GMT)/i);
+  if (retryAfterDateMatch) {
+    const parsed = parseRetryAfterHeaderValue(retryAfterDateMatch[1]);
+    if (parsed !== undefined) {
+      return parsed;
+    }
+  }
+  const retryAfterMatch = RATE_LIMIT_RETRY_AFTER_RE.exec(message);
+  if (retryAfterMatch) {
+    const amount = Number(retryAfterMatch[2]);
+    if (Number.isFinite(amount)) {
+      const unit = (retryAfterMatch[3] ?? retryAfterMatch[1])?.toLowerCase();
+      if (!unit || unit.startsWith("s")) {
+        return Math.max(0, Math.round(amount * 1000));
+      }
+      if (unit === "ms" || unit.startsWith("msec") || unit.startsWith("millisecond")) {
+        return Math.max(0, Math.round(amount));
+      }
+    }
+  }
+  return undefined;
+};
+
+const isRateLimitLikeError = (err: unknown): boolean => {
+  const status =
+    asFiniteNumber((err as { status?: unknown } | null | undefined)?.status) ??
+    asFiniteNumber((err as { statusCode?: unknown } | null | undefined)?.statusCode) ??
+    asFiniteNumber((err as { code?: unknown } | null | undefined)?.code);
+  if (status === 429) {
+    return true;
+  }
+  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return RATE_LIMIT_MESSAGE_RE.test(message);
+};
 
 export async function retryAsync<T>(
   fn: () => Promise<T>,
@@ -114,9 +224,15 @@ export async function retryAsync<T>(
       }
 
       const retryAfterMs = options.retryAfterMs?.(err);
-      const hasRetryAfter = typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs);
+      const inferredRetryAfterMs =
+        retryAfterMs === undefined && isRateLimitLikeError(err)
+          ? extractRetryAfterMsFromError(err)
+          : undefined;
+      const resolvedRetryAfterMs = retryAfterMs ?? inferredRetryAfterMs;
+      const hasRetryAfter =
+        typeof resolvedRetryAfterMs === "number" && Number.isFinite(resolvedRetryAfterMs);
       const baseDelay = hasRetryAfter
-        ? Math.max(retryAfterMs, minDelayMs)
+        ? Math.max(resolvedRetryAfterMs, minDelayMs)
         : minDelayMs * 2 ** (attempt - 1);
       let delay = Math.min(baseDelay, maxDelayMs);
       delay = applyJitter(delay, jitter);
