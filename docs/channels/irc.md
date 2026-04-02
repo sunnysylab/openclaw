@@ -14,16 +14,18 @@ IRC ships as an extension plugin, but it is configured in the main config under 
 ## Quick start
 
 1. Enable IRC config in `~/.openclaw/openclaw.json`.
-2. Set at least:
+2. Install docker, if not already installed.
+3. Install and configure the ergo IRCd using docker, [instructions are available on the ergo github.](https://github.com/ergochat/ergo/blob/stable/docs/MANUAL.md#docker)
+4. Set at least:
 
 ```json5
 {
   channels: {
     irc: {
       enabled: true,
-      host: "irc.libera.chat",
-      port: 6697,
-      tls: true,
+      host: "localhost",
+      port: 6667,
+      tls: false,
       nick: "openclaw-bot",
       channels: ["#openclaw"],
     },
@@ -31,7 +33,9 @@ IRC ships as an extension plugin, but it is configured in the main config under 
 }
 ```
 
-3. Start/restart gateway:
+Note: This configuration does not use TLS. Before attempting to connect with TLS, add `tls: true` and switch the `port` value to `6697`
+
+5. Start/restart gateway:
 
 ```bash
 openclaw gateway run
@@ -179,7 +183,7 @@ Use `toolsBySender` to apply a stricter policy to `"*"` and a looser one to your
 Notes:
 
 - `toolsBySender` keys should use `id:` for IRC sender identity values:
-  `id:eigen` or `id:eigen!~eigen@174.127.248.171` for stronger matching.
+  `id:eigen` or `id:eigen!~eigen@192.0.2.255` for stronger matching.
 - Legacy unprefixed keys are still accepted and matched as `id:` only.
 - The first matching sender policy wins; `"*"` is the wildcard fallback.
 
