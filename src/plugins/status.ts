@@ -16,6 +16,7 @@ import { loadOpenClawPlugins } from "./loader.js";
 import { createPluginLoaderLogger } from "./logger.js";
 import { resolveBundledProviderCompatPluginIds } from "./providers.js";
 import type { PluginRegistry } from "./registry.js";
+import { hasKind } from "./slots.js";
 import type { PluginDiagnostic, PluginHookName } from "./types.js";
 
 export type PluginStatusReport = PluginRegistry & {
@@ -29,6 +30,7 @@ export type PluginCapabilityKind =
   | "media-understanding"
   | "image-generation"
   | "web-search"
+  | "context-engine"
   | "channel";
 
 export type PluginInspectShape =
@@ -205,6 +207,10 @@ function buildCapabilityEntries(plugin: PluginRegistry["plugins"][number]) {
     { kind: "media-understanding" as const, ids: plugin.mediaUnderstandingProviderIds },
     { kind: "image-generation" as const, ids: plugin.imageGenerationProviderIds },
     { kind: "web-search" as const, ids: plugin.webSearchProviderIds },
+    {
+      kind: "context-engine" as const,
+      ids: plugin.status === "loaded" && hasKind(plugin.kind, "context-engine") ? [plugin.id] : [],
+    },
     { kind: "channel" as const, ids: plugin.channelIds },
   ].filter((entry) => entry.ids.length > 0);
 }
