@@ -21,10 +21,13 @@ const describeLive = LIVE && ACP_BIND_LIVE ? describe : describe.skip;
 const CONNECT_TIMEOUT_MS = 90_000;
 const LIVE_TIMEOUT_MS = 240_000;
 
-function normalizeAcpAgent(raw: string | undefined): "claude" | "codex" {
+function normalizeAcpAgent(raw: string | undefined): "claude" | "codex" | "claude-code" {
   const normalized = raw?.trim().toLowerCase();
   if (normalized === "codex") {
     return "codex";
+  }
+  if (normalized === "claude-code") {
+    return "claude-code";
   }
   return "claude";
 }
@@ -205,7 +208,7 @@ function formatAssistantTextPreview(texts: string[], maxChars = 600): string {
 async function bindConversationAndWait(params: {
   client: GatewayClient;
   sessionKey: string;
-  liveAgent: "claude" | "codex";
+  liveAgent: "claude" | "codex" | "claude-code";
   originatingChannel: string;
   originatingTo: string;
   originatingAccountId: string;
@@ -386,6 +389,7 @@ describeLive("gateway live (ACP bind)", () => {
       };
       await fs.writeFile(tempConfigPath, `${JSON.stringify(nextCfg, null, 2)}\n`);
       process.env.OPENCLAW_CONFIG_PATH = tempConfigPath;
+      clearRuntimeConfigSnapshot();
 
       logLiveStep(`starting gateway on port ${String(port)}`);
       const server = await startGatewayServer(port, {
