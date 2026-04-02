@@ -157,18 +157,20 @@ export async function fetchWithSsrFGuard(params: GuardedFetchOptions): Promise<G
 
     let dispatcher: Dispatcher | null = null;
     try {
-      assertExplicitProxySupportsPinnedDns(parsedUrl, params.dispatcherPolicy, params.pinDns);
-      const pinned = await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
-        lookupFn: params.lookupFn,
-        policy: params.policy,
-      });
       const canUseTrustedEnvProxy =
         mode === GUARDED_FETCH_MODE.TRUSTED_ENV_PROXY && hasProxyEnvConfigured();
       if (canUseTrustedEnvProxy) {
         const { EnvHttpProxyAgent } = loadUndiciRuntimeDeps();
         dispatcher = new EnvHttpProxyAgent();
-      } else if (params.pinDns !== false) {
-        dispatcher = createPinnedDispatcher(pinned, params.dispatcherPolicy, params.policy);
+      } else {
+        assertExplicitProxySupportsPinnedDns(parsedUrl, params.dispatcherPolicy, params.pinDns);
+        const pinned = await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+          lookupFn: params.lookupFn,
+          policy: params.policy,
+        });
+        if (params.pinDns !== false) {
+          dispatcher = createPinnedDispatcher(pinned, params.dispatcherPolicy, params.policy);
+        }
       }
 
       const init: RequestInit & { dispatcher?: Dispatcher } = {
