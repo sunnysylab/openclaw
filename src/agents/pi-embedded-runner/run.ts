@@ -1107,6 +1107,47 @@ export async function runEmbeddedPiAgent(
             if (promptFailoverFailure || promptFailoverReason) {
               logPromptFailoverDecision("surface_error");
             }
+            // Handle JSON parse errors (e.g. bad control characters in session
+            // transcript) with a user-friendly message instead of surfacing the
+            // raw SyntaxError text ("Bad control character in string literal at
+            // position N") to the chat surface.
+            if (
+              promptError instanceof SyntaxError ||
+              /bad control character|JSON at position|unexpected token/i.test(
+                describeUnknownError(promptError),
+              )
+            ) {
+              log.warn(
+                `[session-parse-error] JSON parse error in session transcript: runId=${params.runId} error=${describeUnknownError(promptError).slice(0, 200)}`,
+              );
+              return {
+                payloads: [
+                  {
+                    text:
+                      "Session transcript could not be read (malformed content). " +
+                      "Use /new to start a fresh session.",
+                    isError: true,
+                  },
+                ],
+                meta: {
+                  durationMs: Date.now() - started,
+                  agentMeta: buildErrorAgentMeta({
+                    sessionId: sessionIdUsed,
+                    provider,
+                    model: model.id,
+                    usageAccumulator,
+                    lastRunPromptUsage,
+                    lastAssistant,
+                    lastTurnTotal,
+                  }),
+                  systemPromptReport: attempt.systemPromptReport,
+                  error: {
+                    kind: "session_parse_error",
+                    message: describeUnknownError(promptError),
+                  },
+                },
+              };
+            }
             throw promptError;
           }
 
