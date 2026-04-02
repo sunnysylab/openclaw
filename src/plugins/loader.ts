@@ -811,9 +811,10 @@ function activatePluginRegistry(
   registry: PluginRegistry,
   cacheKey: string,
   runtimeSubagentMode: "default" | "explicit" | "gateway-bindable",
+  options?: { hookTimeoutMs?: number },
 ): void {
   setActivePluginRegistry(registry, cacheKey, runtimeSubagentMode);
-  initializeGlobalHookRunner(registry);
+  initializeGlobalHookRunner(registry, { hookTimeoutMs: options?.hookTimeoutMs });
 }
 
 export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegistry {
@@ -849,7 +850,9 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
         runtime: cached.memoryRuntime,
       });
       if (shouldActivate) {
-        activatePluginRegistry(cached.registry, cacheKey, runtimeSubagentMode);
+        activatePluginRegistry(cached.registry, cacheKey, runtimeSubagentMode, {
+          hookTimeoutMs: options.config?.plugins?.hookTimeoutMs,
+        });
       }
       return cached.registry;
     }
@@ -1413,7 +1416,9 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     });
   }
   if (shouldActivate) {
-    activatePluginRegistry(registry, cacheKey, runtimeSubagentMode);
+    activatePluginRegistry(registry, cacheKey, runtimeSubagentMode, {
+      hookTimeoutMs: options.config?.plugins?.hookTimeoutMs,
+    });
   }
   return registry;
 }
