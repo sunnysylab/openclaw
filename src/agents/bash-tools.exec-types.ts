@@ -29,6 +29,7 @@ export type ExecToolDefaults = {
   accountId?: string;
   notifyOnExit?: boolean;
   notifyOnExitEmptySuccess?: boolean;
+  backgroundMode?: "poll" | "notify";
   cwd?: string;
 };
 
