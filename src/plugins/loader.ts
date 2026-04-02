@@ -476,6 +476,7 @@ function createPluginRecord(params: {
   format?: PluginFormat;
   bundleFormat?: PluginBundleFormat;
   bundleCapabilities?: string[];
+  skills?: string[];
   source: string;
   rootDir?: string;
   origin: PluginRecord["origin"];
@@ -491,6 +492,7 @@ function createPluginRecord(params: {
     format: params.format ?? "openclaw",
     bundleFormat: params.bundleFormat,
     bundleCapabilities: params.bundleCapabilities,
+    skills: params.skills ?? [],
     source: params.source,
     rootDir: params.rootDir,
     origin: params.origin,
@@ -1037,6 +1039,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
         format: manifestRecord.format,
         bundleFormat: manifestRecord.bundleFormat,
         bundleCapabilities: manifestRecord.bundleCapabilities,
+        skills: manifestRecord.skills,
         source: candidate.source,
         rootDir: candidate.rootDir,
         origin: candidate.origin,
@@ -1066,6 +1069,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       format: manifestRecord.format,
       bundleFormat: manifestRecord.bundleFormat,
       bundleCapabilities: manifestRecord.bundleCapabilities,
+      skills: manifestRecord.skills,
       source: candidate.source,
       rootDir: candidate.rootDir,
       origin: candidate.origin,
@@ -1528,6 +1532,7 @@ export async function loadOpenClawPluginCliRegistry(
         format: manifestRecord.format,
         bundleFormat: manifestRecord.bundleFormat,
         bundleCapabilities: manifestRecord.bundleCapabilities,
+        skills: manifestRecord.skills,
         source: candidate.source,
         rootDir: candidate.rootDir,
         origin: candidate.origin,
@@ -1557,6 +1562,7 @@ export async function loadOpenClawPluginCliRegistry(
       format: manifestRecord.format,
       bundleFormat: manifestRecord.bundleFormat,
       bundleCapabilities: manifestRecord.bundleCapabilities,
+      skills: manifestRecord.skills,
       source: candidate.source,
       rootDir: candidate.rootDir,
       origin: candidate.origin,
