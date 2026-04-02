@@ -47,6 +47,7 @@ const OAUTH_PROVIDER_IDS = new Set<string>(listOAuthProviderIds());
 const isOAuthProvider = (provider: string): provider is OAuthProvider =>
   OAUTH_PROVIDER_IDS.has(provider);
 
+// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
 const resolveOAuthProvider = (provider: string): OAuthProvider | null =>
   isOAuthProvider(provider) ? provider : null;
 
@@ -126,7 +127,9 @@ function adoptNewerMainOAuthCredential(params: {
   store: AuthProfileStore;
   profileId: string;
   agentDir?: string;
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
   cred: OAuthCredentials & { type: "oauth"; provider: string; email?: string };
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
 }): (OAuthCredentials & { type: "oauth"; provider: string; email?: string }) | null {
   if (!params.agentDir) {
     return null;
