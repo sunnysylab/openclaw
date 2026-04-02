@@ -845,6 +845,7 @@ export const agentHandlers: GatewayRequestHandlers = {
         }),
         senderIsOwner,
         allowModelOverride,
+        allowGatewaySubagentBinding: true,
       },
       runId,
       idempotencyKey: idem,
