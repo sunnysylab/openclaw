@@ -225,6 +225,8 @@ const LOCAL_EXTENSION_API_BARREL_EXCEPTIONS = [
   // Direct import avoids a circular init path:
   // accounts.ts -> runtime-api.ts -> src/plugin-sdk/matrix -> plugin api barrel -> accounts.ts
   bundledPluginFile("matrix", "src/matrix/accounts.ts"),
+  // Thin re-export shim so send.ts can mock outbound media loading in tests.
+  bundledPluginFile("matrix", "src/matrix/outbound-media-runtime.ts"),
 ] as const;
 
 const sourceTextCache = new Map<string, string>();

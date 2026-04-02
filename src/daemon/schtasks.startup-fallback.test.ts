@@ -91,6 +91,7 @@ describe("Windows startup fallback", () => {
     await withWindowsEnv("openclaw-win-startup-", async ({ env }) => {
       schtasksResponses.push(
         { code: 0, stdout: "", stderr: "" },
+        { code: 1, stdout: "", stderr: "not found" },
         { code: 5, stdout: "", stderr: "ERROR: Access is denied." },
       );
 
@@ -126,6 +127,7 @@ describe("Windows startup fallback", () => {
     await withWindowsEnv("openclaw-win-startup-", async ({ env }) => {
       schtasksResponses.push(
         { code: 0, stdout: "", stderr: "" },
+        { code: 1, stdout: "", stderr: "not found" },
         { code: 124, stdout: "", stderr: "schtasks timed out after 15000ms" },
       );
 
