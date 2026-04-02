@@ -206,7 +206,10 @@ describe("runBtwSideQuestion", () => {
     });
     getApiKeyForModelMock.mockResolvedValue({ apiKey: "secret", mode: "api-key", source: "test" });
     requireApiKeyMock.mockReturnValue("secret");
-    resolveSessionAuthProfileOverrideMock.mockResolvedValue("profile-1");
+    resolveSessionAuthProfileOverrideMock.mockResolvedValue({
+      authProfileId: "profile-1",
+      authProfileIdSource: "auto",
+    });
     getActiveEmbeddedRunSnapshotMock.mockReturnValue(undefined);
   });
 

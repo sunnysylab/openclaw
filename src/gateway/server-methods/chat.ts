@@ -2,7 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
-import { resolveThinkingDefault } from "../../agents/model-selection.js";
+import type { ModelCatalogEntry } from "../../agents/model-catalog.js";
+import {
+  buildAllowedModelSet,
+  buildModelAliasIndex,
+  modelKey,
+  resolveDefaultModelForAgent,
+  resolveModelRefFromString,
+  resolveThinkingDefault,
+} from "../../agents/model-selection.js";
 import { rewriteTranscriptEntriesInSessionFile } from "../../agents/pi-embedded-runner/transcript-rewrite.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
@@ -10,6 +18,11 @@ import { createReplyDispatcher } from "../../auto-reply/reply/reply-dispatcher.j
 import type { MsgContext } from "../../auto-reply/templating.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
+import type { OpenClawConfig } from "../../config/config.js";
+import {
+  resolveAgentModelFallbackValues,
+  resolveAgentModelPrimaryValue,
+} from "../../config/model-input.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
 import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
@@ -79,6 +92,73 @@ import type {
   GatewayRequestHandlerOptions,
   GatewayRequestHandlers,
 } from "./types.js";
+
+/**
+ * Filter and canonicalize image model fallbacks in one step.
+ * This combines allowlist filtering with provider-aware canonicalization.
+ *
+ * @param fallbacks - Raw fallback model strings from config
+ * @param cfg - OpenClaw config for allowlist lookup
+ * @param agentId - Agent ID for per-agent allowlist
+ * @param aliasIndex - Model alias index for resolution
+ * @param defaultProvider - Agent's default provider
+ * @param defaultModel - Agent's default model
+ * @param imageModelProvider - Pre-computed image model provider (avoids re-resolution)
+ * @returns Filtered and canonicalized fallback keys in "provider/model" format
+ */
+function prepareImageModelFallbacks(params: {
+  fallbacks: string[];
+  cfg: OpenClawConfig;
+  agentId?: string;
+  aliasIndex: ReturnType<typeof buildModelAliasIndex>;
+  defaultProvider: string;
+  defaultModel?: string;
+  imageModelProvider?: string;
+}): string[] {
+  const { fallbacks, cfg, agentId, aliasIndex, defaultProvider, defaultModel, imageModelProvider } =
+    params;
+
+  if (fallbacks.length === 0) {
+    return [];
+  }
+
+  const providerForResolution = imageModelProvider ?? defaultProvider;
+  const { allowAny, allowedKeys } = buildAllowedModelSet({
+    cfg,
+    catalog: [],
+    defaultProvider,
+    defaultModel,
+    agentId,
+  });
+
+  return fallbacks
+    .map((fb) => {
+      const trimmed = fb?.trim();
+      if (!trimmed) {
+        return null;
+      }
+
+      const resolved = resolveModelRefFromString({
+        raw: trimmed,
+        defaultProvider: providerForResolution,
+        aliasIndex,
+      });
+
+      if (!resolved) {
+        if (!allowAny && !allowedKeys.has(trimmed)) {
+          return null;
+        }
+        return trimmed;
+      }
+
+      const key = modelKey(resolved.ref.provider, resolved.ref.model);
+      if (!allowAny && !allowedKeys.has(key) && !allowedKeys.has(trimmed)) {
+        return null;
+      }
+      return key;
+    })
+    .filter((fb): fb is string => fb !== null);
+}
 
 type TranscriptAppendResult = {
   ok: boolean;
@@ -1450,7 +1530,6 @@ export const chatHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-
     // Load session entry before attachment parsing so we can gate media-URI
     // marker injection on the model's image capability. This prevents opaque
     // media:// markers from leaking into prompts for text-only model runs.
@@ -1461,7 +1540,11 @@ export const chatHandlers: GatewayRequestHandlers = {
     let parsedImages: ChatImageContent[] = [];
     let parsedImageOrder: PromptImageOrderEntry[] = [];
     let parsedOffloadedRefs: OffloadedRef[] = [];
+    let imageModelOverride: string | undefined;
+    let imageModelFallbacks: string[] | undefined;
 
+    // Move timeout/runId calculation and early-return checks before attachment parsing
+    // to avoid unnecessary CPU/IO work on duplicate/in-flight requests that return early.
     const timeoutMs = resolveAgentTimeoutMs({
       cfg,
       overrideMs: p.timeoutMs,
@@ -1519,14 +1602,175 @@ export const chatHandlers: GatewayRequestHandlers = {
       return;
     }
 
+    // Now perform attachment parsing and image model switching
+    // after all early-return checks have passed.
     if (normalizedAttachments.length > 0) {
       const sessionAgentId = resolveSessionAgentId({ sessionKey, config: cfg });
       const modelRef = resolveSessionModelRef(cfg, entry, sessionAgentId);
-      const supportsImages = await resolveGatewayModelSupportsImages({
-        loadGatewayModelCatalog: context.loadGatewayModelCatalog,
-        provider: modelRef.provider,
-        model: modelRef.model,
-      });
+
+      // Check if imageModel is configured - if so, preserve images for the switch logic.
+      // This allows automatic model switching when the current model doesn't support images
+      // but a valid imageModel is configured.
+      const imageModelConfig = cfg.agents?.defaults?.imageModel;
+      const imageModelPrimary = resolveAgentModelPrimaryValue(imageModelConfig);
+      const imageModelConfigFallbacks = resolveAgentModelFallbackValues(imageModelConfig);
+
+      // Consider imageModel configured if we have either a primary or fallbacks.
+      // This handles fallback-only configs like imageModel: { fallbacks: ["openai/gpt-4o"] }
+      const hasImageModelConfig = imageModelPrimary || imageModelConfigFallbacks.length > 0;
+
+      // Check if the image model is actually usable (in allowlist).
+      // If not, we should not force supportsImages=true, since the downstream
+      // model-selection path will reject the modelOverride and fall back to
+      // the default text model, which would then receive images it cannot handle.
+      let imageModelIsUsable = false;
+      if (hasImageModelConfig) {
+        // Resolve agent's allowlist to check if any image model is allowed
+        const agentDefault = resolveDefaultModelForAgent({ cfg, agentId: sessionAgentId });
+
+        // Load model catalog for accurate model information
+        let catalog: ModelCatalogEntry[] = [];
+        try {
+          catalog = await context.loadGatewayModelCatalog();
+        } catch {
+          // Catalog load failed, use empty catalog as fallback
+        }
+
+        const { allowAny, allowedKeys } = buildAllowedModelSet({
+          cfg,
+          catalog,
+          defaultProvider: agentDefault.provider,
+          defaultModel: agentDefault.model,
+          agentId: sessionAgentId,
+        });
+        if (allowAny) {
+          imageModelIsUsable = true;
+        } else {
+          // Determine the image model provider for fallback resolution.
+          // When primary has explicit provider (e.g., "openai/gpt-4o"), providerless
+          // fallbacks should resolve against that provider, not agent default.
+          let imageModelProvider: string | undefined;
+          const primaryTrimmed = imageModelPrimary?.trim();
+
+          if (primaryTrimmed) {
+            if (primaryTrimmed.includes("/")) {
+              // Primary has explicit provider - extract it
+              const slash = primaryTrimmed.indexOf("/");
+              imageModelProvider = primaryTrimmed.slice(0, slash).trim();
+            } else {
+              // Primary is providerless - first try to resolve as alias to get provider
+              // This handles cases like primary: "vision" -> "openai/gpt-4o"
+              const tempAliasIndex = buildModelAliasIndex({
+                cfg,
+                defaultProvider: agentDefault.provider,
+              });
+              const primaryResolved = resolveModelRefFromString({
+                raw: primaryTrimmed,
+                defaultProvider: agentDefault.provider,
+                aliasIndex: tempAliasIndex,
+              });
+              // Only use resolved provider if primary is an alias
+              if (primaryResolved?.alias && primaryResolved.ref.provider) {
+                imageModelProvider = primaryResolved.ref.provider;
+              }
+            }
+          }
+
+          // If primary resolution didn't determine provider, scan fallbacks for provider
+          if (!imageModelProvider) {
+            // First pass: find first fallback with explicit provider prefix
+            for (const fb of imageModelConfigFallbacks) {
+              if (!fb?.trim()) {
+                continue;
+              }
+              const slash = fb.indexOf("/");
+              if (slash > 0) {
+                imageModelProvider = fb.slice(0, slash).trim();
+                break;
+              }
+            }
+
+            // Second pass: if no fallback had explicit provider, try alias resolution
+            if (!imageModelProvider) {
+              for (const fb of imageModelConfigFallbacks) {
+                if (!fb?.trim()) {
+                  continue;
+                }
+                const tempAliasIndex = buildModelAliasIndex({
+                  cfg,
+                  defaultProvider: agentDefault.provider,
+                });
+                const resolved = resolveModelRefFromString({
+                  raw: fb.trim(),
+                  defaultProvider: agentDefault.provider,
+                  aliasIndex: tempAliasIndex,
+                });
+                if (resolved?.alias && resolved.ref.provider) {
+                  imageModelProvider = resolved.ref.provider;
+                  break;
+                }
+              }
+            }
+          }
+
+          // Provider context for resolving providerless models
+          const providerContext = imageModelProvider ?? agentDefault.provider;
+          const aliasIndex = buildModelAliasIndex({
+            cfg,
+            defaultProvider: providerContext,
+          });
+
+          // Check if primary is in allowlist
+          if (imageModelPrimary) {
+            const resolved = resolveModelRefFromString({
+              raw: imageModelPrimary.trim(),
+              defaultProvider: providerContext,
+              aliasIndex,
+            });
+            if (resolved) {
+              const key = modelKey(resolved.ref.provider, resolved.ref.model);
+              if (allowedKeys.has(key) || allowedKeys.has(imageModelPrimary.trim())) {
+                imageModelIsUsable = true;
+              }
+            } else if (allowedKeys.has(imageModelPrimary.trim())) {
+              imageModelIsUsable = true;
+            }
+          }
+          // Check fallbacks if primary is not in allowlist
+          if (!imageModelIsUsable && imageModelConfigFallbacks.length > 0) {
+            for (const fb of imageModelConfigFallbacks) {
+              if (!fb?.trim()) {
+                continue;
+              }
+              const resolved = resolveModelRefFromString({
+                raw: fb.trim(),
+                defaultProvider: providerContext,
+                aliasIndex,
+              });
+              if (resolved) {
+                const key = modelKey(resolved.ref.provider, resolved.ref.model);
+                if (allowedKeys.has(key) || allowedKeys.has(fb.trim())) {
+                  imageModelIsUsable = true;
+                  break;
+                }
+              } else if (allowedKeys.has(fb.trim())) {
+                imageModelIsUsable = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // If imageModel is configured AND usable (in allowlist), preserve images.
+      // Otherwise, check if the current model supports images.
+      const supportsImages = imageModelIsUsable
+        ? true
+        : await resolveGatewayModelSupportsImages({
+            loadGatewayModelCatalog: context.loadGatewayModelCatalog,
+            provider: modelRef.provider,
+            model: modelRef.model,
+          });
 
       try {
         const parsed = await parseMessageWithAttachments(inboundMessage, normalizedAttachments, {
@@ -1555,6 +1799,294 @@ export const chatHandlers: GatewayRequestHandlers = {
         return;
       }
     }
+
+    // Resolve agentId for image model allowlist check
+    const agentId = resolveSessionAgentId({
+      sessionKey,
+      config: cfg,
+    });
+
+    // When images are detected, switch to the configured image model.
+    // This ensures non-vision models don't fail when users send images via Dashboard.
+    // Check both inline images and offloaded attachments (large images >2MB are offloaded).
+    const hasAnyImages = parsedImages.length > 0 || parsedOffloadedRefs.length > 0;
+    if (hasAnyImages) {
+      const imageModelConfig = cfg.agents?.defaults?.imageModel;
+      let imageModelPrimary = resolveAgentModelPrimaryValue(imageModelConfig);
+      const imageModelConfigFallbacks = resolveAgentModelFallbackValues(imageModelConfig);
+      let usedPrimaryFromFallback = false;
+      if (!imageModelPrimary && imageModelConfigFallbacks.length > 0) {
+        imageModelPrimary = imageModelConfigFallbacks[0];
+        usedPrimaryFromFallback = true;
+      }
+      const effectiveImageModelFallbacks = usedPrimaryFromFallback
+        ? imageModelConfigFallbacks.slice(1)
+        : imageModelConfigFallbacks;
+      if (imageModelPrimary) {
+        // Resolve per-agent default provider for correct model resolution
+        const agentDefault = resolveDefaultModelForAgent({ cfg, agentId });
+        const defaultProvider = agentDefault.provider;
+        // Build alias index for resolving model aliases (used for checking and filtering)
+        const aliasIndex = buildModelAliasIndex({ cfg, defaultProvider });
+
+        // Resolve the image model's provider for correct fallback allowlist checking.
+        // When the image model lives on a different provider than the agent default,
+        // fallbacks like "gpt-4.1" should be resolved against the image model's provider,
+        // not the agent's default provider.
+        //
+        // This logic mirrors collectImageModelKeys in model-selection.ts to ensure
+        // consistent provider inference for mixed-provider fallback-only configs.
+        let imageModelProvider: string | undefined;
+
+        // Check if primary has an explicit provider (contains "/")
+        const primaryTrimmed = imageModelPrimary.trim();
+        const primaryHasProvider = primaryTrimmed.includes("/");
+
+        if (primaryHasProvider) {
+          // Primary has explicit provider - resolve it directly
+          const imageModelResolved = resolveModelRefFromString({
+            raw: primaryTrimmed,
+            defaultProvider,
+            aliasIndex,
+          });
+          imageModelProvider = imageModelResolved?.ref.provider;
+        } else {
+          // Primary has no explicit provider (providerless).
+          // First, try to resolve the primary itself (handles aliases like "vision").
+          // This ensures that if primary is an alias pointing to a specific provider,
+          // we use that provider instead of inferring from fallbacks.
+          // Only fall back to scanning fallback entries if the primary cannot determine provider.
+          const primaryResolved = resolveModelRefFromString({
+            raw: primaryTrimmed,
+            defaultProvider,
+            aliasIndex,
+          });
+          // Only use resolved provider if primary is an alias.
+          // If primary is providerless and NOT an alias (e.g., "gpt-4o"),
+          // resolveModelRefFromString would return defaultProvider which is wrong
+          // in mixed-provider configs (e.g., default Anthropic + image fallback openai/gpt-4.1).
+          // In that case, leave imageModelProvider empty so fallbacks derive the correct provider.
+          if (primaryResolved?.alias && primaryResolved.ref.provider) {
+            imageModelProvider = primaryResolved.ref.provider;
+          }
+
+          // If primary resolution didn't determine provider, scan fallback chain.
+          // This handles two cases:
+          // 1. Primary was promoted from fallback (usedPrimaryFromFallback=true) - e.g., fallbacks: ["gpt-4o", "openai/gpt-4.1"]
+          // 2. Primary was explicitly set to providerless non-alias - e.g., imageModel.primary: "gpt-4o"
+          if (!imageModelProvider) {
+            // First pass: find first fallback with explicit provider prefix
+            for (const fb of imageModelConfigFallbacks) {
+              if (!fb?.trim()) {
+                continue;
+              }
+              const slash = fb.indexOf("/");
+              if (slash > 0) {
+                imageModelProvider = fb.slice(0, slash).trim();
+                break;
+              }
+            }
+
+            // Second pass: if no fallback had explicit provider, try alias resolution
+            // Only use provider from fallbacks that are actual aliases.
+            // Providerless non-alias fallbacks (e.g., "gpt-4.1") would resolve to
+            // defaultProvider which is wrong in mixed-provider configs.
+            if (!imageModelProvider) {
+              for (const fb of imageModelConfigFallbacks) {
+                if (!fb?.trim()) {
+                  continue;
+                }
+                const resolved = resolveModelRefFromString({
+                  raw: fb.trim(),
+                  defaultProvider,
+                  aliasIndex,
+                });
+                if (resolved?.alias && resolved.ref.provider) {
+                  imageModelProvider = resolved.ref.provider;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        // Final fallback: resolve primary with defaultProvider if still not determined
+        if (!imageModelProvider) {
+          const imageModelResolved = resolveModelRefFromString({
+            raw: primaryTrimmed,
+            defaultProvider,
+            aliasIndex,
+          });
+          imageModelProvider = imageModelResolved?.ref.provider;
+        }
+
+        // Build a separate alias index for image fallback resolution using the image model's provider.
+        // This ensures providerless aliases in agents.defaults.models are resolved against the
+        // image model's provider context, not the agent default provider.
+        const imageFallbackAliasIndex =
+          imageModelProvider && imageModelProvider !== defaultProvider
+            ? buildModelAliasIndex({ cfg, defaultProvider: imageModelProvider })
+            : aliasIndex;
+
+        // Normalize imageModelPrimary to full provider/model format.
+        // CRITICAL: For providerless primaries, the provider choice depends on origin:
+        // - If primary was promoted from fallback (usedPrimaryFromFallback=true), use the
+        //   fallback-derived imageModelProvider. This handles fallback-only configs like
+        //   fallbacks: ["gpt-4o", "openai/gpt-4.1"] where the promoted "gpt-4o" should
+        //   resolve to "openai/gpt-4o" (inferred provider), not against defaultProvider.
+        // - If primary was explicitly set (e.g., imageModel.primary: "gpt-4o"), use
+        //   defaultProvider. This preserves user intent in mixed-provider configs where
+        //   primary is intentionally providerless and fallbacks are cross-provider alternatives.
+        const resolvedImageModelPrimary = primaryHasProvider
+          ? imageModelPrimary
+          : (() => {
+              const resolved = resolveModelRefFromString({
+                raw: imageModelPrimary.trim(),
+                defaultProvider:
+                  usedPrimaryFromFallback && imageModelProvider
+                    ? imageModelProvider
+                    : defaultProvider,
+                aliasIndex:
+                  usedPrimaryFromFallback && imageModelProvider
+                    ? imageFallbackAliasIndex
+                    : aliasIndex,
+              });
+              if (resolved) {
+                return modelKey(resolved.ref.provider, resolved.ref.model);
+              }
+              // Fallback to original behavior if resolution fails
+              return imageModelPrimary;
+            })();
+
+        // Check if user has a stored model override that is already an image model
+        // If so, respect user's choice and don't switch
+        const sessionModelOverride = entry?.modelOverride;
+        const sessionProviderOverride = entry?.providerOverride;
+        if (sessionModelOverride) {
+          // Collect all image model keys for checking (resolve aliases to full provider/model format)
+          const imageModelKeys = new Set<string>();
+
+          // Helper to resolve and add model key
+          // For promoted primary (usedPrimaryFromFallback=true): use imageModelProvider
+          //   (promoted primary should resolve against fallback-inferred provider)
+          // For explicit primary: use defaultProvider
+          //   (explicit primary should resolve against agent default provider)
+          // For fallbacks: use imageModelProvider if available
+          //   (fallbacks should resolve against fallback-derived provider context)
+          const addResolvedModelKey = (rawModel: string, isPrimary: boolean) => {
+            const usePromotedProvider = isPrimary && usedPrimaryFromFallback && imageModelProvider;
+            const resolved = resolveModelRefFromString({
+              raw: rawModel.trim(),
+              defaultProvider: usePromotedProvider
+                ? imageModelProvider!
+                : isPrimary
+                  ? defaultProvider
+                  : (imageModelProvider ?? defaultProvider),
+              aliasIndex: usePromotedProvider
+                ? imageFallbackAliasIndex
+                : isPrimary
+                  ? aliasIndex
+                  : imageFallbackAliasIndex,
+            });
+            if (resolved) {
+              const key = modelKey(resolved.ref.provider, resolved.ref.model);
+              imageModelKeys.add(key);
+            }
+            // Also add the raw string for backward compatibility
+            imageModelKeys.add(rawModel.trim());
+          };
+
+          if (imageModelPrimary) {
+            addResolvedModelKey(imageModelPrimary, true);
+          }
+          for (const fb of imageModelConfigFallbacks) {
+            if (fb?.trim()) {
+              addResolvedModelKey(fb, false);
+            }
+          }
+
+          // Resolve user's stored model to full provider/model format
+          const userRawModel = sessionProviderOverride
+            ? `${sessionProviderOverride}/${sessionModelOverride}`
+            : sessionModelOverride;
+          const userResolved = resolveModelRefFromString({
+            raw: userRawModel,
+            defaultProvider,
+            aliasIndex,
+          });
+          const userModelKey = userResolved
+            ? modelKey(userResolved.ref.provider, userResolved.ref.model)
+            : userRawModel;
+
+          // Check if user's stored model is an image model AND in allowlist
+          // Use only provider-qualified key to avoid cross-provider mismatches
+          const storedModelIsImageModel = imageModelKeys.has(userModelKey);
+
+          // Check if stored model is in agent's allowlist
+          const { allowAny, allowedKeys } = buildAllowedModelSet({
+            cfg,
+            catalog: [],
+            defaultProvider,
+            defaultModel: agentDefault.model,
+            agentId,
+          });
+          const storedModelInAllowlist = allowAny || allowedKeys.has(userModelKey);
+
+          if (storedModelIsImageModel && storedModelInAllowlist) {
+            // User's stored model is both an image model AND in allowlist
+            // Respect user's choice and don't switch
+            context.logGateway.info(
+              `[image-model-switch] User's stored model ${userModelKey} is already an image model and in allowlist, respecting user choice`,
+            );
+          } else {
+            // Need to switch to imageModel:
+            // - stored model is an image model but NOT in allowlist (will be cleared anyway)
+            // - stored model is not an image model
+            // - no stored override
+            imageModelOverride = resolvedImageModelPrimary;
+            imageModelFallbacks = prepareImageModelFallbacks({
+              fallbacks: effectiveImageModelFallbacks,
+              cfg,
+              agentId,
+              aliasIndex: imageFallbackAliasIndex,
+              defaultProvider,
+              defaultModel: agentDefault.model,
+              imageModelProvider,
+            });
+            const logReason = sessionModelOverride
+              ? storedModelIsImageModel
+                ? `Stored model ${userModelKey} is image-capable but not in agent allowlist`
+                : `Detected ${parsedImages.length} image(s), stored model ${userModelKey} is not image-capable`
+              : `Detected ${parsedImages.length} image(s)`;
+            context.logGateway.info(
+              `[image-model-switch] ${logReason}, switching to: ${imageModelOverride}${imageModelFallbacks.length > 0 ? ` with ${imageModelFallbacks.length} fallback(s)` : " (no fallbacks)"}`,
+            );
+          }
+        } else {
+          // No stored override, switch to imageModel
+          imageModelOverride = resolvedImageModelPrimary;
+          imageModelFallbacks = prepareImageModelFallbacks({
+            fallbacks: effectiveImageModelFallbacks,
+            cfg,
+            agentId,
+            aliasIndex: imageFallbackAliasIndex,
+            defaultProvider,
+            defaultModel: agentDefault.model,
+            imageModelProvider,
+          });
+          context.logGateway.info(
+            `[image-model-switch] Detected ${parsedImages.length} image(s), switching to: ${imageModelOverride}${imageModelFallbacks.length > 0 ? ` with ${imageModelFallbacks.length} fallback(s)` : " (no fallbacks)"}`,
+          );
+        }
+      } else {
+        // imageModel not configured - log warning since default model may not support images
+        context.logGateway.warn(
+          `[image-model-switch] Images detected but no imageModel configured for agent ${agentId}, using default model which may not support images`,
+        );
+      }
+    }
+    // Attachment parsing and image model switching already done above
+    // after early-return checks.
 
     try {
       const abortController = new AbortController();
@@ -1638,10 +2170,6 @@ export const chatHandlers: GatewayRequestHandlers = {
         GatewayClientScopes: client?.connect?.scopes,
       };
 
-      const agentId = resolveSessionAgentId({
-        sessionKey,
-        config: cfg,
-      });
       const { onModelSelected, ...replyPipeline } = createChannelReplyPipeline({
         cfg,
         agentId,
@@ -1741,6 +2269,8 @@ export const chatHandlers: GatewayRequestHandlers = {
           abortSignal: abortController.signal,
           images: parsedImages.length > 0 ? parsedImages : undefined,
           imageOrder: parsedImageOrder.length > 0 ? parsedImageOrder : undefined,
+          modelOverride: imageModelOverride,
+          modelOverrideFallbacks: imageModelFallbacks,
           onAgentRunStart: (runId) => {
             agentRunStarted = true;
             void emitUserTranscriptUpdate();

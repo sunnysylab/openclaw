@@ -4,12 +4,26 @@ import {
   resolveSessionAgentId,
   resolveAgentSkillsFilter,
 } from "../../agents/agent-scope.js";
-import { resolveModelRefFromString } from "../../agents/model-selection.js";
+import {
+  findModelInCatalog,
+  loadModelCatalog,
+  modelSupportsVision,
+} from "../../agents/model-catalog.js";
+import {
+  buildAllowedModelSet,
+  buildModelAliasIndex,
+  modelKey,
+  resolveModelRefFromString,
+} from "../../agents/model-selection.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../../agents/workspace.js";
 import { resolveChannelModelOverride } from "../../channels/model-overrides.js";
 import { type OpenClawConfig, loadConfig } from "../../config/config.js";
 import { applyMergePatch } from "../../config/merge-patch.js";
+import {
+  resolveAgentModelFallbackValues,
+  resolveAgentModelPrimaryValue,
+} from "../../config/model-input.js";
 import { defaultRuntime } from "../../runtime.js";
 import { normalizeStringEntries } from "../../shared/string-normalization.js";
 import { resolveCommandAuthorization } from "../command-auth.js";
@@ -24,6 +38,10 @@ import { finalizeInboundContext } from "./inbound-context.js";
 import { emitPreAgentMessageHooks } from "./message-preprocess-hooks.js";
 import { initSessionState } from "./session.js";
 import { createTypingController } from "./typing.js";
+
+function shouldLogCoreIngressTiming(): boolean {
+  return process.env.OPENCLAW_DEBUG_INGRESS_TIMING === "1";
+}
 
 type ResetCommandAction = "new" | "reset";
 
@@ -134,6 +152,18 @@ export async function getReplyFromConfig(
   opts?: GetReplyOptions,
   configOverride?: OpenClawConfig,
 ): Promise<ReplyPayload | ReplyPayload[] | undefined> {
+  const ingressTimingEnabled = shouldLogCoreIngressTiming();
+  const ingressStartMs = ingressTimingEnabled ? Date.now() : 0;
+  const logIngressStage = (stage: string, extra?: string) => {
+    if (!ingressTimingEnabled) {
+      return;
+    }
+    const sessionKey = ctx.SessionKey?.trim() || "(no-session)";
+    const suffix = extra ? ` ${extra}` : "";
+    defaultRuntime.log?.(
+      `[ingress] session=${sessionKey} stage=${stage} elapsedMs=${Date.now() - ingressStartMs}${suffix}`,
+    );
+  };
   const isFastTestEnv = process.env.OPENCLAW_TEST_FAST === "1";
   const cfg =
     configOverride == null
@@ -161,7 +191,81 @@ export async function getReplyFromConfig(
   let provider = defaultProvider;
   let model = defaultModel;
   let hasResolvedHeartbeatModelOverride = false;
-  if (opts?.isHeartbeat) {
+  // Handle modelOverride from Gateway (e.g., image model when images detected)
+  let hasAppliedImageModelOverride = false;
+  // Track if a fallback was used when primary override was blocked by allowlist
+  let fallbackAppliedForImageModel = false;
+  if (opts?.modelOverride?.trim()) {
+    const modelRef = resolveModelRefFromString({
+      raw: opts.modelOverride.trim(),
+      defaultProvider,
+      aliasIndex,
+    });
+    if (modelRef) {
+      // Check if the model is allowed by the agent's allowlist
+      // Use buildAllowedModelSet to include models + fallbacks + default model
+      const { allowAny, allowedKeys } = buildAllowedModelSet({
+        cfg,
+        catalog: [], // Empty catalog; we only need allowedKeys
+        defaultProvider,
+        defaultModel,
+        agentId,
+      });
+      if (!allowAny) {
+        const modelKeyStr = modelKey(modelRef.ref.provider, modelRef.ref.model);
+        if (!allowedKeys.has(modelKeyStr)) {
+          // Model not in allowlist, try fallbacks before skipping
+          fallbackAppliedForImageModel = false;
+          if (opts?.modelOverrideFallbacks?.length) {
+            // Determine provider context for resolving providerless fallbacks.
+            // When modelOverride has explicit provider (e.g., "openai/gpt-4o"),
+            // providerless fallbacks should resolve against that provider, not defaultProvider.
+            // This matches the allowlist check logic in chat.ts.
+            const overrideProvider = modelRef.ref.provider;
+            const providerContext = overrideProvider ?? defaultProvider;
+            // Rebuild alias index with the correct provider context
+            const fallbackAliasIndex =
+              overrideProvider && overrideProvider !== defaultProvider
+                ? buildModelAliasIndex({ cfg, defaultProvider: providerContext })
+                : aliasIndex;
+            for (const fallbackRaw of opts.modelOverrideFallbacks) {
+              const fallbackRef = resolveModelRefFromString({
+                raw: fallbackRaw.trim(),
+                defaultProvider: providerContext,
+                aliasIndex: fallbackAliasIndex,
+              });
+              if (fallbackRef) {
+                const fallbackKeyStr = modelKey(fallbackRef.ref.provider, fallbackRef.ref.model);
+                if (allowedKeys.has(fallbackKeyStr)) {
+                  provider = fallbackRef.ref.provider;
+                  model = fallbackRef.ref.model;
+                  hasAppliedImageModelOverride = true;
+                  fallbackAppliedForImageModel = true;
+                  break;
+                }
+              }
+            }
+          }
+          if (!fallbackAppliedForImageModel) {
+            // No allowlisted fallback, skip the override and let default model be used
+            // This prevents Dashboard images from bypassing agent model restrictions
+            defaultRuntime.log?.(
+              `[image-model-switch] Model override ${opts.modelOverride} not in agent allowlist and no fallback available, using default model ${defaultProvider}/${defaultModel}`,
+            );
+          }
+        } else {
+          provider = modelRef.ref.provider;
+          model = modelRef.ref.model;
+          hasAppliedImageModelOverride = true;
+        }
+      } else {
+        // No allowlist, allow any model
+        provider = modelRef.ref.provider;
+        model = modelRef.ref.model;
+        hasAppliedImageModelOverride = true;
+      }
+    }
+  } else if (opts?.isHeartbeat) {
     // Prefer the resolved per-agent heartbeat model passed from the heartbeat runner,
     // fall back to the global defaults heartbeat model for backward compatibility.
     const heartbeatRaw =
@@ -186,6 +290,7 @@ export async function getReplyFromConfig(
     ensureBootstrapFiles: !agentCfg?.skipBootstrap && !isFastTestEnv,
   });
   const workspaceDir = workspace.dir;
+  logIngressStage("workspace-ready");
   const agentDir = resolveAgentDir(cfg, agentId);
   const timeoutMs = resolveAgentTimeoutMs({ cfg, overrideSeconds: opts?.timeoutOverrideSeconds });
   const configuredTypingSeconds =
@@ -203,35 +308,41 @@ export async function getReplyFromConfig(
 
   const finalized = finalizeInboundContext(ctx);
 
-  if (!isFastTestEnv) {
-    await applyMediaUnderstandingIfNeeded({
-      ctx: finalized,
-      cfg,
-      agentDir,
-      activeModel: { provider, model },
-    });
-    await applyLinkUnderstandingIfNeeded({
-      ctx: finalized,
-      cfg,
-    });
-  }
-  emitPreAgentMessageHooks({
-    ctx: finalized,
-    cfg,
-    isFastTestEnv,
-  });
-
   const commandAuthorized = finalized.CommandAuthorized;
   resolveCommandAuthorization({
     ctx: finalized,
     cfg,
     commandAuthorized,
   });
+
+  // Apply media/link enrichment BEFORE initSessionState so that
+  // sessionCtx captures the enriched content (e.g. audio transcripts,
+  // link summaries). Otherwise resolveReplyDirectives and runPreparedReply
+  // use stale pre-enrichment Body* fields from sessionCtx.
+  if (!isFastTestEnv) {
+    const appliedMediaUnderstanding = await applyMediaUnderstandingIfNeeded({
+      ctx: finalized,
+      cfg,
+      agentDir,
+      activeModel: { provider, model },
+    });
+    logIngressStage(
+      "media-understanding",
+      `applied=${appliedMediaUnderstanding ? "1" : "0"} model=${provider}/${model}`,
+    );
+    const appliedLinkUnderstanding = await applyLinkUnderstandingIfNeeded({
+      ctx: finalized,
+      cfg,
+    });
+    logIngressStage("link-understanding", `applied=${appliedLinkUnderstanding ? "1" : "0"}`);
+  }
+
   const sessionState = await initSessionState({
     ctx: finalized,
     cfg,
     commandAuthorized,
   });
+  logIngressStage("session-init");
   let {
     sessionCtx,
     sessionEntry,
@@ -289,7 +400,195 @@ export async function getReplyFromConfig(
   const hasSessionModelOverride = Boolean(
     sessionEntry.modelOverride?.trim() || sessionEntry.providerOverride?.trim(),
   );
-  if (!hasResolvedHeartbeatModelOverride && !hasSessionModelOverride && channelModelOverride) {
+
+  // Check if channel model is already a vision model (skip image model switch if so).
+  // Only compute when image model override was actually applied, since the result
+  // is only consumed when hasAppliedImageModelOverride is true.
+  let channelModelIsVisionModel = false;
+  if (channelModelOverride && hasAppliedImageModelOverride) {
+    // Use the active default provider when building the alias index so that
+    // aliases defined on providerless model keys resolve correctly to the
+    // agent's default provider. This ensures channel model aliases that point
+    // to vision models are properly detected.
+    const channelAliasIndex = buildModelAliasIndex({ cfg, defaultProvider });
+
+    // Resolve the channel model to get provider/model
+    const channelResolved = resolveModelRefFromString({
+      raw: channelModelOverride.model,
+      defaultProvider,
+      aliasIndex: channelAliasIndex,
+    });
+
+    if (channelResolved) {
+      // First, check if the channel model matches the configured imageModel or its fallbacks
+      const imageModelConfig = cfg.agents?.defaults?.imageModel;
+      const imageModelPrimary = resolveAgentModelPrimaryValue(imageModelConfig);
+      const fallbacks = resolveAgentModelFallbackValues(imageModelConfig);
+      // Process if either primary or fallbacks are configured (handles fallback-only configs)
+      if (imageModelPrimary || fallbacks.length > 0) {
+        const imageModelKeys = new Set<string>();
+
+        // Determine the provider for image model resolution.
+        // This mirrors collectImageModelKeys in model-selection.ts for consistency.
+        // Providerless models should resolve against the image model's provider,
+        // not the agent's default provider (to handle mixed-provider configs correctly).
+        // Initialize to empty string (not defaultProvider) so the fallback scanning block
+        // can correctly determine if provider was derived from primary or fallbacks.
+        let imageModelDefaultProvider = "";
+
+        const primaryTrimmed = imageModelPrimary?.trim() ?? "";
+        const primaryHasProvider = primaryTrimmed.includes("/");
+
+        // Derive imageModelDefaultProvider from primary if it has an explicit provider.
+        if (imageModelPrimary && channelAliasIndex && defaultProvider && primaryHasProvider) {
+          const resolved = resolveModelRefFromString({
+            raw: primaryTrimmed,
+            defaultProvider,
+            aliasIndex: channelAliasIndex,
+          });
+          if (resolved) {
+            imageModelDefaultProvider = resolved.ref.provider;
+          }
+        }
+
+        // If no primary was configured, primary is providerless, or primary resolution
+        // didn't determine provider, derive imageModelDefaultProvider from fallbacks.
+        // This handles:
+        // 1. Fallback-only configs (e.g., imageModel.fallbacks: ["openai/gpt-4.1"])
+        // 2. Providerless primary with fallbacks (e.g., primary: "gpt-4o", fallbacks: ["openai/gpt-4.1"])
+        // 3. Providerless primary alias that resolved to defaultProvider
+        // IMPORTANT: Do NOT enter this block when primary has an explicit provider,
+        // even if that provider equals defaultProvider. Scanning fallbacks in that case
+        // would overwrite the correct primary-derived provider with the first fallback's
+        // provider, breaking mixed-provider configs like primary: "anthropic/claude-3"
+        // with fallbacks: ["openai/gpt-4o", "gpt-4.1"].
+        if ((!imageModelPrimary || !primaryHasProvider) && channelAliasIndex && defaultProvider) {
+          // First pass: if primary is providerless, try to resolve it as an alias.
+          // Only use the resolved provider if primary is actually an alias.
+          if (!primaryHasProvider && imageModelPrimary) {
+            const resolved = resolveModelRefFromString({
+              raw: primaryTrimmed,
+              defaultProvider,
+              aliasIndex: channelAliasIndex,
+            });
+            if (resolved?.alias && resolved.ref.provider) {
+              imageModelDefaultProvider = resolved.ref.provider;
+            }
+          }
+
+          // Second pass: scan fallbacks for first with explicit provider
+          if (!imageModelDefaultProvider) {
+            for (const fb of fallbacks) {
+              if (!fb?.trim()) {
+                continue;
+              }
+              const slash = fb.indexOf("/");
+              if (slash > 0) {
+                imageModelDefaultProvider = fb.slice(0, slash).trim();
+                break;
+              }
+            }
+          }
+
+          // Third pass: if still not found, try alias resolution on fallbacks
+          // Only use provider from fallbacks that are actual aliases.
+          // Providerless non-alias fallbacks (e.g., "gpt-4.1") would resolve to
+          // defaultProvider which is wrong in mixed-provider configs.
+          if (!imageModelDefaultProvider && defaultProvider) {
+            for (const fb of fallbacks) {
+              if (!fb?.trim()) {
+                continue;
+              }
+              const fbResolved = resolveModelRefFromString({
+                raw: fb.trim(),
+                defaultProvider,
+                aliasIndex: channelAliasIndex,
+              });
+              if (fbResolved?.alias && fbResolved.ref.provider) {
+                imageModelDefaultProvider = fbResolved.ref.provider;
+                break;
+              }
+            }
+          }
+        }
+
+        const addResolvedModelKey = (rawModel: string, isPrimary: boolean) => {
+          imageModelKeys.add(rawModel.trim());
+          // For primary: use defaultProvider (primary should resolve against agent default)
+          // For fallbacks: use imageModelDefaultProvider if available (fallbacks should resolve
+          // against fallback-derived provider context for cross-provider configs)
+          const providerContext = isPrimary
+            ? defaultProvider
+            : imageModelDefaultProvider || defaultProvider;
+          if (!providerContext) {
+            return;
+          }
+          const resolved = resolveModelRefFromString({
+            raw: rawModel.trim(),
+            defaultProvider: providerContext,
+            aliasIndex: channelAliasIndex,
+          });
+          if (resolved) {
+            imageModelKeys.add(modelKey(resolved.ref.provider, resolved.ref.model));
+          }
+        };
+        if (imageModelPrimary) {
+          addResolvedModelKey(imageModelPrimary, true);
+        }
+        for (const fb of fallbacks) {
+          if (fb?.trim()) {
+            addResolvedModelKey(fb, false);
+          }
+        }
+        const channelKey = modelKey(channelResolved.ref.provider, channelResolved.ref.model);
+        // Resolve channel override using the same provider context as channelResolved.
+        // This ensures providerless channel override models are resolved consistently
+        // with how they're actually applied (using defaultProvider), preventing
+        // false matches in mixed-provider configs where imageModelDefaultProvider
+        // differs from defaultProvider.
+        const channelOverrideResolved = resolveModelRefFromString({
+          raw: channelModelOverride.model,
+          defaultProvider,
+          aliasIndex: channelAliasIndex,
+        });
+        // When channel override can't be resolved (no alias match), use the channel's
+        // provider to construct the key. This prevents providerless fallbacks like
+        // "gpt-4.1" in imageModel from incorrectly matching any provider's gpt-4.1.
+        const channelOverrideKey = channelOverrideResolved
+          ? modelKey(channelOverrideResolved.ref.provider, channelOverrideResolved.ref.model)
+          : modelKey(channelResolved.ref.provider, channelModelOverride.model);
+        if (imageModelKeys.has(channelKey) || imageModelKeys.has(channelOverrideKey)) {
+          channelModelIsVisionModel = true;
+        }
+      }
+
+      // If not found in imageModel list, check catalog for vision capabilities
+      if (!channelModelIsVisionModel) {
+        try {
+          const catalog = await loadModelCatalog({ config: cfg });
+          const catalogEntry = findModelInCatalog(
+            catalog,
+            channelResolved.ref.provider,
+            channelResolved.ref.model,
+          );
+          if (modelSupportsVision(catalogEntry)) {
+            channelModelIsVisionModel = true;
+          }
+        } catch {
+          // Catalog lookup failed; fall back to text-only assumption
+        }
+      }
+    }
+  }
+
+  // Skip channel model override when image model was already selected for attachments,
+  // UNLESS the channel model is already a vision model (no need to switch)
+  if (
+    !hasResolvedHeartbeatModelOverride &&
+    !hasSessionModelOverride &&
+    !(hasAppliedImageModelOverride && !channelModelIsVisionModel) &&
+    channelModelOverride
+  ) {
     const resolved = resolveModelRefFromString({
       raw: channelModelOverride.model,
       defaultProvider,
@@ -300,6 +599,12 @@ export async function getReplyFromConfig(
       model = resolved.ref.model;
     }
   }
+
+  emitPreAgentMessageHooks({
+    ctx: finalized,
+    cfg,
+    isFastTestEnv,
+  });
 
   const directiveResult = await resolveReplyDirectives({
     ctx: finalized,
@@ -324,11 +629,14 @@ export async function getReplyFromConfig(
     provider,
     model,
     hasResolvedHeartbeatModelOverride,
+    hasAppliedImageModelOverride,
     typing,
     opts: resolvedOpts,
     skillFilter: mergedSkillFilter,
   });
+  logIngressStage("directives-resolved");
   if (directiveResult.kind === "reply") {
+    logIngressStage("early-reply");
     return directiveResult.reply;
   }
 
@@ -362,6 +670,70 @@ export async function getReplyFromConfig(
   } = directiveResult.result;
   provider = resolvedProvider;
   model = resolvedModel;
+
+  // Re-check if the final model matches the image model override.
+  // If directives/stored override picked a different model, reset the flags
+  // to avoid passing wrong auth profile and fallbacks.
+  let finalHasAppliedImageModelOverride = hasAppliedImageModelOverride;
+  // Only pass fallbacks if image model override was actually applied
+  let finalModelOverrideFallbacks = hasAppliedImageModelOverride
+    ? opts?.modelOverrideFallbacks
+    : undefined;
+  if (hasAppliedImageModelOverride && opts?.modelOverride) {
+    const finalModelKey = modelKey(provider, model);
+    const overrideRef = resolveModelRefFromString({
+      raw: opts.modelOverride.trim(),
+      defaultProvider,
+      aliasIndex,
+    });
+    if (overrideRef) {
+      const overrideKey = modelKey(overrideRef.ref.provider, overrideRef.ref.model);
+      // Check if final model is in the fallback chain.
+      // IMPORTANT: Use the override's provider context (not defaultProvider) to resolve
+      // providerless fallbacks, matching the logic used when fallbacks were originally
+      // resolved in the allowlist check above (lines 200-241).
+      const overrideProvider = overrideRef.ref.provider;
+      const fallbackProviderContext = overrideProvider ?? defaultProvider;
+      const fallbackAliasIndex =
+        overrideProvider && overrideProvider !== defaultProvider
+          ? buildModelAliasIndex({ cfg, defaultProvider: fallbackProviderContext })
+          : aliasIndex;
+      const isInFallbacks = (opts?.modelOverrideFallbacks ?? []).some((fb) => {
+        const fbRef = resolveModelRefFromString({
+          raw: fb.trim(),
+          defaultProvider: fallbackProviderContext,
+          aliasIndex: fallbackAliasIndex,
+        });
+        return fbRef && modelKey(fbRef.ref.provider, fbRef.ref.model) === finalModelKey;
+      });
+      if (finalModelKey !== overrideKey && !isInFallbacks) {
+        // Final model differs from image model override and is not in fallback chain,
+        // reset the flags. This handles cases where a later directive (e.g., /model)
+        // changed the model away from the image override chain entirely.
+        finalHasAppliedImageModelOverride = false;
+        finalModelOverrideFallbacks = undefined;
+      }
+    }
+  }
+
+  // Log final model selection when image model override was considered
+  if (hasAppliedImageModelOverride && opts?.modelOverride) {
+    const finalModelKey = modelKey(provider, model);
+    // Use the same resolution as above for consistency
+    const overrideRef = resolveModelRefFromString({
+      raw: opts.modelOverride.trim(),
+      defaultProvider,
+      aliasIndex,
+    });
+    const overrideKey = overrideRef
+      ? modelKey(overrideRef.ref.provider, overrideRef.ref.model)
+      : opts.modelOverride.trim();
+    if (finalModelKey !== overrideKey) {
+      defaultRuntime.log?.(
+        `[image-model-switch] Final model ${finalModelKey} differs from Gateway override ${overrideKey}, stored override or directive took precedence`,
+      );
+    }
+  }
 
   const maybeEmitMissingResetHooks = async () => {
     if (!resetTriggered || !command.isAuthorizedSender || command.resetHookTriggered) {
@@ -469,6 +841,13 @@ export async function getReplyFromConfig(
       workspaceDir,
     });
   }
+  logIngressStage("sandbox-media");
+
+  // Create final opts with potentially cleared modelOverrideFallbacks
+  const finalOpts =
+    finalModelOverrideFallbacks !== opts?.modelOverrideFallbacks
+      ? { ...resolvedOpts, modelOverrideFallbacks: finalModelOverrideFallbacks }
+      : resolvedOpts;
 
   return runPreparedReply({
     ctx,
@@ -500,7 +879,7 @@ export async function getReplyFromConfig(
     perMessageQueueMode,
     perMessageQueueOptions,
     typing,
-    opts: resolvedOpts,
+    opts: finalOpts,
     defaultProvider,
     defaultModel,
     timeoutMs,
@@ -514,5 +893,6 @@ export async function getReplyFromConfig(
     storePath,
     workspaceDir,
     abortedLastRun,
+    hasAppliedImageModelOverride: finalHasAppliedImageModelOverride,
   });
 }
