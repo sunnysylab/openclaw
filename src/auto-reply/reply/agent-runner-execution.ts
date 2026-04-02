@@ -51,11 +51,13 @@ import {
   buildEmbeddedRunExecutionParams,
   resolveModelFallbackOptions,
 } from "./agent-runner-utils.js";
+import { resolveRunAuthProfile } from "./agent-runner-auth-profile.js";
 import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
 import type { FollowupRun } from "./queue.js";
 import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
 import { createReplyMediaPathNormalizer } from "./reply-media-paths.runtime.js";
 import type { TypingSignaler } from "./typing-mode.js";
+import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
 
 // Maximum number of LiveSessionModelSwitchError retries before surfacing a
 // user-visible error. Prevents infinite ping-pong when the persisted session
@@ -207,6 +209,42 @@ export async function runAgentTurnWithFallback(params: {
   let bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
     params.getActiveSessionEntry()?.systemPromptReport,
   );
+  // Persist the fallback candidate before the next attempt starts so any
+  // live-session reconciliation observes the selected model instead of the
+  // previous primary/default selection.
+  const persistFallbackCandidateSelection = async (provider: string, model: string) => {
+    if (
+      !params.sessionKey ||
+      !params.activeSessionStore ||
+      (provider === params.followupRun.run.provider && model === params.followupRun.run.model)
+    ) {
+      return;
+    }
+
+    const activeSessionEntry =
+      params.getActiveSessionEntry() ?? params.activeSessionStore[params.sessionKey];
+    if (!activeSessionEntry) {
+      return;
+    }
+
+    const scopedAuthProfile = resolveRunAuthProfile(params.followupRun.run, provider);
+    const { updated } = applyModelOverrideToSessionEntry({
+      entry: activeSessionEntry,
+      selection: { provider, model },
+      profileOverride: scopedAuthProfile.authProfileId,
+      profileOverrideSource: scopedAuthProfile.authProfileIdSource,
+    });
+    if (!updated) {
+      return;
+    }
+
+    params.activeSessionStore[params.sessionKey] = activeSessionEntry;
+    if (params.storePath) {
+      await updateSessionStore(params.storePath, (store) => {
+        store[params.sessionKey!] = activeSessionEntry;
+      });
+    }
+  };
 
   while (true) {
     try {
@@ -286,7 +324,7 @@ export async function runAgentTurnWithFallback(params: {
       const fallbackResult = await runWithModelFallback({
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
-        run: (provider, model, runOptions) => {
+        run: async (provider, model, runOptions) => {
           // Notify that model selection is complete (including after fallback).
           // This allows responsePrefix template interpolation with the actual model.
           params.opts?.onModelSelected?.({
@@ -294,6 +332,8 @@ export async function runAgentTurnWithFallback(params: {
             model,
             thinkLevel: params.followupRun.run.thinkLevel,
           });
+
+          await persistFallbackCandidateSelection(provider, model);
 
           if (isCliProvider(provider, params.followupRun.run.config)) {
             const startedAt = Date.now();
