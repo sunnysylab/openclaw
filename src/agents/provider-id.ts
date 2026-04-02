@@ -12,6 +12,9 @@ export function normalizeProviderId(provider: string): string {
   if (normalized === "kimi" || normalized === "kimi-code" || normalized === "kimi-coding") {
     return "kimi";
   }
+  if (normalized === "nvidia-api") {
+    return "nvidia";
+  }
   if (normalized === "bedrock" || normalized === "aws-bedrock") {
     return "amazon-bedrock";
   }
