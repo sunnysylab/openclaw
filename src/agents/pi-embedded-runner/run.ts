@@ -164,6 +164,7 @@ export async function runEmbeddedPiAgent(
         prompt: params.prompt,
         provider,
         modelId,
+        cfg: params.config,
         hookRunner,
         hookContext: hookCtx,
       });
