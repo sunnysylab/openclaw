@@ -5,13 +5,16 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   VERSION,
+  formatOpenClawUserAgent,
   readVersionFromBuildInfoForModuleUrl,
   resolveCompatibilityHostVersion,
   readVersionFromPackageJsonForModuleUrl,
   resolveBinaryVersion,
+  resolveOpenClawUserAgent,
   resolveRuntimeServiceVersion,
   resolveUsableRuntimeVersion,
   resolveVersionFromModuleUrl,
+  withDefaultOpenClawUserAgent,
 } from "./version.js";
 
 async function withTempDir<T>(run: (dir: string) => Promise<T>): Promise<T> {
@@ -142,6 +145,54 @@ describe("version resolution", () => {
         npm_package_version: "1.1.1",
       }),
     ).toBe("9.9.9");
+  });
+
+  it("formats the default OpenClaw user agent from the runtime version", () => {
+    expect(
+      resolveOpenClawUserAgent({
+        OPENCLAW_VERSION: "2026.4.2",
+      }),
+    ).toBe("openclaw/2026.4.2");
+  });
+
+  it("formats an explicit user-agent version", () => {
+    expect(formatOpenClawUserAgent(" 2026.4.2 ")).toBe("openclaw/2026.4.2");
+  });
+
+  it("adds a default user agent to plain header maps", () => {
+    expect(
+      withDefaultOpenClawUserAgent(
+        { Authorization: "Bearer test" },
+        { env: { OPENCLAW_VERSION: "2026.4.2" } },
+      ),
+    ).toEqual({
+      Authorization: "Bearer test",
+      "User-Agent": "openclaw/2026.4.2",
+    });
+  });
+
+  it("keeps explicit plain-map user agents case-insensitively", () => {
+    expect(
+      withDefaultOpenClawUserAgent(
+        { "user-agent": "custom/1.0" },
+        { env: { OPENCLAW_VERSION: "2026.4.2" } },
+      ),
+    ).toEqual({
+      "user-agent": "custom/1.0",
+    });
+  });
+
+  it("adds a default user agent to Headers and preserves explicit overrides", () => {
+    const defaulted = withDefaultOpenClawUserAgent(new Headers(), {
+      env: { OPENCLAW_VERSION: "2026.4.2" },
+    });
+    expect(defaulted.get("user-agent")).toBe("openclaw/2026.4.2");
+
+    const explicit = new Headers({ "User-Agent": "custom/2.0" });
+    expect(withDefaultOpenClawUserAgent(explicit, { env: { OPENCLAW_VERSION: "2026.4.2" } })).toBe(
+      explicit,
+    );
+    expect(explicit.get("user-agent")).toBe("custom/2.0");
   });
 
   it("prefers runtime VERSION over stale OPENCLAW_VERSION for compatibility checks", () => {

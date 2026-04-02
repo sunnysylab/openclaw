@@ -1,5 +1,5 @@
 import type { RuntimeVersionEnv } from "../version.js";
-import { resolveRuntimeServiceVersion } from "../version.js";
+import { formatOpenClawUserAgent, resolveRuntimeServiceVersion } from "../version.js";
 import { normalizeProviderId } from "./provider-id.js";
 
 export type ProviderAttributionVerification =
@@ -30,6 +30,30 @@ export type ProviderAttributionIdentity = Pick<ProviderAttributionPolicy, "produ
 
 const OPENCLAW_ATTRIBUTION_PRODUCT = "OpenClaw";
 const OPENCLAW_ATTRIBUTION_ORIGINATOR = "openclaw";
+
+export function isOpenAIPublicApiBaseUrl(baseUrl: unknown): boolean {
+  if (typeof baseUrl !== "string" || !baseUrl.trim()) {
+    return false;
+  }
+
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === "api.openai.com";
+  } catch {
+    return baseUrl.toLowerCase().includes("api.openai.com");
+  }
+}
+
+export function isOpenAICodexBaseUrl(baseUrl: unknown): boolean {
+  if (typeof baseUrl !== "string" || !baseUrl.trim()) {
+    return false;
+  }
+
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === "chatgpt.com";
+  } catch {
+    return baseUrl.toLowerCase().includes("chatgpt.com");
+  }
+}
 
 export function resolveProviderAttributionIdentity(
   env: RuntimeVersionEnv = process.env as RuntimeVersionEnv,
@@ -75,7 +99,7 @@ function buildOpenAIAttributionPolicy(
     headers: {
       originator: OPENCLAW_ATTRIBUTION_ORIGINATOR,
       version: identity.version,
-      "User-Agent": `${OPENCLAW_ATTRIBUTION_ORIGINATOR}/${identity.version}`,
+      "User-Agent": formatOpenClawUserAgent(identity.version),
     },
   };
 }
@@ -95,7 +119,7 @@ function buildOpenAICodexAttributionPolicy(
     headers: {
       originator: OPENCLAW_ATTRIBUTION_ORIGINATOR,
       version: identity.version,
-      "User-Agent": `${OPENCLAW_ATTRIBUTION_ORIGINATOR}/${identity.version}`,
+      "User-Agent": formatOpenClawUserAgent(identity.version),
     },
   };
 }

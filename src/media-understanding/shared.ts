@@ -1,9 +1,27 @@
+import { resolveProviderAttributionHeaders } from "../agents/provider-attribution.js";
 import type { GuardedFetchResult } from "../infra/net/fetch-guard.js";
 import { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
 import type { LookupFn, SsrFPolicy } from "../infra/net/ssrf.js";
 export { fetchWithTimeout } from "../utils/fetch-timeout.js";
 
 const MAX_ERROR_CHARS = 300;
+
+function withDefaultProviderAttributionHeaders(headers: Headers, provider?: string): Headers {
+  const attributionHeaders = resolveProviderAttributionHeaders(provider);
+  if (!attributionHeaders) {
+    return headers;
+  }
+
+  let next: Headers | undefined;
+  for (const [key, value] of Object.entries(attributionHeaders)) {
+    if (headers.has(key)) {
+      continue;
+    }
+    next ??= new Headers(headers);
+    next.set(key, value);
+  }
+  return next ?? headers;
+}
 
 export function normalizeBaseUrl(baseUrl: string | undefined, fallback: string): string {
   const raw = baseUrl?.trim() || fallback;
@@ -34,6 +52,7 @@ export async function fetchWithTimeoutGuarded(
 
 export async function postTranscriptionRequest(params: {
   url: string;
+  provider?: string;
   headers: Headers;
   body: BodyInit;
   timeoutMs: number;
@@ -44,7 +63,7 @@ export async function postTranscriptionRequest(params: {
     params.url,
     {
       method: "POST",
-      headers: params.headers,
+      headers: withDefaultProviderAttributionHeaders(params.headers, params.provider),
       body: params.body,
     },
     params.timeoutMs,
@@ -55,6 +74,7 @@ export async function postTranscriptionRequest(params: {
 
 export async function postJsonRequest(params: {
   url: string;
+  provider?: string;
   headers: Headers;
   body: unknown;
   timeoutMs: number;
@@ -65,7 +85,7 @@ export async function postJsonRequest(params: {
     params.url,
     {
       method: "POST",
-      headers: params.headers,
+      headers: withDefaultProviderAttributionHeaders(params.headers, params.provider),
       body: JSON.stringify(params.body),
     },
     params.timeoutMs,
