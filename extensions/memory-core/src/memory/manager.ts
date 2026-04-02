@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { type FSWatcher } from "chokidar";
+import { formatUncaughtError } from "openclaw/plugin-sdk/error-runtime";
 import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
@@ -420,7 +421,7 @@ export class MemoryIndexManager extends MemoryManagerEmbeddingOps implements Mem
       return;
     }
     void this.sync({ reason: "session-start" }).catch((err) => {
-      log.warn(`memory sync failed (session-start): ${String(err)}`);
+      log.warn(`memory sync failed (session-start): ${formatUncaughtError(err)}`);
     });
     if (key) {
       this.sessionWarm.add(key);
@@ -442,7 +443,7 @@ export class MemoryIndexManager extends MemoryManagerEmbeddingOps implements Mem
     void this.warmSession(opts?.sessionKey);
     if (this.settings.sync.onSearch && (this.dirty || this.sessionsDirty)) {
       void this.sync({ reason: "search" }).catch((err) => {
-        log.warn(`memory sync failed (search): ${String(err)}`);
+        log.warn(`memory sync failed (search): ${formatUncaughtError(err)}`);
       });
     }
     const hasIndexedContent = this.hasIndexedContent();
