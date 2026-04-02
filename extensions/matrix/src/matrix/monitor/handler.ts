@@ -86,7 +86,7 @@ export type MatrixMonitorHandlerParams = {
   streaming: "partial" | "off";
   blockStreamingEnabled: boolean;
   dmEnabled: boolean;
-  dmPolicy: "open" | "pairing" | "allowlist" | "disabled";
+  dmPolicy: "open" | "pairing" | "allowlist" | "silent" | "disabled";
   textLimit: number;
   mediaMaxBytes: number;
   historyLimit: number;
@@ -463,16 +463,34 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           senderNamePromise ??= getMemberDisplayName(roomId, senderId).catch(() => senderId);
           return await senderNamePromise;
         };
-        const storeAllowFrom = await readStoreAllowFrom();
+        const accessStoreAllowFrom =
+          isDirectMessage && dmPolicy !== "allowlist" && dmPolicy !== "silent"
+            ? await readStoreAllowFrom()
+            : [];
+        const commandStoreAllowFrom =
+          !isDirectMessage && dmPolicy !== "allowlist" && dmPolicy !== "silent"
+            ? await readStoreAllowFrom()
+            : accessStoreAllowFrom;
         const roomUsers = roomConfig?.users ?? [];
         const accessState = resolveMatrixMonitorAccessState({
           allowFrom,
-          storeAllowFrom,
+          storeAllowFrom: accessStoreAllowFrom,
           groupAllowFrom,
           roomUsers,
           senderId,
           isRoom,
         });
+        const commandAuthorizers =
+          isRoom && commandStoreAllowFrom !== accessStoreAllowFrom
+            ? resolveMatrixMonitorAccessState({
+                allowFrom,
+                storeAllowFrom: commandStoreAllowFrom,
+                groupAllowFrom,
+                roomUsers,
+                senderId,
+                isRoom,
+              }).commandAuthorizers
+            : accessState.commandAuthorizers;
         const {
           effectiveGroupAllowFrom,
           effectiveRoomUsers,
@@ -480,7 +498,6 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           directAllowMatch,
           roomUserMatch,
           groupAllowMatch,
-          commandAuthorizers,
         } = accessState;
 
         if (isDirectMessage) {

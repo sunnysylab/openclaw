@@ -343,7 +343,7 @@ async function isVerificationNoticeAuthorized(params: {
   senderId: string;
   allowFrom: string[];
   dmEnabled: boolean;
-  dmPolicy: "open" | "pairing" | "allowlist" | "disabled";
+  dmPolicy: "open" | "pairing" | "allowlist" | "silent" | "disabled";
   readStoreAllowFrom: () => Promise<string[]>;
   logVerboseMessage: (message: string) => void;
 }): Promise<boolean> {
@@ -358,7 +358,13 @@ async function isVerificationNoticeAuthorized(params: {
   if (params.dmPolicy === "open") {
     return true;
   }
-  const storeAllowFrom = await params.readStoreAllowFrom();
+  if (params.dmPolicy === "silent") {
+    params.logVerboseMessage(
+      `matrix: blocked verification sender ${params.senderId} (dmPolicy=${params.dmPolicy})`,
+    );
+    return false;
+  }
+  const storeAllowFrom = params.dmPolicy === "pairing" ? await params.readStoreAllowFrom() : [];
   const accessState = resolveMatrixMonitorAccessState({
     allowFrom: params.allowFrom,
     storeAllowFrom,
@@ -382,7 +388,7 @@ export function createMatrixVerificationEventRouter(params: {
   client: MatrixClient;
   allowFrom: string[];
   dmEnabled: boolean;
-  dmPolicy: "open" | "pairing" | "allowlist" | "disabled";
+  dmPolicy: "open" | "pairing" | "allowlist" | "silent" | "disabled";
   readStoreAllowFrom: () => Promise<string[]>;
   logVerboseMessage: (message: string) => void;
 }) {
