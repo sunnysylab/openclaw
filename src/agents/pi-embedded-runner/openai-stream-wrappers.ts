@@ -6,7 +6,11 @@ import {
   patchCodexNativeWebSearchPayload,
   resolveCodexNativeSearchActivation,
 } from "../codex-native-web-search.js";
-import { resolveProviderAttributionHeaders } from "../provider-attribution.js";
+import {
+  isOpenAICodexBaseUrl,
+  isOpenAIPublicApiBaseUrl,
+  resolveProviderAttributionHeaders,
+} from "../provider-attribution.js";
 import { log } from "./logger.js";
 import { streamWithPayloadPatch } from "./stream-payload-utils.js";
 
@@ -39,30 +43,6 @@ function isDirectOpenAIBaseUrl(baseUrl: unknown): boolean {
       normalized.includes("chatgpt.com") ||
       normalized.includes(".openai.azure.com")
     );
-  }
-}
-
-function isOpenAIPublicApiBaseUrl(baseUrl: unknown): boolean {
-  if (typeof baseUrl !== "string" || !baseUrl.trim()) {
-    return false;
-  }
-
-  try {
-    return new URL(baseUrl).hostname.toLowerCase() === "api.openai.com";
-  } catch {
-    return baseUrl.toLowerCase().includes("api.openai.com");
-  }
-}
-
-function isOpenAICodexBaseUrl(baseUrl: unknown): boolean {
-  if (typeof baseUrl !== "string" || !baseUrl.trim()) {
-    return false;
-  }
-
-  try {
-    return new URL(baseUrl).hostname.toLowerCase() === "chatgpt.com";
-  } catch {
-    return baseUrl.toLowerCase().includes("chatgpt.com");
   }
 }
 
