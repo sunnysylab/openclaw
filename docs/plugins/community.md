@@ -84,6 +84,17 @@ and files.
 openclaw plugins install @sliverp/qqbot
 ```
 
+### Tokaroo
+
+One API key. Real-time routing across 197+ AI models from various providers including Anthropic, Google, Groq, and OpenAI - chat, images, speech, and video - optimized for cost, latency, and automatic failover. Connect in under 60 seconds. OpenAI-compatible routing provider for OpenClaw with managed `auto`, `fast`, and `max` modes.
+
+- **npm:** `tokaroo-openclaw-provider`
+- **repo:** [github.com/tokaroo-ai/tokaroo-openclaw-provider](https://github.com/tokaroo-ai/tokaroo-openclaw-provider)
+
+```bash
+openclaw plugins install tokaroo-openclaw-provider
+```
+
 ### wecom
 
 OpenClaw Enterprise WeCom Channel Plugin.
