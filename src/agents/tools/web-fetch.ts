@@ -103,6 +103,13 @@ function resolveFetchReadabilityEnabled(fetch?: WebFetchConfig): boolean {
   return true;
 }
 
+function resolveFetchAllowFakeIp(fetch?: WebFetchConfig): boolean {
+  if (typeof fetch?.allowFakeIp === "boolean") {
+    return fetch.allowFakeIp;
+  }
+  return false;
+}
+
 function resolveFetchMaxCharsCap(fetch?: WebFetchConfig): number {
   const raw =
     fetch && "maxCharsCap" in fetch && typeof fetch.maxCharsCap === "number"
@@ -458,6 +465,7 @@ type WebFetchRuntimeParams = FirecrawlRuntimeParams & {
   cacheTtlMs: number;
   userAgent: string;
   readabilityEnabled: boolean;
+  allowFakeIp: boolean;
 };
 
 function toFirecrawlContentParams(
@@ -512,8 +520,11 @@ async function maybeFetchFirecrawlWebFetchPayload(
 }
 
 async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string, unknown>> {
+  // Include allowFakeIp in cache key to partition by security mode.
+  // Without this, content fetched with allowFakeIp=true could be replayed
+  // to later calls with allowFakeIp=false, bypassing stricter SSRF policy.
   const cacheKey = normalizeCacheKey(
-    `fetch:${params.url}:${params.extractMode}:${params.maxChars}`,
+    `fetch:${params.url}:${params.extractMode}:${params.maxChars}:${params.allowFakeIp}`,
   );
   const cached = readCache(FETCH_CACHE, cacheKey);
   if (cached) {
@@ -535,10 +546,25 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
   let release: (() => Promise<void>) | null = null;
   let finalUrl = params.url;
   try {
+    // Only relax SSRF guard and enable trusted proxy mode when user explicitly
+    // enables allowFakeIp config. We no longer auto-detect proxy env vars because:
+    // 1. NO_PROXY exclusions mean some URLs bypass the proxy but SSRF is still relaxed
+    // 2. Protocol-changing redirects keep SSRF relaxed after proxy stops
+    // 3. trusted_env_proxy mode trusts proxy-side DNS, weakening SSRF for normal fetches
+    // This keeps the security model simple: both SSRF relaxation and trusted proxy mode
+    // require explicit opt-in via allowFakeIp: true.
+    const allowRfc2544 = params.allowFakeIp;
     const result = await fetchWithWebToolsNetworkGuard({
       url: params.url,
       maxRedirects: params.maxRedirects,
       timeoutSeconds: params.timeoutSeconds,
+      // When tools.web.fetch.allowFakeIp is true, allow the RFC 2544 range
+      // (198.18.0.0/15) in the SSRF guard for proxy fake-ip compatibility
+      // (e.g., Clash TUN mode). Users must explicitly enable this config option.
+      // Also enable trusted_env_proxy mode only when allowFakeIp is true,
+      // to avoid weakening SSRF for normal untrusted fetches.
+      useEnvProxy: allowRfc2544,
+      policy: allowRfc2544 ? { allowRfc2544BenchmarkRange: true } : undefined,
       init: {
         headers: {
           Accept: "text/markdown, text/html;q=0.9, */*;q=0.1",
@@ -787,6 +813,7 @@ export function createWebFetchTool(options?: {
         cacheTtlMs: resolveCacheTtlMs(fetch?.cacheTtlMinutes, DEFAULT_CACHE_TTL_MINUTES),
         userAgent,
         readabilityEnabled,
+        allowFakeIp: resolveFetchAllowFakeIp(fetch),
         firecrawlEnabled,
         firecrawlApiKey,
         firecrawlBaseUrl,
