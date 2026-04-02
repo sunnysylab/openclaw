@@ -137,6 +137,7 @@ import {
   runAttemptContextEngineBootstrap,
 } from "./attempt.context-engine-helpers.js";
 import {
+  appendSystemPromptAddition,
   buildAfterTurnRuntimeContext,
   prependSystemPromptAddition,
   resolveAttemptFsWorkspaceOnly,
@@ -185,6 +186,7 @@ export {
   resolveAttemptSpawnWorkspaceDir,
 } from "./attempt.thread-helpers.js";
 export {
+  appendSystemPromptAddition,
   buildAfterTurnRuntimeContext,
   prependSystemPromptAddition,
   resolveAttemptFsWorkspaceOnly,
@@ -1178,13 +1180,13 @@ export async function runEmbeddedAttempt(
               activeSession.agent.replaceMessages(assembled.messages);
             }
             if (assembled.systemPromptAddition) {
-              systemPromptText = prependSystemPromptAddition({
+              systemPromptText = appendSystemPromptAddition({
                 systemPrompt: systemPromptText,
                 systemPromptAddition: assembled.systemPromptAddition,
               });
               applySystemPromptOverrideToSession(activeSession, systemPromptText);
               log.debug(
-                `context engine: prepended system prompt addition (${assembled.systemPromptAddition.length} chars)`,
+                `context engine: appended system prompt addition (${assembled.systemPromptAddition.length} chars)`,
               );
             }
           } catch (assembleErr) {
