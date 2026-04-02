@@ -1,6 +1,7 @@
 import type { Mock } from "vitest";
 import { afterEach, beforeEach, vi } from "vitest";
 import { isBlockedHostnameOrIp } from "openclaw/plugin-sdk/ssrf-runtime";
+import { normalizeBlueBubblesServerUrl } from "./types.js";
 import { _setFetchGuardForTesting } from "./types.js";
 
 export const BLUE_BUBBLES_PRIVATE_API_STATUS = {
@@ -55,7 +56,7 @@ function resolveBlueBubblesEffectiveAllowPrivateNetworkFromConfig(params: {
     return false;
   }
   try {
-    const hostname = new URL(params.baseUrl).hostname.trim();
+    const hostname = new URL(normalizeBlueBubblesServerUrl(params.baseUrl)).hostname.trim();
     return Boolean(hostname) && isBlockedHostnameOrIp(hostname);
   } catch {
     return false;
