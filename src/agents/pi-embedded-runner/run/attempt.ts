@@ -125,7 +125,7 @@ import {
   buildEmbeddedSystemPrompt,
   createSystemPromptOverride,
 } from "../system-prompt.js";
-import { dropThinkingBlocks } from "../thinking.js";
+import { dropThinkingBlocks, stripThinkingSignatures } from "../thinking.js";
 import { collectAllowedToolNames } from "../tool-name-allowlist.js";
 import { installToolResultContextGuard } from "../tool-result-context-guard.js";
 import { splitSdkTools } from "../tool-split.js";
@@ -1033,6 +1033,9 @@ export async function runEmbeddedAttempt(
         params.model.api === "azure-openai-responses" ||
         params.model.api === "openai-codex-responses"
       ) {
+        // Azure OpenAI (and other non-direct-OpenAI Responses API providers)
+        // reject replayed reasoning items in input. Strip thinkingSignature so
+        // pi-ai's convertResponsesMessages won't convert them to reasoning
         const inner = activeSession.agent.streamFn;
         activeSession.agent.streamFn = (model, context, options) => {
           const ctx = context as unknown as { messages?: unknown };
@@ -1050,6 +1053,35 @@ export async function runEmbeddedAttempt(
           } as unknown;
           return inner(model, nextContext as typeof context, options);
         };
+
+        // Azure OpenAI (and other non-direct-OpenAI Responses API providers)
+        // reject replayed reasoning items in input. Strip signatures so
+        // pi-ai's convertResponsesMessages won't replay reasoning items or
+        // original message-item IDs. Installed AFTER downgrade so it runs
+        // BEFORE it — downgrade then sees signature-free messages and won't
+        // preserve call_id|fc_* pairings that reference removed reasoning.
+        if (
+          params.model.provider !== "openai" &&
+          params.model.provider !== "openai-codex"
+        ) {
+          const inner = activeSession.agent.streamFn;
+          activeSession.agent.streamFn = (model, context, options) => {
+            const ctx = context as unknown as { messages?: unknown };
+            const messages = ctx?.messages;
+            if (!Array.isArray(messages)) {
+              return inner(model, context, options);
+            }
+            const sanitized = stripThinkingSignatures(messages as AgentMessage[]);
+            if (sanitized === messages) {
+              return inner(model, context, options);
+            }
+            const nextContext = {
+              ...(context as unknown as Record<string, unknown>),
+              messages: sanitized,
+            } as unknown;
+            return inner(model, nextContext as typeof context, options);
+          };
+        }
       }
 
       const innerStreamFn = activeSession.agent.streamFn;
