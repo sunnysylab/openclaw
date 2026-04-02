@@ -213,6 +213,21 @@ export {
   wrapStreamFnTrimToolCallNames,
 } from "./attempt.tool-call-normalization.js";
 
+/**
+ * Sentinel error thrown when a plugin's llm_input hook blocks an LLM call.
+ * Using a dedicated class prevents the failover/retry logic in run.ts from
+ * misclassifying plugin-authored blockReason text (e.g. containing "rate limit")
+ * as a transient provider failure and retrying with a different profile or model.
+ */
+export class PluginBlockedError extends Error {
+  readonly blockReason: string;
+  constructor(reason: string) {
+    super(`LLM call blocked by plugin: ${reason}`);
+    this.name = "PluginBlockedError";
+    this.blockReason = reason;
+  }
+}
+
 const MAX_BTW_SNAPSHOT_MESSAGES = 100;
 
 export function resolveEmbeddedAgentStreamFn(params: {
@@ -1519,7 +1534,7 @@ export async function runEmbeddedAttempt(
 
           // Detect and load images referenced in the prompt for vision-capable models.
           // Images are prompt-local only (pi-like behavior).
-          const imageResult = await detectAndLoadPromptImages({
+          let imageResult = await detectAndLoadPromptImages({
             prompt: effectivePrompt,
             workspaceDir: effectiveWorkspace,
             model: params.model,
@@ -1560,8 +1575,8 @@ export async function runEmbeddedAttempt(
           }
 
           if (hookRunner?.hasHooks("llm_input")) {
-            hookRunner
-              .runLlmInput(
+            try {
+              const llmInputResult = await hookRunner.runLlmInput(
                 {
                   runId: params.runId,
                   sessionId: params.sessionId,
@@ -1569,7 +1584,9 @@ export async function runEmbeddedAttempt(
                   model: params.modelId,
                   systemPrompt: systemPromptText,
                   prompt: effectivePrompt,
-                  historyMessages: activeSession.messages,
+                  // Shallow-clone to prevent hooks from mutating session state
+                  // in place, which would bypass the declared result contract.
+                  historyMessages: [...activeSession.messages],
                   imagesCount: imageResult.images.length,
                 },
                 {
@@ -1582,10 +1599,72 @@ export async function runEmbeddedAttempt(
                   trigger: params.trigger,
                   channelId: params.messageChannel ?? params.messageProvider ?? undefined,
                 },
-              )
-              .catch((err) => {
-                log.warn(`llm_input hook failed: ${String(err)}`);
-              });
+              );
+
+              if (llmInputResult?.block) {
+                const reason = llmInputResult.blockReason ?? "Blocked by llm_input plugin hook";
+                log.warn(`llm_input hook blocked LLM call: ${reason}`);
+                // Throw a sentinel error so the outer catch records it as
+                // promptError. Using PluginBlockedError prevents the failover
+                // logic from misclassifying plugin block reasons as transient
+                // provider failures and retrying the call.
+                throw new PluginBlockedError(reason);
+              }
+
+              // Save originals so we can revert if image re-detection fails,
+              // avoiding a state where the prompt is updated but images are stale.
+              const prevPrompt = effectivePrompt;
+              const prevSystemPrompt = systemPromptText;
+              const prevImageResult = imageResult;
+
+              if (llmInputResult?.prompt !== undefined) {
+                effectivePrompt = llmInputResult.prompt;
+              }
+              if (llmInputResult?.systemPrompt !== undefined) {
+                systemPromptText = llmInputResult.systemPrompt;
+                // Apply the override to the live session so that
+                // activeSession.prompt() picks up the new system prompt.
+                applySystemPromptOverrideToSession(activeSession, systemPromptText);
+              }
+
+              // Re-detect images when the hook rewrote the prompt, so the
+              // model receives attachments matching the updated text.
+              if (llmInputResult?.prompt !== undefined) {
+                try {
+                  imageResult = await detectAndLoadPromptImages({
+                    prompt: effectivePrompt,
+                    workspaceDir: effectiveWorkspace,
+                    model: params.model,
+                    existingImages: params.images,
+                    imageOrder: params.imageOrder,
+                    maxBytes: MAX_IMAGE_BYTES,
+                    maxDimensionPx: resolveImageSanitizationLimits(params.config).maxDimensionPx,
+                    workspaceOnly: effectiveFsWorkspaceOnly,
+                    sandbox:
+                      sandbox?.enabled && sandbox?.fsBridge
+                        ? { root: sandbox.workspaceDir, bridge: sandbox.fsBridge }
+                        : undefined,
+                  });
+                } catch (imgErr) {
+                  // Revert all overrides so the run continues with consistent
+                  // pre-hook state rather than mismatched prompt + stale images.
+                  log.warn(
+                    `llm_input image re-detection failed, reverting overrides: ${String(imgErr)}`,
+                  );
+                  effectivePrompt = prevPrompt;
+                  systemPromptText = prevSystemPrompt;
+                  applySystemPromptOverrideToSession(activeSession, prevSystemPrompt);
+                  imageResult = prevImageResult;
+                }
+              }
+            } catch (err) {
+              // Re-throw block errors so the outer catch records them as promptError
+              // and the LLM call is skipped. Only swallow non-block hook failures.
+              if (err instanceof PluginBlockedError) {
+                throw err;
+              }
+              log.warn(`llm_input hook failed: ${String(err)}`);
+            }
           }
 
           const btwSnapshotMessages = activeSession.messages.slice(-MAX_BTW_SNAPSHOT_MESSAGES);
@@ -1842,10 +1921,13 @@ export async function runEmbeddedAttempt(
         params.abortSignal?.removeEventListener?.("abort", onAbort);
       }
 
-      const lastAssistant = messagesSnapshot
+      let lastAssistant = messagesSnapshot
         .slice()
         .toReversed()
         .find((m) => m.role === "assistant");
+
+      // Copy so hook handlers cannot mutate the original via shared reference.
+      let finalAssistantTexts = [...assistantTexts];
 
       const toolMetasNormalized = toolMetas
         .filter(
@@ -1855,8 +1937,8 @@ export async function runEmbeddedAttempt(
         .map((entry) => ({ toolName: entry.toolName, meta: entry.meta }));
 
       if (hookRunner?.hasHooks("llm_output")) {
-        hookRunner
-          .runLlmOutput(
+        try {
+          const llmOutputResult = await hookRunner.runLlmOutput(
             {
               runId: params.runId,
               sessionId: params.sessionId,
@@ -1876,10 +1958,29 @@ export async function runEmbeddedAttempt(
               trigger: params.trigger,
               channelId: params.messageChannel ?? params.messageProvider ?? undefined,
             },
-          )
-          .catch((err) => {
-            log.warn(`llm_output hook failed: ${String(err)}`);
-          });
+          );
+
+          if (llmOutputResult?.assistantTexts !== undefined) {
+            finalAssistantTexts = llmOutputResult.assistantTexts;
+            // Strip text, reasoning, and error content from lastAssistant to
+            // prevent downstream payload construction from leaking the original
+            // model output. This includes reasoning blocks (reasoning mode) and
+            // formatAssistantErrorText output (errored replies).
+            // Preserve stopReason and usage so that run.ts failover/retry
+            // logic can still detect auth, rate-limit, and billing errors on
+            // the original model response.
+            if (lastAssistant) {
+              lastAssistant = {
+                ...lastAssistant,
+                text: "",
+                content: [],
+                errorMessage: undefined,
+              } as typeof lastAssistant;
+            }
+          }
+        } catch (err) {
+          log.warn(`llm_output hook failed: ${String(err)}`);
+        }
       }
 
       return {
@@ -1892,7 +1993,7 @@ export async function runEmbeddedAttempt(
         bootstrapPromptWarningSignature: bootstrapPromptWarning.signature,
         systemPromptReport,
         messagesSnapshot,
-        assistantTexts,
+        assistantTexts: finalAssistantTexts,
         toolMetas: toolMetasNormalized,
         lastAssistant,
         lastToolError: getLastToolError?.(),
