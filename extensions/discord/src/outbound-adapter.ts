@@ -16,6 +16,7 @@ import {
 import type { DiscordComponentMessageSpec } from "./components.js";
 import { getThreadBindingManager, type ThreadBindingRecord } from "./monitor/thread-bindings.js";
 import { normalizeDiscordOutboundTarget } from "./normalize.js";
+import { buildComponentTranscriptText } from "./send.components.js";
 import {
   sendDiscordComponentMessage,
   sendMessageDiscord,
@@ -194,7 +195,11 @@ export const discordOutbound: ChannelOutboundAdapter = {
         });
       },
     });
-    return attachChannelToResult("discord", result);
+    const transcriptText = buildComponentTranscriptText(componentSpec);
+    return attachChannelToResult("discord", {
+      ...result,
+      ...(transcriptText ? { meta: { transcriptText } } : {}),
+    });
   },
   ...createAttachedChannelResultAdapter({
     channel: "discord",
