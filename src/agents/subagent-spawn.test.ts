@@ -157,4 +157,41 @@ describe("spawnSubagentDirect seam flow", () => {
     );
     expect(operations.indexOf("gateway:agent")).toBeGreaterThan(operations.indexOf("store:update"));
   });
+
+  it("pins every gateway call to operator.admin scope to prevent scope-upgrade pairing failures (#59428)", async () => {
+    const capturedCalls: Array<{ method?: string; scopes?: string[] }> = [];
+
+    hoisted.callGatewayMock.mockImplementation(
+      async (request: { method?: string; scopes?: string[] }) => {
+        capturedCalls.push({ method: request.method, scopes: request.scopes });
+        if (request.method === "agent") {
+          return { runId: "run-1" };
+        }
+        if (request.method?.startsWith("sessions.")) {
+          return { ok: true };
+        }
+        return {};
+      },
+    );
+    installSessionStoreCaptureMock(hoisted.updateSessionStoreMock);
+
+    await spawnSubagentDirect(
+      {
+        task: "verify admin scope pinning",
+        model: "openai-codex/gpt-5.4",
+      },
+      {
+        agentSessionKey: "agent:main:main",
+        agentChannel: "discord",
+        agentAccountId: "acct-1",
+        agentTo: "user-1",
+        workspaceDir: "/tmp/requester-workspace",
+      },
+    );
+
+    expect(capturedCalls.length).toBeGreaterThan(0);
+    for (const call of capturedCalls) {
+      expect(call.scopes).toEqual(["operator.admin"]);
+    }
+  });
 });
