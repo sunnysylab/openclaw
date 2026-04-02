@@ -133,10 +133,10 @@ export async function createMSTeamsApp(
   creds: MSTeamsCredentials,
   sdk: MSTeamsTeamsSdk,
 ): Promise<MSTeamsApp> {
-  if (creds.type === "federated") {
-    return createFederatedApp(creds, sdk);
-  }
   const noOpHttp = await createNoOpHttpPlugin();
+  if (creds.type === "federated") {
+    return createFederatedApp(creds, sdk, noOpHttp);
+  }
   // Use type assertion: the SDK's AppOptions generic narrows `plugins` to
   // Array<TPlugin>, but our no-op stub satisfies the runtime contract without
   // matching the decorator-heavy IPlugin type at compile time.
@@ -148,9 +148,13 @@ export async function createMSTeamsApp(
   } as ConstructorParameters<MSTeamsTeamsSdk["App"]>[0]);
 }
 
-function createFederatedApp(creds: MSTeamsFederatedCredentials, sdk: MSTeamsTeamsSdk): MSTeamsApp {
+function createFederatedApp(
+  creds: MSTeamsFederatedCredentials,
+  sdk: MSTeamsTeamsSdk,
+  noOpHttp: Awaited<ReturnType<typeof createNoOpHttpPlugin>>,
+): MSTeamsApp {
   if (creds.useManagedIdentity) {
-    return createManagedIdentityApp(creds, sdk);
+    return createManagedIdentityApp(creds, sdk, noOpHttp);
   }
 
   // Certificate-based auth
@@ -166,13 +170,14 @@ function createFederatedApp(creds: MSTeamsFederatedCredentials, sdk: MSTeamsTeam
     throw new Error(`Failed to read certificate file at '${creds.certificatePath}': ${msg}`);
   }
 
-  return createCertificateApp(creds, privateKey, sdk);
+  return createCertificateApp(creds, privateKey, sdk, noOpHttp);
 }
 
 function createCertificateApp(
   creds: MSTeamsFederatedCredentials,
   privateKey: string,
   sdk: MSTeamsTeamsSdk,
+  noOpHttp: Awaited<ReturnType<typeof createNoOpHttpPlugin>>,
 ): MSTeamsApp {
   // Lazily create and cache the credential so the token cache is reused.
   let credentialPromise: Promise<
@@ -206,12 +211,14 @@ function createCertificateApp(
     clientId: creds.appId,
     tenantId: creds.tenantId,
     token: tokenProvider,
+    plugins: [noOpHttp],
   } as unknown as AppCtorOptions);
 }
 
 function createManagedIdentityApp(
   creds: MSTeamsFederatedCredentials,
   sdk: MSTeamsTeamsSdk,
+  noOpHttp: Awaited<ReturnType<typeof createNoOpHttpPlugin>>,
 ): MSTeamsApp {
   // Lazily create and cache the credential instance so the token cache is
   // reused across calls instead of hitting IMDS/AAD on every message.
@@ -245,6 +252,7 @@ function createManagedIdentityApp(
     clientId: creds.appId,
     tenantId: creds.tenantId,
     token: tokenProvider,
+    plugins: [noOpHttp],
   } as unknown as AppCtorOptions);
 }
 
