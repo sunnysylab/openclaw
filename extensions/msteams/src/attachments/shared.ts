@@ -264,7 +264,8 @@ export function extractInlineImageCandidates(
 ): InlineImageCandidate[] {
   const out: InlineImageCandidate[] = [];
   let totalEstimatedInlineBytes = 0;
-  outerLoop: for (const att of attachments) {
+  let inlineBudgetExhausted = false;
+  for (const att of attachments) {
     const html = extractHtmlFromAttachment(att);
     if (!html) {
       continue;
@@ -275,6 +276,10 @@ export function extractInlineImageCandidates(
       const src = match[1]?.trim();
       if (src && !src.startsWith("cid:")) {
         if (src.startsWith("data:")) {
+          if (inlineBudgetExhausted) {
+            match = IMG_SRC_RE.exec(html);
+            continue;
+          }
           const { candidate: decoded, estimatedBytes } = decodeDataImageWithLimits(src, {
             maxInlineBytes: limits?.maxInlineBytes,
           });
@@ -284,7 +289,9 @@ export function extractInlineImageCandidates(
               typeof limits?.maxInlineTotalBytes === "number" &&
               nextTotal > limits.maxInlineTotalBytes
             ) {
-              break outerLoop;
+              inlineBudgetExhausted = true;
+              match = IMG_SRC_RE.exec(html);
+              continue;
             }
             totalEstimatedInlineBytes = nextTotal;
             out.push(decoded);

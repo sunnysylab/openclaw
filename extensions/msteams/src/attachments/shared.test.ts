@@ -441,4 +441,35 @@ describe("msteams inline image limits", () => {
     expect(out.length).toBe(1);
     expect(out[0]?.kind).toBe("data");
   });
+
+  it("continues collecting URL images after inline byte budget is exhausted", () => {
+    const attachments = [
+      {
+        contentType: "text/html",
+        content: `<img src=\"${smallPngDataUrl}\" /><img src=\"https://contoso.example/a.png\" />`,
+      },
+      {
+        contentType: "text/html",
+        content: '<img src="https://contoso.example/b.png" />',
+      },
+    ];
+    const out = extractInlineImageCandidates(attachments, {
+      maxInlineBytes: 10,
+      maxInlineTotalBytes: 4,
+    });
+    expect(out).toEqual([
+      {
+        kind: "url",
+        url: "https://contoso.example/a.png",
+        fileHint: "a.png",
+        placeholder: "<media:image>",
+      },
+      {
+        kind: "url",
+        url: "https://contoso.example/b.png",
+        fileHint: "b.png",
+        placeholder: "<media:image>",
+      },
+    ]);
+  });
 });
