@@ -135,8 +135,9 @@ function extractScriptTargetFromCommand(
     pushToken();
     return tokens;
   };
-  const hasWindowsPathSyntax = /(?:^|[\s"'`])(?:[A-Za-z]:\\|\.\\|\.\.\\|\\\\)/.test(raw);
-  const candidateArgv = hasWindowsPathSyntax
+  const shouldUseWindowsPathTokenizer =
+    process.platform === "win32" && /(?:^|[\s"'`])(?:[A-Za-z]:\\|\.\\|\.\.\\|\\\\)/.test(raw);
+  const candidateArgv = shouldUseWindowsPathTokenizer
     ? [splitShellArgsPreservingBackslashes(raw)]
     : [splitShellArgs(raw)];
 
