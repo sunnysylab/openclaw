@@ -47,6 +47,7 @@ import {
 } from "./session-delivery.js";
 import { forkSessionFromParent, resolveParentForkMaxTokens } from "./session-fork.js";
 import { buildSessionEndHookPayload, buildSessionStartHookPayload } from "./session-hooks.js";
+import { loadSessionMemory, type SessionMemory } from "./session-memory-persist.js";
 
 const log = createSubsystemLogger("session-init");
 let sessionArchiveRuntimePromise: Promise<
@@ -75,6 +76,7 @@ export type SessionInitResult = {
   isGroup: boolean;
   bodyStripped?: string;
   triggerBodyNormalized: string;
+  persistedSessionMemory?: SessionMemory;
 };
 
 function isResetAuthorizedForContext(params: {
@@ -705,6 +707,17 @@ export async function initSessionState(params: {
     }
   }
 
+  // Load persisted session memory for new sessions to restore context
+  let persistedSessionMemory = undefined;
+  if (isNewSession) {
+    const sessionMemory = await loadSessionMemory();
+    // Load if we have any persisted data (user preferences or summary)
+    if (sessionMemory && (sessionMemory.userPreferences || sessionMemory.summary || sessionMemory.lastSessionId)) {
+      persistedSessionMemory = sessionMemory;
+      log.info(`Loaded persisted session memory from previous session`);
+    }
+  }
+
   return {
     sessionCtx,
     sessionEntry,
@@ -714,6 +727,7 @@ export async function initSessionState(params: {
     sessionId: sessionId ?? crypto.randomUUID(),
     isNewSession,
     resetTriggered,
+    persistedSessionMemory,
     systemSent,
     abortedLastRun,
     storePath,

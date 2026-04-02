@@ -11,6 +11,7 @@ import { resolveContextTokensForModel } from "../context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
 import { isCliProvider } from "../model-selection.js";
 import { deriveSessionTotalTokens, hasNonzeroUsage } from "../usage.js";
+import { updateSessionMemoryAfterRun } from "../../auto-reply/reply/session-memory-persist.js";
 
 type RunResult = Awaited<ReturnType<(typeof import("../pi-embedded.js"))["runEmbeddedPiAgent"]>>;
 
@@ -131,4 +132,11 @@ export async function updateSessionStoreAfterAgentRun(params: {
     return merged;
   });
   sessionStore[sessionKey] = persisted;
+
+  // Persist session memory for context recovery on reconnect
+  await updateSessionMemoryAfterRun({
+    sessionId,
+    sessionKey,
+    sessionEntry: next,
+  });
 }
