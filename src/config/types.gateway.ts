@@ -135,7 +135,7 @@ export type GatewayTrustedProxyConfig = {
   userHeader: string;
   /**
    * Additional headers that MUST be present for the request to be trusted.
-   * Use this to verify the request actually came from the proxy.
+   * Use this to verify the request actually came through the proxy.
    * Example: ["x-forwarded-proto", "x-forwarded-host"]
    */
   requiredHeaders?: string[];
@@ -390,6 +390,11 @@ export type GatewayToolsConfig = {
   allow?: string[];
 };
 
+export type GatewayWebchatConfig = {
+  /** Max characters per text field in chat.history responses before truncation (default: 12000). */
+  chatHistoryMaxChars?: number;
+};
+
 /**
  * Configuration for automatic config backup and rollback on gateway startup failure.
  */
@@ -444,6 +449,8 @@ export type GatewayConfig = {
   allowRealIpFallback?: boolean;
   /** Tool access restrictions for HTTP /tools/invoke endpoint. */
   tools?: GatewayToolsConfig;
+  /** WebChat display/history settings. */
+  webchat?: GatewayWebchatConfig;
   /**
    * Channel health monitor interval in minutes.
    * Periodically checks channel health and restarts unhealthy channels.
